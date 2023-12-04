@@ -2,45 +2,71 @@ use std::{
     collections::BTreeMap,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
+    sync::{Arc, Mutex},
+    thread,
 };
 
 fn main() {
-    let mut kv_data = BTreeMap::new();
+    // Create a map to store key-value data.
+    let kv_data = Arc::new(Mutex::new(BTreeMap::new()));
 
+    // Create a tcp listener.
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
 
+    // Listen for incoming tcp connections.
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         println!("Connection established!");
-        handle_connection(stream, &mut kv_data);
+        let kv_data = Arc::clone(&kv_data);
+        thread::spawn(move || {
+            handle_connection(stream, &kv_data);
+        });
     }
 }
 
 // handle_connection is used to handle tcp request.
-fn handle_connection (mut stream: TcpStream, kv_data: &mut BTreeMap<String, String>) {
+fn handle_connection (mut stream: TcpStream, kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
     let mut buffer = [0; 1024];
     let mut reader = BufReader::new(&stream);
     reader.read(&mut buffer).unwrap();
     println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+
     let request = String::from_utf8_lossy(&buffer[..]).to_string();
-    process_request(&request, kv_data);
-    let response = "HTTP/1.1 200 OK\r\n\r\n";
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
-}
+    let data: Vec<&str> = request.split_whitespace().collect();
 
-fn process_request(request: &str, kv_data: &mut BTreeMap<String, String>) {
-    kv_data.insert("key".to_string(), request.to_string());
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_request() {
-        let mut kv_data = BTreeMap::new();
-        process_request("test request", &mut kv_data);
-        assert_eq!(kv_data.get("key"), Some(&"test request".to_string()));
+    for i in 0..data.len() {
+        println!("{}: {}", i, data[i]);
     }
+
+    let cmd = data[0];
+    match cmd {
+        "g" => {
+            if data.len() != 3 {
+                let response = "NOT FOUND\n";
+                stream.write(response.as_bytes()).unwrap();
+                return; 
+            }
+            let key = data[1];
+            let response = format!("{}\n", kv_data.lock().unwrap().get(key).unwrap_or(&"NOT FOUND".to_string()));
+            stream.write(response.as_bytes()).unwrap();
+        },
+        "s" => {
+            if data.len() != 4 {
+                let response = "NOT FOUND\n";
+                stream.write(response.as_bytes()).unwrap();
+                return; 
+            }
+            let key = data[1];
+            let value = data[2];
+            kv_data.lock().unwrap().insert(key.to_string(), value.to_string());
+            let response = "OK\n";
+            stream.write(response.as_bytes()).unwrap();
+        },
+        _ => {
+            let response = "NOT FOUND\n";
+            stream.write(response.as_bytes()).unwrap();
+        }
+    };
+
+    stream.flush().unwrap();
 }
