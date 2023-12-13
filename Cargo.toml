@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 ctrlc = "3.4.0"
 rayon = "1.7"
+flate2 = "1.0"
