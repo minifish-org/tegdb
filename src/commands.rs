@@ -5,6 +5,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+const NOT_FOUND: &str = "NOT FOUND\n";
+const OK: &str = "OK\n";
+
 pub fn handle_connection (mut stream: TcpStream, kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
     let mut stream_for_reading = stream.try_clone().unwrap();
     let mut buffer = [0; 1024];
@@ -26,34 +29,12 @@ pub fn handle_connection (mut stream: TcpStream, kv_data: &Arc<Mutex<BTreeMap<St
 
                 let cmd = data[0];
                 match cmd {
-                    "g" => {
-                        if data.len() != 3 {
-                            let response = "NOT FOUND\n";
-                            stream.write(response.as_bytes()).unwrap();
-                            continue;
-                        }
-                        let key = data[1];
-                        let response = format!("{}\n", kv_data.lock().unwrap().get(key).unwrap_or(&"NOT FOUND".to_string()));
-                        stream.write(response.as_bytes()).unwrap();
-                    },
-                    "s" => {
-                        if data.len() != 4 {
-                            let response = "NOT FOUND\n";
-                            stream.write(response.as_bytes()).unwrap();
-                            continue;
-                        }
-                        let key = data[1];
-                        let value = data[2];
-                        kv_data.lock().unwrap().insert(key.to_string(), value.to_string());
-                        let response = "OK\n";
-                        stream.write(response.as_bytes()).unwrap();
-                    },
+                    "g" => handle_get_command(data, kv_data, &mut stream),
+                    "s" => handle_set_command(data, kv_data, &mut stream),
                     _ => {
-                        let response = "NOT FOUND\n";
-                        stream.write(response.as_bytes()).unwrap();
+                        stream.write(NOT_FOUND.as_bytes()).unwrap();
                     }
-                };
-
+                }
                 stream.flush().unwrap();
             },
             Err(e) => {
@@ -63,3 +44,24 @@ pub fn handle_connection (mut stream: TcpStream, kv_data: &Arc<Mutex<BTreeMap<St
         }
     }
 }
+
+fn handle_get_command(data: Vec<&str>, kv_data: &Arc<Mutex<BTreeMap<String, String>>>, stream: &mut TcpStream) {
+    if data.len() != 3 {
+        stream.write(NOT_FOUND.as_bytes()).unwrap();
+        return;
+    }
+    let key = data[1];
+    let response = format!("{}\n", kv_data.lock().unwrap().get(key).unwrap_or(&NOT_FOUND.to_string()));
+    stream.write(response.as_bytes()).unwrap();
+}
+
+fn handle_set_command(data: Vec<&str>, kv_data: &Arc<Mutex<BTreeMap<String, String>>>, stream: &mut TcpStream) {
+    if data.len() != 4 {
+        stream.write(NOT_FOUND.as_bytes()).unwrap();
+        return;
+    }
+    let key = data[1];
+    let value = data[2];
+    kv_data.lock().unwrap().insert(key.to_string(), value.to_string());
+    stream.write(OK.as_bytes()).unwrap();
+}   
