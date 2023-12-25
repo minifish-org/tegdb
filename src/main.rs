@@ -3,11 +3,11 @@ mod commands;
 
 use std::{
     collections::BTreeMap,
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}},
 };
 use ctrlc;
-use rayon::ThreadPoolBuilder;
+use rayon::{ThreadPoolBuilder, ThreadPool};
 
 use diskio::{save_to_disk, load_data_from_file};
 use commands::handle_connection;
@@ -28,12 +28,26 @@ fn main() {
     setup_signal_handler(&kv_data);
 
     // Create a thread pool with a maximum number of threads.
-    let pool = ThreadPoolBuilder::new().num_threads(NUM_THREADS).build().unwrap();
+    let pool = create_thread_pool(NUM_THREADS);
 
     // Create a counter for active tasks.
     let active_tasks = Arc::new(AtomicUsize::new(0));
 
-    // Listen for incoming tcp connections.
+    // Handle incoming connections.
+    handle_incoming_connections(listener, kv_data, pool, active_tasks);
+}
+
+fn handle_client(stream: TcpStream, kv_data: Arc<Mutex<BTreeMap<String, String>>>, active_tasks: Arc<AtomicUsize>) {
+    active_tasks.fetch_add(1, Ordering::SeqCst);
+    handle_connection(stream, &kv_data);
+    active_tasks.fetch_sub(1, Ordering::SeqCst);
+}
+
+fn create_thread_pool(num_threads: usize) -> ThreadPool {
+    ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap()
+}
+
+fn handle_incoming_connections(listener: TcpListener, kv_data: Arc<Mutex<BTreeMap<String, String>>>, pool: ThreadPool, active_tasks: Arc<AtomicUsize>) {
     for stream in listener.incoming() {
         let stream = stream.unwrap();
         println!("Connection established!");
@@ -48,9 +62,7 @@ fn main() {
 
         let active_tasks = Arc::clone(&active_tasks);
         pool.spawn(move || {
-            active_tasks.fetch_add(1, Ordering::SeqCst);
-            handle_connection(stream, &kv_data);
-            active_tasks.fetch_sub(1, Ordering::SeqCst);
+            handle_client(stream, kv_data, active_tasks);
         });
     }
 }
