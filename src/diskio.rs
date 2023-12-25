@@ -18,7 +18,7 @@ pub fn save_to_disk(kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
     std::fs::write(DATA_FILE, compressed_data).unwrap();
 }
 
-pub fn load_data_from_file(kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
+pub fn load_data_from_disk(kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
     if let Ok(data) = std::fs::read(DATA_FILE) {
         let mut gz = GzDecoder::new(&data[..]);
         let mut s = String::new();

@@ -8,7 +8,7 @@ use std::{
 const NOT_FOUND: &str = "NOT FOUND\n";
 const OK: &str = "OK\n";
 
-pub fn handle_connection(mut stream: TcpStream, kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
+pub fn handle_request(mut stream: TcpStream, kv_data: &Arc<Mutex<BTreeMap<String, String>>>) {
     let mut stream_for_reading = stream.try_clone().unwrap();
     let mut buffer = [0; 1024];
     let mut reader = BufReader::new(&mut stream_for_reading);
@@ -41,11 +41,6 @@ fn process_command(data: Vec<&str>, kv_data: &Arc<Mutex<BTreeMap<String, String>
     }
 }
 
-fn write_response(stream: &mut TcpStream, response: String) {
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
-}
-
 fn handle_get_command(data: Vec<&str>, kv_data: &Arc<Mutex<BTreeMap<String, String>>>) -> String {
     if data.len() != 3 {
         return NOT_FOUND.to_string();
@@ -62,4 +57,9 @@ fn handle_set_command(data: Vec<&str>, kv_data: &Arc<Mutex<BTreeMap<String, Stri
     let value = data[2];
     kv_data.lock().unwrap().insert(key.to_string(), value.to_string());
     OK.to_string()
+}
+
+fn write_response(stream: &mut TcpStream, response: String) {
+    stream.write(response.as_bytes()).unwrap();
+    stream.flush().unwrap();
 }
