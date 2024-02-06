@@ -1,4 +1,6 @@
-use crate::engine::Engine;
+mod engine;
+
+use engine::Engine;
 
 const OK: &str = "OK\n";
 const INVALID_ARGS: &str = "Invalid number of arguments\n";
