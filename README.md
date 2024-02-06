@@ -1,5 +1,5 @@
-# TegSQL
-The name TegridySQL (short for TegSQL) is inspired by the Tegridy Farm in South Park and tries to correct some of the wrong SQL implementations, such as null support, implicit conversion support, etc.
+# TegDB
+The name TegridyDB (short for TegDB) is inspired by the Tegridy Farm in South Park and tries to correct some of the wrong database implementations, such as null support, implicit conversion support, etc.
 
 ## Rules
 
