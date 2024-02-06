@@ -31,7 +31,7 @@ impl Engine {
         self.key_map.insert(key.to_vec(), (pos + len as u64 - value_len as u64, value_len));
     }
 
-    pub fn delete(&mut self, key: &[u8]) {
+    pub fn del(&mut self, key: &[u8]) {
         self.log.write_entry(key, &[]);
         self.key_map.remove(key);
     }
