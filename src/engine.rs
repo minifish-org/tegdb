@@ -36,6 +36,16 @@ impl Engine {
         self.key_map.remove(key);
     }
 
+    pub fn scan(&mut self, start_key: &[u8], end_key: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+        let mut result = Vec::new();
+        let start_key_vec = start_key.to_vec();
+        let end_key_vec = end_key.to_vec();
+        for (key, &(value_pos, value_len)) in self.key_map.range(start_key_vec..end_key_vec) {
+            let value = self.log.read_value(value_pos, value_len);
+            result.push((key.clone(), value));
+        }
+        result
+    }
 }
 
 impl Engine {
