@@ -48,6 +48,54 @@ impl Engine {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_engine() {
+        let path = PathBuf::from("test.db");
+        let mut engine = Engine::new(path.clone());
+
+        // Test set and get
+        let key = b"key";
+        let value = b"value";
+        engine.set(key, value.to_vec());
+        let get_value = engine.get(key);
+        assert_eq!(get_value, value, "Expected: {}, Got: {}", String::from_utf8_lossy(value), String::from_utf8_lossy(&get_value));
+
+        // Test del
+        engine.del(key);
+        let get_value = engine.get(key);
+        assert_eq!(get_value, [], "Expected: {}, Got: {}", String::from_utf8_lossy(&[]), String::from_utf8_lossy(&get_value));
+
+        // Test scan
+        let start_key = b"a";
+        let end_key = b"z";
+        engine.set(start_key, b"start_value".to_vec());
+        engine.set(end_key, b"end_value".to_vec());
+        let mut end_key_extended = Vec::new();
+        end_key_extended.extend_from_slice(end_key);
+        end_key_extended.extend_from_slice(&[1u8]);
+        let result = engine.scan(start_key, &end_key_extended);
+        let expected = vec![
+            (start_key.to_vec(), b"start_value".to_vec()),
+            (end_key.to_vec(), b"end_value".to_vec()),
+        ];
+        let expected_strings: Vec<(String, String)> = expected.iter()
+        .map(|(k, v)| (String::from_utf8_lossy(k).into_owned(), String::from_utf8_lossy(v).into_owned()))
+        .collect();
+        let result_strings: Vec<(String, String)> = result.iter()
+        .map(|(k, v)| (String::from_utf8_lossy(k).into_owned(), String::from_utf8_lossy(v).into_owned()))
+        .collect();
+        assert_eq!(result_strings, expected_strings, "Expected: {:?}, Got: {:?}", expected_strings, result_strings);
+
+        // Clean up
+        fs::remove_file(path).unwrap();
+    }
+}
+
 impl Engine {
     fn flush(&mut self) {
         self.log.file.sync_all().unwrap();
@@ -81,7 +129,8 @@ impl Engine {
 
 impl Drop for Engine {
     fn drop(&mut self) {
-        self.flush()
+        self.flush();
+        self.compact()
     }
 }
 
