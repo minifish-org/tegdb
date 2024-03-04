@@ -18,6 +18,11 @@ fn main() {
     // Delete a value
     engine.del(key);
 
+    // Scan for values
+    let values = engine.scan(b"a", b"z");
+    for (key, value) in values {
+        println!("Got key: {}, value: {}", String::from_utf8_lossy(&key), String::from_utf8_lossy(&value));
+    }
     // Clean up
     drop(engine);
 }
