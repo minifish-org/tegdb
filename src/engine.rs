@@ -92,6 +92,7 @@ mod tests {
         assert_eq!(result_strings, expected_strings, "Expected: {:?}, Got: {:?}", expected_strings, result_strings);
 
         // Clean up
+        drop(engine);
         fs::remove_file(path).unwrap();
     }
 }
