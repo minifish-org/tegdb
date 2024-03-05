@@ -9,7 +9,7 @@ edition = "2021"
 
 [dev-dependencies]
 criterion = "0.3"
-rocksdb = "0.22.0" # for performance comparison
+sled = "0.34.7" # for performance comparison
 
 [[bench]]
 name = "engine_benchmark"
