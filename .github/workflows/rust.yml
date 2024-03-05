@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * *'  # Run every day at midnight
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,4 +30,11 @@ jobs:
     - name: Run tests
       run: cargo test --lib --verbose
     - name: Run benchmarks
-      run: cargo bench --lib --verbose
+      if: github.event_name == 'schedule'
+      run: cargo bench --lib --verbose > benchmarks.txt
+    - name: Upload benchmark results
+      if: github.event_name == 'schedule'
+      uses: actions/upload-artifact@v2
+      with:
+        name: benchmark-results
+        path: benchmarks.txt
