@@ -17,3 +17,4 @@ Cargo.lock
 test.db
 
 .vscode/
+rocksdb/
