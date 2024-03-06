@@ -10,6 +10,7 @@ edition = "2021"
 [dev-dependencies]
 criterion = "0.3"
 sled = "0.34.7" # for performance comparison
+redb = "1.5.0"
 
 [[bench]]
 name = "engine_benchmark"
