@@ -1,9 +1,12 @@
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
+use std::num::NonZeroUsize;
+use lru::LruCache;
 
 pub struct Engine {
     log: Log,
     key_map: KeyMap,
+    lru_cache: LruCache<Vec<u8>, Vec<u8>>,
 }
 
 type KeyMap = std::collections::BTreeMap<Vec<u8>, (u64, u32)>;
@@ -12,14 +15,20 @@ impl Engine {
     pub fn new(path: PathBuf) -> Self {
         let mut log = Log::new(path);
         let key_map = log.build_key_map();
-        let mut s = Self {log, key_map};
+        let lru_cache = LruCache::new(NonZeroUsize::new(1000).unwrap());
+        let mut s = Self {log, key_map, lru_cache};
         s.compact();
         s
     }
 
     pub fn get(&mut self, key: &[u8]) -> Vec<u8> {
+        if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
+            return cached_value.clone();
+        }
         if let Some((value_pos, value_len)) = self.key_map.get(key) {
-            self.log.read_value(*value_pos, *value_len)
+            let value = self.log.read_value(*value_pos, *value_len);
+            self.lru_cache.put(key.to_vec(), value.clone());
+            value
         } else {
             Vec::new()
         }
@@ -29,11 +38,13 @@ impl Engine {
         let (pos, len) = self.log.write_entry(key, &*value);
         let value_len = value.len() as u32;
         self.key_map.insert(key.to_vec(), (pos + len as u64 - value_len as u64, value_len));
+        self.lru_cache.put(key.to_vec(), value);
     }
 
     pub fn del(&mut self, key: &[u8]) {
         self.log.write_entry(key, &[]);
         self.key_map.remove(key);
+        self.lru_cache.pop(&key.to_vec());
     }
 
     pub fn scan(&mut self, start_key: &[u8], end_key: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
