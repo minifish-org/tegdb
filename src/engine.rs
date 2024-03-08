@@ -39,6 +39,10 @@ impl Engine {
     }
 
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) {
+        if value == self.get(key) {
+            return;
+        }
+
         let (pos, len) = self.log.write_entry(key, &*value);
         let value_len = value.len() as u32;
         self.key_map.insert(
@@ -49,6 +53,10 @@ impl Engine {
     }
 
     pub fn del(&mut self, key: &[u8]) {
+        if self.get(key).is_empty() {
+            return;
+        }
+
         self.log.write_entry(key, &[]);
         self.key_map.remove(key);
         self.lru_cache.pop(&key.to_vec());
