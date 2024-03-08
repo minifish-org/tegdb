@@ -1,6 +1,6 @@
 // examples/basic_usage.rs
-use tegdb::Engine;
 use std::path::PathBuf;
+use tegdb::Engine;
 
 fn main() {
     let path = PathBuf::from("test.db");
@@ -21,7 +21,11 @@ fn main() {
     // Scan for values
     let values = engine.scan(b"a", b"z");
     for (key, value) in values {
-        println!("Got key: {}, value: {}", String::from_utf8_lossy(&key), String::from_utf8_lossy(&value));
+        println!(
+            "Got key: {}, value: {}",
+            String::from_utf8_lossy(&key),
+            String::from_utf8_lossy(&value)
+        );
     }
     // Clean up
     drop(engine);

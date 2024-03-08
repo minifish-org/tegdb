@@ -1,7 +1,7 @@
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
-use std::num::NonZeroUsize;
 use lru::LruCache;
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
 
 pub struct Engine {
     log: Log,
@@ -16,7 +16,11 @@ impl Engine {
         let mut log = Log::new(path);
         let key_map = log.build_key_map();
         let lru_cache = LruCache::new(NonZeroUsize::new(1000).unwrap());
-        let mut s = Self {log, key_map, lru_cache};
+        let mut s = Self {
+            log,
+            key_map,
+            lru_cache,
+        };
         s.compact();
         s
     }
@@ -37,7 +41,10 @@ impl Engine {
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) {
         let (pos, len) = self.log.write_entry(key, &*value);
         let value_len = value.len() as u32;
-        self.key_map.insert(key.to_vec(), (pos + len as u64 - value_len as u64, value_len));
+        self.key_map.insert(
+            key.to_vec(),
+            (pos + len as u64 - value_len as u64, value_len),
+        );
         self.lru_cache.put(key.to_vec(), value);
     }
 
@@ -74,12 +81,24 @@ mod tests {
         let value = b"value";
         engine.set(key, value.to_vec());
         let get_value = engine.get(key);
-        assert_eq!(get_value, value, "Expected: {}, Got: {}", String::from_utf8_lossy(value), String::from_utf8_lossy(&get_value));
+        assert_eq!(
+            get_value,
+            value,
+            "Expected: {}, Got: {}",
+            String::from_utf8_lossy(value),
+            String::from_utf8_lossy(&get_value)
+        );
 
         // Test del
         engine.del(key);
         let get_value = engine.get(key);
-        assert_eq!(get_value, [], "Expected: {}, Got: {}", String::from_utf8_lossy(&[]), String::from_utf8_lossy(&get_value));
+        assert_eq!(
+            get_value,
+            [],
+            "Expected: {}, Got: {}",
+            String::from_utf8_lossy(&[]),
+            String::from_utf8_lossy(&get_value)
+        );
 
         // Test scan
         let start_key = b"a";
@@ -94,13 +113,29 @@ mod tests {
             (start_key.to_vec(), b"start_value".to_vec()),
             (end_key.to_vec(), b"end_value".to_vec()),
         ];
-        let expected_strings: Vec<(String, String)> = expected.iter()
-        .map(|(k, v)| (String::from_utf8_lossy(k).into_owned(), String::from_utf8_lossy(v).into_owned()))
-        .collect();
-        let result_strings: Vec<(String, String)> = result.iter()
-        .map(|(k, v)| (String::from_utf8_lossy(k).into_owned(), String::from_utf8_lossy(v).into_owned()))
-        .collect();
-        assert_eq!(result_strings, expected_strings, "Expected: {:?}, Got: {:?}", expected_strings, result_strings);
+        let expected_strings: Vec<(String, String)> = expected
+            .iter()
+            .map(|(k, v)| {
+                (
+                    String::from_utf8_lossy(k).into_owned(),
+                    String::from_utf8_lossy(v).into_owned(),
+                )
+            })
+            .collect();
+        let result_strings: Vec<(String, String)> = result
+            .iter()
+            .map(|(k, v)| {
+                (
+                    String::from_utf8_lossy(k).into_owned(),
+                    String::from_utf8_lossy(v).into_owned(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            result_strings, expected_strings,
+            "Expected: {:?}, Got: {:?}",
+            expected_strings, result_strings
+        );
 
         // Clean up
         drop(engine);
@@ -120,13 +155,15 @@ impl Engine {
         for (key, (value_pos, value_len)) in self.key_map.iter() {
             let value = self.log.read_value(*value_pos, *value_len);
             let (pos, len) = new_log.write_entry(key, &*value);
-            new_key_map.insert(key.to_vec(), (pos + len as u64 - *value_len as u64, *value_len));
-        
+            new_key_map.insert(
+                key.to_vec(),
+                (pos + len as u64 - *value_len as u64, *value_len),
+            );
         }
         (new_log, new_key_map)
     }
 
-    fn compact (&mut self) {
+    fn compact(&mut self) {
         let mut tmp_path = self.log.path.clone();
         tmp_path.set_extension("new");
         let (mut new_log, new_key_map) = self.write_log(tmp_path);
@@ -161,8 +198,9 @@ impl Log {
             .read(true)
             .write(true)
             .create(true)
-            .open(&path).unwrap();
-        Self {path, file}
+            .open(&path)
+            .unwrap();
+        Self { path, file }
     }
 
     fn build_key_map(&mut self) -> KeyMap {
@@ -207,11 +245,15 @@ impl Log {
         let len = 4 + 4 + key_len + value_len;
 
         let pos = self.file.seek(SeekFrom::End(0)).unwrap();
-        let mut w = BufWriter::with_capacity(len as usize,&mut self.file);
-        w.write_all(&key_len.to_be_bytes()).unwrap();
-        w.write_all(&value_len.to_be_bytes()).unwrap();
-        w.write_all(key).unwrap();
-        w.write_all(value).unwrap();
+        let mut w = BufWriter::with_capacity(len as usize, &mut self.file);
+
+        let mut buffer = Vec::with_capacity(len as usize);
+        buffer.extend_from_slice(&key_len.to_be_bytes());
+        buffer.extend_from_slice(&value_len.to_be_bytes());
+        buffer.extend_from_slice(key);
+        buffer.extend_from_slice(value);
+
+        w.write_all(&buffer).unwrap();
         w.flush().unwrap();
 
         (pos, len)
