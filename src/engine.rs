@@ -15,7 +15,7 @@ impl Engine {
     pub fn new(path: PathBuf) -> Self {
         let mut log = Log::new(path);
         let key_map = log.build_key_map();
-        let lru_cache = LruCache::new(NonZeroUsize::new(1000).unwrap());
+        let lru_cache = LruCache::new(NonZeroUsize::new(1_000_000).unwrap());
         let mut s = Self {
             log,
             key_map,
@@ -39,8 +39,10 @@ impl Engine {
     }
 
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) {
-        if value == self.get(key) {
-            return;
+        if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
+            if &value == cached_value {
+                return;
+            }
         }
 
         let (pos, len) = self.log.write_entry(key, &*value);
@@ -53,7 +55,7 @@ impl Engine {
     }
 
     pub fn del(&mut self, key: &[u8]) {
-        if self.get(key).is_empty() {
+        if self.key_map.get(key).is_none() {
             return;
         }
 

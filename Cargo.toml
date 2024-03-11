@@ -14,5 +14,9 @@ sled = "0.34.7" # for performance comparison
 redb = "1.5.0"
 
 [[bench]]
-name = "engine_benchmark"
+name = "engine_basic_benchmark"
+harness = false
+
+[[bench]]
+name = "engine_seq_benchmark"
 harness = false
