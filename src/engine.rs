@@ -158,7 +158,7 @@ impl Engine {
         self.log.file.sync_all().unwrap();
     }
 
-    fn write_log(&mut self, path: PathBuf) -> (Log, KeyMap) {
+    fn construct_log(&mut self, path: PathBuf) -> (Log, KeyMap) {
         let mut new_key_map = KeyMap::new();
         let mut new_log = Log::new(path);
         new_log.file.set_len(0).unwrap();
@@ -176,7 +176,7 @@ impl Engine {
     fn compact(&mut self) {
         let mut tmp_path = self.log.path.clone();
         tmp_path.set_extension("new");
-        let (mut new_log, new_key_map) = self.write_log(tmp_path);
+        let (mut new_log, new_key_map) = self.construct_log(tmp_path);
 
         std::fs::rename(&new_log.path, &self.log.path).unwrap();
         new_log.path = self.log.path.clone();
