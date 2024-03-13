@@ -3,11 +3,11 @@ use redb::{Database, ReadableTable, TableDefinition};
 use std::path::PathBuf;
 use tegdb::Engine;
 
-fn engine_benchmark(c: &mut Criterion) {
+fn engine_benchmark(c: &mut Criterion, value_size: usize) {
     let mut engine = Engine::new(PathBuf::from("test.db"));
-    let value = b"value";
+    let value = vec![0; value_size];
 
-    c.bench_function("engine seq set", |b| {
+    c.bench_function(&format!("engine seq set {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i);
@@ -17,7 +17,7 @@ fn engine_benchmark(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("engine seq get", |b| {
+    c.bench_function(&format!("engine seq get {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i);
@@ -27,7 +27,7 @@ fn engine_benchmark(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("engine seq del", |b| {
+    c.bench_function(&format!("engine seq del {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i);
@@ -38,22 +38,23 @@ fn engine_benchmark(c: &mut Criterion) {
     });
 }
 
-fn sled_benchmark(c: &mut Criterion) {
+fn sled_benchmark(c: &mut Criterion, value_size: usize) {
     let path = "sled";
     let db = sled::open(path).unwrap();
-    let value = b"value";
+    let value = vec![0; value_size];
 
-    c.bench_function("sled seq insert", |b| {
+    c.bench_function(&format!("sled seq insert {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            db.insert(black_box(key), black_box(value)).unwrap();
+            db.insert(black_box(key), black_box(value.to_vec()))
+                .unwrap();
             i += 1;
         })
     });
 
-    c.bench_function("sled seq get", |b| {
+    c.bench_function(&format!("sled seq get {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i);
@@ -63,7 +64,7 @@ fn sled_benchmark(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("sled seq remove", |b| {
+    c.bench_function(&format!("sled seq remove {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i);
@@ -74,14 +75,15 @@ fn sled_benchmark(c: &mut Criterion) {
     });
 }
 
-fn redb_benchmark(c: &mut Criterion) {
+fn redb_benchmark(c: &mut Criterion, value_size: usize) {
     let path = PathBuf::from("redb");
     let db = Database::create(path).unwrap();
     let table_def: TableDefinition<&str, &str> = TableDefinition::new("my_table");
 
-    let value = "value";
+    let value = vec![0; value_size];
+    let value_str = String::from_utf8(value).unwrap();
 
-    c.bench_function("redb seq put", |b| {
+    c.bench_function(&format!("redb seq put {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let tx = db.begin_write().unwrap();
@@ -89,7 +91,7 @@ fn redb_benchmark(c: &mut Criterion) {
                 let key = format!("key{}", i);
                 let mut table = tx.open_table(table_def).unwrap();
                 table
-                    .insert(black_box(key.as_str()), black_box(value))
+                    .insert(black_box(key.as_str()), black_box(value_str.as_str()))
                     .unwrap();
                 i += 1;
             }
@@ -97,7 +99,7 @@ fn redb_benchmark(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("redb seq get", |b| {
+    c.bench_function(&format!("redb seq get {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let tx = db.begin_read().unwrap();
@@ -108,7 +110,7 @@ fn redb_benchmark(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("redb seq del", |b| {
+    c.bench_function(&format!("redb seq del {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
             let tx = db.begin_write().unwrap();
@@ -123,5 +125,47 @@ fn redb_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, engine_benchmark, sled_benchmark, redb_benchmark);
-criterion_main!(benches);
+fn engine_short_benchmark(c: &mut Criterion) {
+    let value_size = 1024;
+    engine_benchmark(c, value_size);
+}
+
+fn sled_short_benchmark(c: &mut Criterion) {
+    let value_size = 1024;
+    sled_benchmark(c, value_size);
+}
+
+fn redb_short_benchmark(c: &mut Criterion) {
+    let value_size = 1024;
+    redb_benchmark(c, value_size);
+}
+
+fn engine_long_benchmark(c: &mut Criterion) {
+    let value_size = 1_000_000;
+    engine_benchmark(c, value_size);
+}
+
+fn sled_long_benchmark(c: &mut Criterion) {
+    let value_size = 1_000_000;
+    sled_benchmark(c, value_size);
+}
+
+fn redb_long_benchmark(c: &mut Criterion) {
+    let value_size = 1_000_000;
+    redb_benchmark(c, value_size);
+}
+
+criterion_group!(
+    short_benches,
+    engine_short_benchmark,
+    sled_short_benchmark,
+    redb_short_benchmark
+);
+criterion_group!(
+    long_benches,
+    engine_long_benchmark,
+    sled_long_benchmark,
+    redb_long_benchmark
+);
+
+criterion_main!(short_benches, long_benches);
