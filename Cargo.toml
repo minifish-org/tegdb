@@ -6,10 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+flate2 = "1.0.28"
 lru = "0.12.3"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = { version = "0.5.1", features = ["html_reports"] }
 sled = "0.34.7" # for performance comparison
 redb = "1.5.0"
 
