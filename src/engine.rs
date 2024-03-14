@@ -246,24 +246,12 @@ impl Log {
         let mut value = vec![0; value_len as usize];
         self.file.seek(SeekFrom::Start(value_pos)).unwrap();
         self.file.read_exact(&mut value).unwrap();
-
-        // Decompress the value
-        let mut d = flate2::read::GzDecoder::new(&value[..]);
-        let mut decompressed_value = Vec::new();
-        d.read_to_end(&mut decompressed_value).unwrap();
-
-        decompressed_value
+        value
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> (u64, u32) {
         let key_len = key.len() as u32;
-
-       // Compress the value
-        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        encoder.write_all(value).unwrap();
-        let compressed_value = encoder.finish().unwrap();
-
-        let value_len = compressed_value.len() as u32;
+        let value_len = value.len() as u32;
         let len = 4 + 4 + key_len + value_len;
 
         let pos = self.file.seek(SeekFrom::End(0)).unwrap();
@@ -273,7 +261,7 @@ impl Log {
         buffer.extend_from_slice(&key_len.to_be_bytes());
         buffer.extend_from_slice(&value_len.to_be_bytes());
         buffer.extend_from_slice(key);
-        buffer.extend_from_slice(&compressed_value);
+        buffer.extend_from_slice(&value);
 
         w.write_all(&buffer).unwrap();
         w.flush().unwrap();
