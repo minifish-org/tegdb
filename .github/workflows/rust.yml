@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4.1.1
     - name: Setup Rust
-      uses: actions-rs/toolchain@v1
+      uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: nightly
         override: true
@@ -34,7 +34,7 @@ jobs:
       run: cargo bench > benchmarks.txt
     - name: Upload benchmark results
       if: github.event_name == 'schedule'
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4.3.1
       with:
         name: benchmark-results
         path: benchmarks.txt
