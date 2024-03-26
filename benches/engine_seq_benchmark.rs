@@ -27,6 +27,16 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
+    c.bench_function(&format!("engine seq scan {}", value_size), |b| {
+        let start_key = b"a";
+        let end_key = b"z";
+        b.iter(|| {
+            let _ = engine
+                .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
+                .collect::<Vec<_>>();
+        })
+    });
+
     c.bench_function(&format!("engine seq del {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
@@ -61,6 +71,18 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
             let key = key_str.as_bytes();
             db.get(black_box(key)).unwrap();
             i += 1;
+        })
+    });
+
+    c.bench_function(&format!("sled seq scan {}", value_size), |b| {
+        let start_key = "a";
+        let end_key = "z";
+        b.iter(|| {
+            let _ = db
+                .range(black_box(start_key)..black_box(end_key))
+                .values()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
         })
     });
 
@@ -107,6 +129,20 @@ fn redb_benchmark(c: &mut Criterion, value_size: usize) {
             let key = format!("key{}", i);
             table.get(black_box(key.as_str())).unwrap();
             i += 1;
+        })
+    });
+
+    c.bench_function(&format!("redb seq scan {}", value_size), |b| {
+        let start_key = "a";
+        let end_key = "z";
+        b.iter(|| {
+            let tx = db.begin_read().unwrap();
+            let table = tx.open_table(table_def).unwrap();
+            let _ = table
+                .range(black_box(start_key)..black_box(end_key))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
         })
     });
 

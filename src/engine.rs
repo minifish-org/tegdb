@@ -1,6 +1,7 @@
 use lru::LruCache;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroUsize;
+use std::ops::Range;
 use std::path::PathBuf;
 
 pub struct Engine {
@@ -64,15 +65,23 @@ impl Engine {
         self.lru_cache.pop(&key.to_vec());
     }
 
-    pub fn scan(&mut self, start_key: &[u8], end_key: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let mut result = Vec::new();
-        let start_key_vec = start_key.to_vec();
-        let end_key_vec = end_key.to_vec();
-        for (key, &(value_pos, value_len)) in self.key_map.range(start_key_vec..end_key_vec) {
-            let value = self.log.read_value(value_pos, value_len);
-            result.push((key.clone(), value));
-        }
-        result
+    pub fn scan<'a>(
+        &'a mut self,
+        range: Range<Vec<u8>>,
+    ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a> {
+        let range = self.key_map.range(range);
+        let log = &mut self.log;
+        let lru_cache = &mut self.lru_cache;
+        Box::new(range.map(move |(key, &(value_pos, value_len))| {
+            let value = if let Some(cached_value) = lru_cache.get(key) {
+                cached_value.clone()
+            } else {
+                let value = log.read_value(value_pos, value_len);
+                lru_cache.put(key.clone(), value.clone());
+                value
+            };
+            (key.clone(), value)
+        }))
     }
 }
 
@@ -118,7 +127,9 @@ mod tests {
         let mut end_key_extended = Vec::new();
         end_key_extended.extend_from_slice(end_key);
         end_key_extended.extend_from_slice(&[1u8]);
-        let result = engine.scan(start_key, &end_key_extended);
+        let result = engine
+            .scan(start_key.to_vec()..end_key_extended)
+            .collect::<Vec<_>>();
         let expected = vec![
             (start_key.to_vec(), b"start_value".to_vec()),
             (end_key.to_vec(), b"end_value".to_vec()),

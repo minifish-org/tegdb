@@ -19,7 +19,7 @@ fn main() {
     engine.del(key);
 
     // Scan for values
-    let values = engine.scan(b"a", b"z");
+    let values = engine.scan(b"a".to_vec()..b"z".to_vec());
     for (key, value) in values {
         println!(
             "Got key: {}, value: {}",
