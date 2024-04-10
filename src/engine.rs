@@ -40,6 +40,11 @@ impl Engine {
     }
 
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) {
+        if value.len() == 0 {
+            self.del(key);
+            return;
+        }
+
         if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
             if &value == cached_value {
                 return;
