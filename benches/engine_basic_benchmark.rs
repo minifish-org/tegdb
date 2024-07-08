@@ -1,5 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use redb::{Database, ReadableTable, TableDefinition};
+use rusqlite::{params, Connection};
+use tempfile::NamedTempFile;
 use std::path::PathBuf;
 use tegdb::Engine;
 
@@ -127,5 +129,40 @@ fn redb_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, engine_benchmark, sled_benchmark, redb_benchmark);
+fn sqlite_benchmark(c: &mut Criterion) {
+    let temp_file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(temp_file.path()).unwrap();
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS test (key TEXT, value TEXT NOT NULL)",
+        [],
+    )
+    .unwrap();
+
+    let key = "key";
+    let value = "value";
+
+    c.bench_function("sqlite insert", |b| {
+        b.iter(|| {
+            conn.execute("INSERT INTO test (key, value) VALUES (?1, ?2)", params![key, value])
+                .unwrap();
+        })
+    });
+
+    c.bench_function("sqlite get", |b| {
+        b.iter(|| {
+            let _: String = conn
+                .query_row("SELECT value FROM test WHERE key = ?1", params![key], |row| row.get(0))
+                .unwrap();
+        })
+    });
+
+    c.bench_function("sqlite delete", |b| {
+        b.iter(|| {
+            conn.execute("DELETE FROM test WHERE key = ?1", params![key]).unwrap();
+        })
+    });
+}
+
+criterion_group!(benches, engine_benchmark, sled_benchmark, redb_benchmark, sqlite_benchmark);
 criterion_main!(benches);

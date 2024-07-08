@@ -12,6 +12,8 @@ lru = "0.12.3"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 sled = "0.34.7" # for performance comparison
 redb = "1.5.0"
+rusqlite = "0.31.0"
+tempfile = "3.10.1"
 
 [[bench]]
 name = "engine_basic_benchmark"
