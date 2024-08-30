@@ -2,6 +2,13 @@
 name = "tegdb"
 version = "0.1.0"
 edition = "2021"
+
+authors = ["Jack Yu"]
+
+documentation = "https://docs.rs/tegdb"
+homepage = "https://github.com/minifish-org/tegdb"
+repository = "https://github.com/minifish-org/tegdb.git"
+
 description = "The name TegridyDB (short for TegDB) is inspired by the Tegridy Farm in South Park and tries to correct some of the wrong database implementations, such as null support, implicit conversion support, etc."
 license = "AGPL-3.0"
 
