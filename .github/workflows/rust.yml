@@ -29,6 +29,8 @@ jobs:
       run: cargo build --lib --features async
     - name: Run tests
       run: cargo test --lib --features async
+    - name: Run example
+      run: cargo run --example basic_usage
     - name: Run benchmarks
       if: github.event_name == 'schedule'
       run: cargo bench --features async > benchmarks.txt
