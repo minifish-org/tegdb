@@ -26,9 +26,9 @@ jobs:
         components: rustfmt, clippy, cargo
         profile: minimal
     - name: Build
-      run: cargo build --lib --features async
+      run: cargo build --lib
     - name: Run tests
-      run: cargo test --lib --features async
+      run: cargo test --lib
     - name: Run example
       run: cargo run --example basic_usage
     - name: Run benchmarks
