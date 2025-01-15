@@ -26,7 +26,7 @@ impl Engine {
         s
     }
 
-    pub fn get(&mut self, key: &[u8]) -> Vec<u8> {
+    pub async fn get(&mut self, key: &[u8]) -> Vec<u8> {
         if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
             return cached_value.clone();
         }
@@ -39,9 +39,9 @@ impl Engine {
         }
     }
 
-    pub fn set(&mut self, key: &[u8], value: Vec<u8>) {
+    pub async fn set(&mut self, key: &[u8], value: Vec<u8>) {
         if value.len() == 0 {
-            self.del(key);
+            self.del(key).await;
             return;
         }
 
@@ -60,7 +60,7 @@ impl Engine {
         self.lru_cache.put(key.to_vec(), value);
     }
 
-    pub fn del(&mut self, key: &[u8]) {
+    pub async fn del(&mut self, key: &[u8]) {
         if self.key_map.get(key).is_none() {
             return;
         }
@@ -70,7 +70,7 @@ impl Engine {
         self.lru_cache.pop(&key.to_vec());
     }
 
-    pub fn scan<'a>(
+    pub async fn scan<'a>(
         &'a mut self,
         range: Range<Vec<u8>>,
     ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a> {
@@ -94,17 +94,18 @@ impl Engine {
 mod tests {
     use super::*;
     use std::fs;
+    use tokio::test;
 
-    #[test]
-    fn test_engine() {
+    #[tokio::test]
+    async fn test_engine() {
         let path = PathBuf::from("test.db");
         let mut engine = Engine::new(path.clone());
 
         // Test set and get
         let key = b"key";
         let value = b"value";
-        engine.set(key, value.to_vec());
-        let get_value = engine.get(key);
+        engine.set(key, value.to_vec()).await;
+        let get_value = engine.get(key).await;
         assert_eq!(
             get_value,
             value,
@@ -114,8 +115,8 @@ mod tests {
         );
 
         // Test del
-        engine.del(key);
-        let get_value = engine.get(key);
+        engine.del(key).await;
+        let get_value = engine.get(key).await;
         assert_eq!(
             get_value,
             [],
@@ -127,13 +128,14 @@ mod tests {
         // Test scan
         let start_key = b"a";
         let end_key = b"z";
-        engine.set(start_key, b"start_value".to_vec());
-        engine.set(end_key, b"end_value".to_vec());
+        engine.set(start_key, b"start_value".to_vec()).await;
+        engine.set(end_key, b"end_value".to_vec()).await;
         let mut end_key_extended = Vec::new();
         end_key_extended.extend_from_slice(end_key);
         end_key_extended.extend_from_slice(&[1u8]);
         let result = engine
             .scan(start_key.to_vec()..end_key_extended)
+            .await
             .collect::<Vec<_>>();
         let expected = vec![
             (start_key.to_vec(), b"start_value".to_vec()),
