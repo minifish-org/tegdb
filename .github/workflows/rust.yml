@@ -26,12 +26,14 @@ jobs:
         components: rustfmt, clippy, cargo
         profile: minimal
     - name: Build
-      run: cargo build --lib
+      run: cargo build --lib --features async
     - name: Run tests
-      run: cargo test --lib
+      run: cargo test --lib --features async
+    - name: Run example
+      run: cargo run --example basic_usage
     - name: Run benchmarks
       if: github.event_name == 'schedule'
-      run: cargo bench > benchmarks.txt
+      run: cargo bench --features async > benchmarks.txt
     - name: Upload benchmark results
       if: github.event_name == 'schedule'
       uses: actions/upload-artifact@v4.3.1
