@@ -22,7 +22,7 @@ impl Engine {
             key_map,
             lru_cache,
         };
-        s.compact();
+        s.compact().expect("Failed to compact log");
         s
     }
 
@@ -65,7 +65,7 @@ impl Engine {
             return Ok(());
         }
 
-        self.log.write_entry(key, &[])?;
+        self.log.write_entry(key, &[]);
         self.key_map.remove(key);
         self.lru_cache.pop(&key.to_vec());
         Ok(())
@@ -95,7 +95,6 @@ impl Engine {
 mod tests {
     use super::*;
     use std::fs;
-    use tokio::test;
 
     #[tokio::test]
     async fn test_engine() {
@@ -123,7 +122,7 @@ mod tests {
             None,
             "Expected: {}, Got: {}",
             String::from_utf8_lossy(&[]),
-            String::from_utf8_lossy(&get_value.unwrap_or_default())
+            String::from_utf8_lossy(get_value.as_deref().unwrap_or_default())
         );
 
         // Test scan
