@@ -33,7 +33,7 @@ jobs:
       run: cargo run --example basic_usage
     - name: Run benchmarks
       if: github.event_name == 'schedule'
-      run: cargo bench --features async > benchmarks.txt
+      run: cargo bench > benchmarks.txt
     - name: Upload benchmark results
       if: github.event_name == 'schedule'
       uses: actions/upload-artifact@v4.3.1
