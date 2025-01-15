@@ -15,7 +15,7 @@ fn engine_benchmark(c: &mut Criterion) {
     c.bench_function("engine set", |b| {
         b.iter(|| {
             rt.block_on(async {
-                engine.set(black_box(key), black_box(value.to_vec())).await;
+                engine.set(black_box(key), black_box(value.to_vec())).await.unwrap();
             });
         })
     });
@@ -23,7 +23,7 @@ fn engine_benchmark(c: &mut Criterion) {
     c.bench_function("engine get", |b| {
         b.iter(|| {
             rt.block_on(async {
-                engine.get(black_box(key)).await;
+                engine.get(black_box(key)).await.unwrap();
             });
         })
     });
@@ -36,6 +36,7 @@ fn engine_benchmark(c: &mut Criterion) {
                 let _ = engine
                     .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
                     .await
+                    .unwrap()
                     .collect::<Vec<_>>();
             });
         })
@@ -44,7 +45,7 @@ fn engine_benchmark(c: &mut Criterion) {
     c.bench_function("engine del", |b| {
         b.iter(|| {
             rt.block_on(async {
-                engine.del(black_box(key)).await;
+                engine.del(black_box(key)).await.unwrap();
             });
         })
     });

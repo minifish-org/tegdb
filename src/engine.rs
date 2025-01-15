@@ -26,28 +26,27 @@ impl Engine {
         s
     }
 
-    pub async fn get(&mut self, key: &[u8]) -> Vec<u8> {
+    pub async fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
         if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
-            return cached_value.clone();
+            return Some(cached_value.clone());
         }
         if let Some((value_pos, value_len)) = self.key_map.get(key) {
             let value = self.log.read_value(*value_pos, *value_len);
             self.lru_cache.put(key.to_vec(), value.clone());
-            value
+            Some(value)
         } else {
-            Vec::new()
+            None
         }
     }
 
-    pub async fn set(&mut self, key: &[u8], value: Vec<u8>) {
+    pub async fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), std::io::Error> {
         if value.len() == 0 {
-            self.del(key).await;
-            return;
+            return self.del(key).await;
         }
 
         if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
             if &value == cached_value {
-                return;
+                return Ok(());
             }
         }
 
@@ -58,26 +57,28 @@ impl Engine {
             (pos + len as u64 - value_len as u64, value_len),
         );
         self.lru_cache.put(key.to_vec(), value);
+        Ok(())
     }
 
-    pub async fn del(&mut self, key: &[u8]) {
+    pub async fn del(&mut self, key: &[u8]) -> Result<(), std::io::Error> {
         if self.key_map.get(key).is_none() {
-            return;
+            return Ok(());
         }
 
-        self.log.write_entry(key, &[]);
+        self.log.write_entry(key, &[])?;
         self.key_map.remove(key);
         self.lru_cache.pop(&key.to_vec());
+        Ok(())
     }
 
     pub async fn scan<'a>(
         &'a mut self,
         range: Range<Vec<u8>>,
-    ) -> Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a> {
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
         let range = self.key_map.range(range);
         let log = &mut self.log;
         let lru_cache = &mut self.lru_cache;
-        Box::new(range.map(move |(key, &(value_pos, value_len))| {
+        Ok(Box::new(range.map(move |(key, &(value_pos, value_len))| {
             let value = if let Some(cached_value) = lru_cache.get(key) {
                 cached_value.clone()
             } else {
@@ -86,7 +87,7 @@ impl Engine {
                 value
             };
             (key.clone(), value)
-        }))
+        })))
     }
 }
 
@@ -104,8 +105,8 @@ mod tests {
         // Test set and get
         let key = b"key";
         let value = b"value";
-        engine.set(key, value.to_vec()).await;
-        let get_value = engine.get(key).await;
+        engine.set(key, value.to_vec()).await.unwrap();
+        let get_value = engine.get(key).await.unwrap();
         assert_eq!(
             get_value,
             value,
@@ -115,27 +116,28 @@ mod tests {
         );
 
         // Test del
-        engine.del(key).await;
+        engine.del(key).await.unwrap();
         let get_value = engine.get(key).await;
         assert_eq!(
             get_value,
-            [],
+            None,
             "Expected: {}, Got: {}",
             String::from_utf8_lossy(&[]),
-            String::from_utf8_lossy(&get_value)
+            String::from_utf8_lossy(&get_value.unwrap_or_default())
         );
 
         // Test scan
         let start_key = b"a";
         let end_key = b"z";
-        engine.set(start_key, b"start_value".to_vec()).await;
-        engine.set(end_key, b"end_value".to_vec()).await;
+        engine.set(start_key, b"start_value".to_vec()).await.unwrap();
+        engine.set(end_key, b"end_value".to_vec()).await.unwrap();
         let mut end_key_extended = Vec::new();
         end_key_extended.extend_from_slice(end_key);
         end_key_extended.extend_from_slice(&[1u8]);
         let result = engine
             .scan(start_key.to_vec()..end_key_extended)
             .await
+            .unwrap()
             .collect::<Vec<_>>();
         let expected = vec![
             (start_key.to_vec(), b"start_value".to_vec()),
@@ -172,14 +174,15 @@ mod tests {
 }
 
 impl Engine {
-    fn flush(&mut self) {
-        self.log.file.sync_all().unwrap();
+    fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.log.file.sync_all()?;
+        Ok(())
     }
 
-    fn construct_log(&mut self, path: PathBuf) -> (Log, KeyMap) {
+    fn construct_log(&mut self, path: PathBuf) -> Result<(Log, KeyMap), std::io::Error> {
         let mut new_key_map = KeyMap::new();
         let mut new_log = Log::new(path);
-        new_log.file.set_len(0).unwrap();
+        new_log.file.set_len(0)?;
         for (key, (value_pos, value_len)) in self.key_map.iter() {
             let value = self.log.read_value(*value_pos, *value_len);
             let (pos, len) = new_log.write_entry(key, &*value);
@@ -188,26 +191,27 @@ impl Engine {
                 (pos + len as u64 - *value_len as u64, *value_len),
             );
         }
-        (new_log, new_key_map)
+        Ok((new_log, new_key_map))
     }
 
-    fn compact(&mut self) {
+    fn compact(&mut self) -> Result<(), std::io::Error> {
         let mut tmp_path = self.log.path.clone();
         tmp_path.set_extension("new");
-        let (mut new_log, new_key_map) = self.construct_log(tmp_path);
+        let (mut new_log, new_key_map) = self.construct_log(tmp_path)?;
 
-        std::fs::rename(&new_log.path, &self.log.path).unwrap();
+        std::fs::rename(&new_log.path, &self.log.path)?;
         new_log.path = self.log.path.clone();
 
         self.log = new_log;
         self.key_map = new_key_map;
+        Ok(())
     }
 }
 
 impl Drop for Engine {
     fn drop(&mut self) {
-        self.flush();
-        self.compact()
+        self.flush().unwrap();
+        self.compact().unwrap();
     }
 }
 

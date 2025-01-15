@@ -14,7 +14,7 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
             Runtime::new().unwrap().block_on(async {
-                engine.set(black_box(key), black_box(value.to_vec())).await;
+                engine.set(black_box(key), black_box(value.to_vec())).await.unwrap();
             });
             i += 1;
         })
@@ -26,7 +26,7 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
             Runtime::new().unwrap().block_on(async {
-                engine.get(black_box(key)).await;
+                engine.get(black_box(key)).await.unwrap();
             });
             i += 1;
         })
@@ -40,6 +40,7 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
                 let _ = engine
                     .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
                     .await
+                    .unwrap()
                     .collect::<Vec<_>>();
             });
         })
@@ -51,7 +52,7 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
             Runtime::new().unwrap().block_on(async {
-                engine.del(black_box(key)).await;
+                engine.del(black_box(key)).await.unwrap();
             });
             i += 1;
         })

@@ -9,24 +9,35 @@ async fn main() {
     // Set a value
     let key = b"key";
     let value = b"value";
-    engine.set(key, value.to_vec()).await;
+    if let Err(e) = engine.set(key, value.to_vec()).await {
+        eprintln!("Error setting value: {}", e);
+    }
 
     // Get a value
-    let get_value = engine.get(key).await;
-    println!("Got value: {}", String::from_utf8_lossy(&get_value));
+    match engine.get(key).await {
+        Some(get_value) => println!("Got value: {}", String::from_utf8_lossy(&get_value)),
+        None => println!("Key not found"),
+    }
 
     // Delete a value
-    engine.del(key).await;
+    if let Err(e) = engine.del(key).await {
+        eprintln!("Error deleting value: {}", e);
+    }
 
     // Scan for values
-    let values = engine.scan(b"a".to_vec()..b"z".to_vec()).await;
-    for (key, value) in values {
-        println!(
-            "Got key: {}, value: {}",
-            String::from_utf8_lossy(&key),
-            String::from_utf8_lossy(&value)
-        );
+    match engine.scan(b"a".to_vec()..b"z".to_vec()).await {
+        Ok(values) => {
+            for (key, value) in values {
+                println!(
+                    "Got key: {}, value: {}",
+                    String::from_utf8_lossy(&key),
+                    String::from_utf8_lossy(&value)
+                );
+            }
+        }
+        Err(e) => eprintln!("Error scanning values: {}", e),
     }
+
     // Clean up
     drop(engine);
 }
