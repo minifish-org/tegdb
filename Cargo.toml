@@ -25,8 +25,6 @@ sled = "0.34.7" # for performance comparison
 redb = "1.5.0"
 rusqlite = "0.31.0"
 tempfile = "3.10.1"
-actions-rs/toolchain = "1.0.6"
-actions/checkout = "4.1.1"
 
 [[bench]]
 name = "engine_basic_benchmark"
