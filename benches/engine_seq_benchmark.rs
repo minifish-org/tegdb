@@ -13,8 +13,10 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            Runtime::new().unwrap().block_on(async {
-                engine.set(black_box(key), black_box(value.to_vec())).await.unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    engine.set(black_box(key), black_box(value.to_vec())).await.unwrap();
+                });
             });
             i += 1;
         })
@@ -25,8 +27,10 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            Runtime::new().unwrap().block_on(async {
-                engine.get(black_box(key)).await.unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    engine.get(black_box(key)).await.unwrap();
+                });
             });
             i += 1;
         })
@@ -36,12 +40,14 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         let start_key = b"a";
         let end_key = b"z";
         b.iter(|| {
-            Runtime::new().unwrap().block_on(async {
-                let _ = engine
-                    .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
-                    .await
-                    .unwrap()
-                    .collect::<Vec<_>>();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let _ = engine
+                        .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
+                        .await
+                        .unwrap()
+                        .collect::<Vec<_>>();
+                });
             });
         })
     });
@@ -51,8 +57,10 @@ async fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            Runtime::new().unwrap().block_on(async {
-                engine.del(black_box(key)).await.unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    engine.del(black_box(key)).await.unwrap();
+                });
             });
             i += 1;
         })
@@ -69,8 +77,10 @@ async fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            Runtime::new().unwrap().block_on(async {
-                db.insert(black_box(key), black_box(value.to_vec())).unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    db.insert(black_box(key), black_box(value.to_vec())).unwrap();
+                });
             });
             i += 1;
         })
@@ -81,8 +91,10 @@ async fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            Runtime::new().unwrap().block_on(async {
-                db.get(black_box(key)).unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    db.get(black_box(key)).unwrap();
+                });
             });
             i += 1;
         })
@@ -92,12 +104,14 @@ async fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         let start_key = "a";
         let end_key = "z";
         b.iter(|| {
-            Runtime::new().unwrap().block_on(async {
-                let _ = db
-                    .range(black_box(start_key)..black_box(end_key))
-                    .values()
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let _ = db
+                        .range(black_box(start_key)..black_box(end_key))
+                        .values()
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap();
+                });
             });
         })
     });
@@ -107,8 +121,10 @@ async fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            Runtime::new().unwrap().block_on(async {
-                db.remove(black_box(key)).unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    db.remove(black_box(key)).unwrap();
+                });
             });
             i += 1;
         })
@@ -126,17 +142,19 @@ async fn redb_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("redb seq put {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            Runtime::new().unwrap().block_on(async {
-                let tx = db.begin_write().unwrap();
-                {
-                    let key = format!("key{}", i);
-                    let mut table = tx.open_table(table_def).unwrap();
-                    table
-                        .insert(black_box(key.as_str()), black_box(value_str.as_str()))
-                        .unwrap();
-                    i += 1;
-                }
-                tx.commit().unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let tx = db.begin_write().unwrap();
+                    {
+                        let key = format!("key{}", i);
+                        let mut table = tx.open_table(table_def).unwrap();
+                        table
+                            .insert(black_box(key.as_str()), black_box(value_str.as_str()))
+                            .unwrap();
+                        i += 1;
+                    }
+                    tx.commit().unwrap();
+                });
             });
         })
     });
@@ -144,12 +162,14 @@ async fn redb_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("redb seq get {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            Runtime::new().unwrap().block_on(async {
-                let tx = db.begin_read().unwrap();
-                let table = tx.open_table(table_def).unwrap();
-                let key = format!("key{}", i);
-                table.get(black_box(key.as_str())).unwrap();
-                i += 1;
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let tx = db.begin_read().unwrap();
+                    let table = tx.open_table(table_def).unwrap();
+                    let key = format!("key{}", i);
+                    table.get(black_box(key.as_str())).unwrap();
+                    i += 1;
+                });
             });
         })
     });
@@ -158,14 +178,16 @@ async fn redb_benchmark(c: &mut Criterion, value_size: usize) {
         let start_key = "a";
         let end_key = "z";
         b.iter(|| {
-            Runtime::new().unwrap().block_on(async {
-                let tx = db.begin_read().unwrap();
-                let table = tx.open_table(table_def).unwrap();
-                let _ = table
-                    .range(black_box(start_key)..black_box(end_key))
-                    .unwrap()
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let tx = db.begin_read().unwrap();
+                    let table = tx.open_table(table_def).unwrap();
+                    let _ = table
+                        .range(black_box(start_key)..black_box(end_key))
+                        .unwrap()
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap();
+                });
             });
         })
     });
@@ -173,48 +195,56 @@ async fn redb_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("redb seq del {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            Runtime::new().unwrap().block_on(async {
-                let tx = db.begin_write().unwrap();
-                {
-                    let key = format!("key{}", i);
-                    let mut table = tx.open_table(table_def).unwrap();
-                    table.remove(black_box(key.as_str())).unwrap();
-                    i += 1;
-                }
-                tx.commit().unwrap();
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    let tx = db.begin_write().unwrap();
+                    {
+                        let key = format!("key{}", i);
+                        let mut table = tx.open_table(table_def).unwrap();
+                        table.remove(black_box(key.as_str())).unwrap();
+                        i += 1;
+                    }
+                    tx.commit().unwrap();
+                });
             });
         })
     });
 }
 
-async fn engine_short_benchmark(c: &mut Criterion) {
+fn engine_short_benchmark(c: &mut Criterion) {
     let value_size = 1024;
-    engine_benchmark(c, value_size).await;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(engine_benchmark(c, value_size));
 }
 
-async fn sled_short_benchmark(c: &mut Criterion) {
+fn sled_short_benchmark(c: &mut Criterion) {
     let value_size = 1024;
-    sled_benchmark(c, value_size).await;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(sled_benchmark(c, value_size));
 }
 
-async fn redb_short_benchmark(c: &mut Criterion) {
+fn redb_short_benchmark(c: &mut Criterion) {
     let value_size = 1024;
-    redb_benchmark(c, value_size).await;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(redb_benchmark(c, value_size));
 }
 
-async fn engine_long_benchmark(c: &mut Criterion) {
+fn engine_long_benchmark(c: &mut Criterion) {
     let value_size = 1_000_000;
-    engine_benchmark(c, value_size).await;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(engine_benchmark(c, value_size));
 }
 
-async fn sled_long_benchmark(c: &mut Criterion) {
+fn sled_long_benchmark(c: &mut Criterion) {
     let value_size = 1_000_000;
-    sled_benchmark(c, value_size).await;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(sled_benchmark(c, value_size));
 }
 
-async fn redb_long_benchmark(c: &mut Criterion) {
+fn redb_long_benchmark(c: &mut Criterion) {
     let value_size = 1_000_000;
-    redb_benchmark(c, value_size).await;
+    let rt = Runtime::new().unwrap();
+    rt.block_on(redb_benchmark(c, value_size));
 }
 
 criterion_group!(
@@ -223,6 +253,7 @@ criterion_group!(
     sled_short_benchmark,
     redb_short_benchmark
 );
+
 criterion_group!(
     long_benches,
     engine_long_benchmark,
