@@ -1,0 +1,9 @@
+[release]
+push = true
+
+tag = true
+
+publish = true
+
+update-dependencies = true
+
