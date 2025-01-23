@@ -1,62 +1,58 @@
-use lru::LruCache;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::path::PathBuf;
 
 pub struct Engine {
     log: Log,
     key_map: KeyMap,
-    lru_cache: LruCache<Vec<u8>, Vec<u8>>,
 }
 
-type KeyMap = std::collections::BTreeMap<Vec<u8>, (u64, u32)>;
+// KeyMap is a BTreeMap that maps keys to a tuple of (position, value length, value).
+type KeyMap = std::collections::BTreeMap<Vec<u8>, Vec<u8>>;
 
 impl Engine {
     pub fn new(path: PathBuf) -> Self {
         let mut log = Log::new(path);
         let key_map = log.build_key_map();
-        let lru_cache = LruCache::new(NonZeroUsize::new(1_000_000).unwrap());
         let mut s = Self {
             log,
             key_map,
-            lru_cache,
         };
         s.compact().expect("Failed to compact log");
         s
     }
 
     pub async fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
-        if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
-            return Some(cached_value.clone());
-        }
-        if let Some((value_pos, value_len)) = self.key_map.get(key) {
-            let value = self.log.read_value(*value_pos, *value_len);
-            self.lru_cache.put(key.to_vec(), value.clone());
-            Some(value)
+        if let Some(value) = self.key_map.get(key) {
+            Some(value.clone())
         } else {
             None
         }
     }
 
     pub async fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), std::io::Error> {
+        if key.len() > 1024 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Key length exceeds 1k"));
+        }
+        if value.len() > 256 * 1024 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Value length exceeds 256k"));
+        }
+
         if value.len() == 0 {
             return self.del(key).await;
         }
 
-        if let Some(cached_value) = self.lru_cache.get(&key.to_vec()) {
-            if &value == cached_value {
-                return Ok(());
+        if let Some(existing_value) = self.key_map.get(key) {
+            if *existing_value == value {
+                return Ok(()); // Value already exists, no need to write
             }
         }
 
-        let (pos, len) = self.log.write_entry(key, &*value);
-        let value_len = value.len() as u32;
+        self.log.write_entry(key, &*value);
         self.key_map.insert(
             key.to_vec(),
-            (pos + len as u64 - value_len as u64, value_len),
+            value,
         );
-        self.lru_cache.put(key.to_vec(), value);
         Ok(())
     }
 
@@ -67,7 +63,6 @@ impl Engine {
 
         self.log.write_entry(key, &[]);
         self.key_map.remove(key);
-        self.lru_cache.pop(&key.to_vec());
         Ok(())
     }
 
@@ -76,17 +71,8 @@ impl Engine {
         range: Range<Vec<u8>>,
     ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
         let range = self.key_map.range(range);
-        let log = &mut self.log;
-        let lru_cache = &mut self.lru_cache;
-        Ok(Box::new(range.map(move |(key, &(value_pos, value_len))| {
-            let value = if let Some(cached_value) = lru_cache.get(key) {
-                cached_value.clone()
-            } else {
-                let value = log.read_value(value_pos, value_len);
-                lru_cache.put(key.clone(), value.clone());
-                value
-            };
-            (key.clone(), value)
+        Ok(Box::new(range.map(move |(key, &ref value)| {
+            (key.clone(), value.clone())
         })))
     }
 }
@@ -182,12 +168,11 @@ impl Engine {
         let mut new_key_map = KeyMap::new();
         let mut new_log = Log::new(path);
         new_log.file.set_len(0)?;
-        for (key, (value_pos, value_len)) in self.key_map.iter() {
-            let value = self.log.read_value(*value_pos, *value_len);
-            let (pos, len) = new_log.write_entry(key, &*value);
+        for (key, value) in self.key_map.iter() {
+            new_log.write_entry(key, &*value);
             new_key_map.insert(
                 key.to_vec(),
-                (pos + len as u64 - *value_len as u64, *value_len),
+                value.clone(),
             );
         }
         Ok((new_log, new_key_map))
@@ -210,7 +195,6 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.flush().unwrap();
-        self.compact().unwrap();
     }
 }
 
@@ -251,34 +235,36 @@ impl Log {
             let mut key = vec![0; key_len as usize];
             r.read_exact(&mut key).unwrap();
 
+            let mut value = vec![0; value_len as usize];
+            r.read_exact(&mut value).unwrap();
+
             if value_len == 0 {
                 key_map.remove(&key);
             } else {
-                key_map.insert(key, (value_pos, value_len));
+                key_map.insert(key, value);
             }
 
-            r.seek_relative(value_len as i64).unwrap();
             pos = value_pos + value_len as u64;
         }
         key_map
     }
 
-    fn read_value(&mut self, value_pos: u64, value_len: u32) -> Vec<u8> {
-        let mut value = vec![0; value_len as usize];
-        self.file.seek(SeekFrom::Start(value_pos)).unwrap();
-        self.file.read_exact(&mut value).unwrap();
-        value
-    }
-
-    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> (u64, u32) {
+    fn write_entry(&mut self, key: &[u8], value: &[u8]) {
+        if key.len() > 1024 || value.len() > 256 * 1024 {
+            panic!("Key or value length exceeds the allowed limit");
+        }
+        // Calculate the length of the entry. The structure of an entry is: key_len (4 bytes), value_len (4 bytes), key (key_len bytes), value (value_len bytes).
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
         let len = 4 + 4 + key_len + value_len;
 
-        let pos = self.file.seek(SeekFrom::End(0)).unwrap();
+        // Always append to the end of the file.
+        _ = self.file.seek(SeekFrom::End(0)).unwrap();
         let mut w = BufWriter::with_capacity(len as usize, &mut self.file);
 
         let mut buffer = Vec::with_capacity(len as usize);
+
+        // Write the length of the key and value, and then the key and value.
         buffer.extend_from_slice(&key_len.to_be_bytes());
         buffer.extend_from_slice(&value_len.to_be_bytes());
         buffer.extend_from_slice(key);
@@ -286,7 +272,5 @@ impl Log {
 
         w.write_all(&buffer).unwrap();
         w.flush().unwrap();
-
-        (pos, len)
     }
 }

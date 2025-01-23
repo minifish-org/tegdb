@@ -69,7 +69,7 @@ fn sled_benchmark(c: &mut Criterion) {
     c.bench_function("sled get", |b| {
         b.iter(|| {
             rt.block_on(async {
-                db.get(black_box(key)).unwrap();
+                let _ = db.get(black_box(key)).unwrap().map(|v| v.to_vec());
             });
         })
     });
@@ -187,6 +187,25 @@ fn sqlite_benchmark(c: &mut Criterion) {
             rt.block_on(async {
                 let _: String = conn
                     .query_row("SELECT value FROM test WHERE key = ?1", params![key], |row| row.get(0))
+                    .unwrap();
+            });
+        })
+    });
+
+    c.bench_function("sqlite scan", |b| {
+        let start_key = "a";
+        let end_key = "z";
+        b.iter(|| {
+            rt.block_on(async {
+                let mut stmt = conn
+                    .prepare("SELECT key, value FROM test WHERE key >= ?1 AND key <= ?2")
+                    .unwrap();
+                let _ = stmt
+                    .query_map(params![start_key, end_key], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .unwrap()
+                    .collect::<Result<Vec<_>, _>>()
                     .unwrap();
             });
         })

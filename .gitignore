@@ -14,10 +14,5 @@ Cargo.lock
 
 /target
 
-test.db
-
 .vscode/
-rocksdb/
-sled/
-redb
-.DS_Store
+

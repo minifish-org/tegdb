@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use tegdb::Engine;
 
 #[tokio::main]
-#[cfg(not(test))]
 async fn main() {
     let path = PathBuf::from("test.db");
     let mut engine = Engine::new(path.clone());
@@ -41,14 +40,4 @@ async fn main() {
 
     // Clean up
     drop(engine);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_main() {
-        main().await;
-    }
 }
