@@ -7,12 +7,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::ops::Range;
 use dashmap::DashMap;
+use crossbeam_skiplist::SkipSet;
 
 /// Core storage engine that provides CRUD operations with log compaction.
 #[derive(Clone)]
 pub struct Engine {
     log: Arc<log::Log>,
     key_map: Arc<DashMap<Vec<u8>, Vec<u8>>>,
+    active_transactions: Arc<SkipSet<u128>>, // ordered active transactions
 }
 
 impl Engine {
@@ -26,7 +28,9 @@ impl Engine {
         for (k, v) in built_map {
             key_map.insert(k, v);
         }
-        let mut s = Self { log, key_map };
+        // initialize active_transactions with SkipSet
+        let active_transactions = Arc::new(SkipSet::new());
+        let mut s = Self { log, key_map, active_transactions };
         s.compact().expect("Failed to compact log");
         s
     }
@@ -144,6 +148,21 @@ impl Engine {
             new_key_map.insert(entry.key().clone(), entry.value().clone());
         }
         Ok((new_log, new_key_map))
+    }
+
+    // Registers a new active transaction using its snapshot.
+    pub fn register_transaction(&self, snapshot: u128) {
+        self.active_transactions.insert(snapshot);
+    }
+
+    // Unregisters a transaction using its snapshot.
+    pub fn unregister_transaction(&self, snapshot: u128) {
+        self.active_transactions.remove(&snapshot);
+    }
+
+    // Returns a sorted list of active transaction snapshots (oldest first).
+    pub fn active_transactions(&self) -> Vec<u128> {
+        self.active_transactions.iter().map(|entry| *entry).collect()
     }
 }
 

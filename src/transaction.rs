@@ -8,6 +8,7 @@ pub struct Transaction {
     engine: Engine,
     // Snapshot timestamp in milliseconds used for MVCC.
     snapshot: u128,
+    read_snapshot: u128,
 }
 
 impl Transaction {
@@ -17,9 +18,12 @@ impl Transaction {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis();
+        engine.register_transaction(snapshot);
+        let oldest = engine.active_transactions().get(0).cloned().unwrap_or(snapshot);
         Self {
             engine,
             snapshot,
+            read_snapshot: oldest,
         }
     }
 
@@ -82,8 +86,8 @@ impl Transaction {
 
         let mut upper = key.to_vec();
         upper.extend_from_slice(b":");
-        // Use snapshot + 1
-        let upper_bound = self.snapshot + 1;
+        // Use read_snapshot + 1
+        let upper_bound = self.read_snapshot + 1;
         upper.extend_from_slice(upper_bound.to_string().as_bytes());
 
         // Perform a reverse scan using the Engine API and return the first record.
@@ -98,6 +102,7 @@ impl Transaction {
         // Only write commit marker.
         let commit_marker = format!("txn:{}:commit", self.snapshot);
         self.engine.set(b"__txn_marker__", commit_marker.as_bytes().to_vec()).await?;
+        self.engine.unregister_transaction(self.snapshot);
         Ok(())
     }
 
@@ -106,6 +111,7 @@ impl Transaction {
         // Only write rollback marker.
         let rollback_marker = format!("txn:{}:rollback", self.snapshot);
         self.engine.set(b"__txn_marker__", rollback_marker.as_bytes().to_vec()).await?;
+        self.engine.unregister_transaction(self.snapshot);
         Ok(())
     }
 }
