@@ -91,6 +91,21 @@ impl Engine {
         Ok(Box::new(results.into_iter()))
     }
 
+    /// Returns an iterator over key-value pairs within the specified range in reverse order.
+    pub async fn reverse_scan(
+        &self,
+        range: Range<Vec<u8>>,
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)>>, std::io::Error> {
+        let mut results: Vec<(Vec<u8>, Vec<u8>)> = self
+            .key_map
+            .iter()
+            .filter(|entry| entry.key() >= &range.start && entry.key() < &range.end)
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect();
+        results.sort_by(|a, b| b.0.cmp(&a.0)); // sort in descending order
+        Ok(Box::new(results.into_iter()))
+    }
+
     /// Flushes the current log and shuts down the log writer to ensure data persistence.
     fn flush(&mut self) -> Result<(), std::io::Error> {
         self.log.writer.flush();
