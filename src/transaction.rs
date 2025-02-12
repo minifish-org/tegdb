@@ -9,6 +9,7 @@ pub struct Transaction {
     // Snapshot timestamp in milliseconds used for MVCC.
     snapshot: u128,
     read_snapshot: u128,
+    ops: Vec<Vec<u8>>,
 }
 
 impl Transaction {
@@ -24,6 +25,7 @@ impl Transaction {
             engine,
             snapshot,
             read_snapshot: oldest,
+            ops: Vec::new(),
         }
     }
 
@@ -49,6 +51,7 @@ impl Transaction {
         mod_key.extend_from_slice(b":");
         mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
         self.engine.set(&mod_key, value).await?;
+        self.ops.push(mod_key);
         Ok(())
     }
 
@@ -60,6 +63,7 @@ impl Transaction {
             mod_key.extend_from_slice(b":");
             mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
             self.engine.set(&mod_key, value).await?;
+            self.ops.push(mod_key);
         }
         Ok(())
     }
@@ -72,6 +76,7 @@ impl Transaction {
             mod_key.extend_from_slice(b":");
             mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
             self.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
+            self.ops.push(mod_key);
         }
         Ok(())
     }
@@ -108,6 +113,10 @@ impl Transaction {
 
     /// Asynchronously rolls back the transaction by writing a rollback marker and clearing buffered operations.
     pub async fn rollback(&mut self) -> Result<(), Error> {
+        for mk in &self.ops {
+            // engine.del or equivalent removal API:
+            self.engine.del(mk).await?;
+        }
         // Only write rollback marker.
         let rollback_marker = format!("txn:{}:rollback", self.snapshot);
         self.engine.set(b"__txn_marker__", rollback_marker.as_bytes().to_vec()).await?;
