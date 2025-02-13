@@ -1,11 +1,11 @@
-use crate::engine::Engine;
+use crate::database::Database;
 use std::io::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DELETED_MARKER: &[u8] = b"__deleted__";
 
 pub struct Transaction {
-    engine: Engine,
+    db: Database,
     // Snapshot timestamp in milliseconds used for MVCC.
     snapshot: u128,
     read_snapshot: u128,
@@ -13,16 +13,16 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    /// Begins a new transaction from the given Engine.
-    pub fn begin(engine: Engine) -> Self {
+    /// Begins a new transaction from the given Database.
+    pub fn begin(db: Database) -> Self {
         let snapshot = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis();
-        engine.register_transaction(snapshot);
-        let oldest = engine.active_transactions().get(0).cloned().unwrap_or(snapshot);
+        db.register_transaction(snapshot);
+        let oldest = db.active_transactions().get(0).cloned().unwrap_or(snapshot);
         Self {
-            engine,
+            db,
             snapshot,
             read_snapshot: oldest,
             ops: Vec::new(),
@@ -50,7 +50,7 @@ impl Transaction {
         let mut mod_key = key.to_vec();
         mod_key.extend_from_slice(b":");
         mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
-        self.engine.set(&mod_key, value).await?;
+        self.db.engine.set(&mod_key, value).await?;
         self.ops.push(mod_key);
         Ok(())
     }
@@ -62,7 +62,7 @@ impl Transaction {
             let mut mod_key = key.to_vec();
             mod_key.extend_from_slice(b":");
             mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
-            self.engine.set(&mod_key, value).await?;
+            self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
         }
         Ok(())
@@ -75,7 +75,7 @@ impl Transaction {
             let mut mod_key = key.to_vec();
             mod_key.extend_from_slice(b":");
             mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
-            self.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
+            self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
             self.ops.push(mod_key);
         }
         Ok(())
@@ -96,7 +96,7 @@ impl Transaction {
         upper.extend_from_slice(upper_bound.to_string().as_bytes());
 
         // Perform a reverse scan using the Engine API and return the first record.
-        let mut rev_iter = self.engine.reverse_scan(lower..upper).await.ok()?;
+        let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await.ok()?;
         rev_iter.next().and_then(|(_, v)| {
             if v == DELETED_MARKER { None } else { Some(v) }
         })
@@ -104,23 +104,20 @@ impl Transaction {
 
     /// Commits the buffered operations and writes a commit marker.
     pub async fn commit(self) -> Result<(), Error> {
-        // Only write commit marker.
         let commit_marker = format!("txn:{}:commit", self.snapshot);
-        self.engine.set(b"__txn_marker__", commit_marker.as_bytes().to_vec()).await?;
-        self.engine.unregister_transaction(self.snapshot);
+        self.db.engine.set(b"__txn_marker__", commit_marker.as_bytes().to_vec()).await?;
+        self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
 
     /// Asynchronously rolls back the transaction by writing a rollback marker and clearing buffered operations.
     pub async fn rollback(&mut self) -> Result<(), Error> {
         for mk in &self.ops {
-            // engine.del or equivalent removal API:
-            self.engine.del(mk).await?;
+            self.db.engine.del(mk).await?;
         }
-        // Only write rollback marker.
         let rollback_marker = format!("txn:{}:rollback", self.snapshot);
-        self.engine.set(b"__txn_marker__", rollback_marker.as_bytes().to_vec()).await?;
-        self.engine.unregister_transaction(self.snapshot);
+        self.db.engine.set(b"__txn_marker__", rollback_marker.as_bytes().to_vec()).await?;
+        self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
 }
