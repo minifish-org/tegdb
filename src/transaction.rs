@@ -11,6 +11,9 @@ pub struct Transaction {
     // read_snapshot holds the oldest active snapshot when this transaction began.
     pub read_snapshot: u128,
     ops: Vec<Vec<u8>>,
+    // New: Combined counters for GC change tracking.
+    pub new_counter: usize, // counts insertions and new version updates.
+    pub old_counter: usize, // counts old version updates and deletes.
 }
 
 impl Transaction {
@@ -29,6 +32,8 @@ impl Transaction {
             snapshot,
             read_snapshot,
             ops: Vec::new(),
+            new_counter: 0,
+            old_counter: 0,
         }
     }
 
@@ -55,6 +60,8 @@ impl Transaction {
         mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
         self.db.engine.set(&mod_key, value).await?;
         self.ops.push(mod_key);
+        // Count as new data.
+        self.new_counter += 1;
         Ok(())
     }
 
@@ -67,6 +74,9 @@ impl Transaction {
             mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
             self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
+            // For update: count one new version and one old version.
+            self.new_counter += 1;
+            self.old_counter += 1;
         }
         Ok(())
     }
@@ -80,6 +90,8 @@ impl Transaction {
             mod_key.extend_from_slice(self.snapshot.to_string().as_bytes());
             self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
             self.ops.push(mod_key);
+            // Count delete as one old version replaced.
+            self.old_counter += 1;
         }
         Ok(())
     }
@@ -107,6 +119,8 @@ impl Transaction {
 
     /// Commits the buffered operations and writes a commit marker.
     pub async fn commit(self) -> Result<(), Error> {
+        // New: Push the transaction's change counters to TransactionManager.
+        self.db.push_counters(self.new_counter, self.old_counter);
         let commit_marker = format!("txn:{}:commit", self.snapshot);
         self.db.engine.set(b"__txn_marker__", commit_marker.as_bytes().to_vec()).await?;
         self.db.unregister_transaction(self.snapshot);

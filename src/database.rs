@@ -6,14 +6,28 @@ use std::sync::Arc;
 use std::io::Error;
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // Updated: TransactionManager now holds transaction fields and GC logic.
-#[derive(Clone)]
 pub struct TransactionManager {
     pub active_transactions: Arc<SkipSet<u128>>,
     pub oldest_read_snapshot: Arc<SkipSet<u128>>,
     pub stop_gc: Arc<AtomicBool>,
+    // New: Global counters for committed changes.
+    pub total_new: AtomicUsize,
+    pub total_old: AtomicUsize,
+}
+
+impl Clone for TransactionManager {
+    fn clone(&self) -> Self {
+        Self {
+            active_transactions: self.active_transactions.clone(),
+            oldest_read_snapshot: self.oldest_read_snapshot.clone(),
+            stop_gc: self.stop_gc.clone(),
+            total_new: AtomicUsize::new(self.total_new.load(Ordering::Relaxed)),
+            total_old: AtomicUsize::new(self.total_old.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 impl TransactionManager {
@@ -22,6 +36,8 @@ impl TransactionManager {
             active_transactions: Arc::new(SkipSet::new()),
             oldest_read_snapshot: Arc::new(SkipSet::new()),
             stop_gc: Arc::new(AtomicBool::new(false)),
+            total_new: AtomicUsize::new(0),
+            total_old: AtomicUsize::new(0),
         }
     }
     
@@ -42,29 +58,45 @@ impl TransactionManager {
             .unwrap_or(u128::MAX)
     }
     
-    // New: Starts GC loop using the provided engine.
+    // Modified start_gc loop: use total_old/total_new as garbage ratio. If >= 30%, then GC.
     pub fn start_gc(&self, engine: Engine) {
         let tm = self.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             runtime.block_on(async move {
                 loop {
-                    println!("In GC loop, stop flag: {}", tm.stop_gc.load(Ordering::Relaxed));
-                    if tm.stop_gc.load(Ordering::Relaxed) {
-                        break;
+                    // Compute garbage ratio
+                    let total_new = tm.total_new.load(Ordering::Relaxed);
+                    let total_old = tm.total_old.load(Ordering::Relaxed);
+                    let ratio = if total_new > 0 {
+                        (total_old as f64) / (total_new as f64)
+                    } else {
+                        0.0
+                    };
+                    println!("Global GC ratio: {:.2}", ratio);
+                    
+                    // If ratio >= 30%, trigger garbage collection.
+                    if ratio >= 0.3 {
+                        println!("GC triggered due to ratio >= 0.30");
+                        if let Err(e) = tm.garbage_collect(&engine).await {
+                            eprintln!("GC error: {:?}", e);
+                        }
+                        // Reset counters after GC.
+                        tm.total_new.store(0, Ordering::Relaxed);
+                        tm.total_old.store(0, Ordering::Relaxed);
+                    } else {
+                        println!("GC not needed. Ratio below threshold.");
                     }
-                    if let Err(e) = tm.garbage_collect(&engine).await {
-                        eprintln!("GC error: {:?}", e);
-                    }
-                    println!("Start GC sleep");
-                    sleep(Duration::from_secs(60)).await;
-                    println!("End GC sleep");
+                    
+                    // Sleep a fixed interval before next check.
+                    sleep(Duration::from_secs(30)).await;
+                    if tm.stop_gc.load(Ordering::Relaxed) { break; }
                 }
             });
         });
     }
     
-    // New: Garbage collection implementation.
+    // Revert garbage_collect to its previous version.
     pub async fn garbage_collect(&self, engine: &Engine) -> Result<(), Error> {
         let oldest_read_snapshot = self.get_oldest_read_snapshot();
         println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
@@ -72,12 +104,13 @@ impl TransactionManager {
         let lower_bound = vec![0];
         let upper_bound = vec![255];
         println!("GC: Scanning keys between {:?} and {:?}", lower_bound, upper_bound);
+        
         let mut iter = engine.reverse_scan(lower_bound.clone()..upper_bound.clone()).await?;
         let mut versions: HashMap<Vec<u8>, (u128, bool)> = HashMap::new();
         while let Some((key, value)) = iter.next() {
             if let Some(pos) = key.iter().rposition(|&b| b == b':') {
                 let logical_key = key[..pos].to_vec();
-                if let Ok(snap_str) = std::str::from_utf8(&key[pos+1..]) {
+                if let Ok(snap_str) = std::str::from_utf8(&key[pos + 1..]) {
                     if let Ok(snapshot) = snap_str.parse::<u128>() {
                         if snapshot < oldest_read_snapshot {
                             let deleted_flag = value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER);
@@ -92,10 +125,8 @@ impl TransactionManager {
                 }
             }
         }
-        println!("GC: Collected {} keys for deletion", versions.len());
-        let mut keys_to_delete = Vec::new();
+        
         for (logical_key, (_max_snapshot, deleted_flag)) in versions.iter() {
-            println!("GC: Processing key {:?} deleted_flag: {}", logical_key, deleted_flag);
             let mut lb = logical_key.clone();
             lb.extend_from_slice(b":0");
             let mut ub = logical_key.clone();
@@ -104,24 +135,25 @@ impl TransactionManager {
             let mut version_iter = engine.reverse_scan(lb..ub).await?;
             if *deleted_flag {
                 while let Some((k, _)) = version_iter.next() {
-                    keys_to_delete.push(k);
+                    engine.del(&k).await?;
                 }
             } else {
                 let mut first = true;
                 while let Some((k, _)) = version_iter.next() {
                     if first { first = false; continue; }
-                    keys_to_delete.push(k);
+                    engine.del(&k).await?;
                 }
             }
-        }
-        println!("GC: Total keys to delete: {}", keys_to_delete.len());
-        for k in keys_to_delete {
-            println!("GC: Deleting key: {:?}", String::from_utf8_lossy(&k));
-            engine.del(&k).await?;
         }
         Ok(())
     }
     
+    // New: Push transaction counters.
+    pub fn push_counters(&self, new: usize, old: usize) {
+        self.total_new.fetch_add(new, Ordering::Relaxed);
+        self.total_old.fetch_add(old, Ordering::Relaxed);
+    }
+
     // New: Stops the GC loop.
     pub fn stop_gc(&self) {
         self.stop_gc.store(true, Ordering::Relaxed);
@@ -146,6 +178,11 @@ impl Database {
             engine,
             transaction_manager: tm,
         }
+    }
+
+    // New: Expose push_counters.
+    pub fn push_counters(&self, new: usize, old: usize) {
+        self.transaction_manager.push_counters(new, old);
     }
 
     // New: Public method to stop GC thread.
