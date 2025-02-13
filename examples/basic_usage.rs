@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 use tegdb::Engine;
 
 /// Demonstrates basic CRUD operations using TegDB.
@@ -42,4 +42,5 @@ async fn main() {
 
     // Engine cleanup is handled automatically when it goes out of scope.
     drop(engine);
+    fs::remove_file(&path).unwrap();
 }

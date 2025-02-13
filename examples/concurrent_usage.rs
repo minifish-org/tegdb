@@ -21,7 +21,7 @@ fn main() {
     // Initialize the engine and remove any pre-existing data file.
     let path = PathBuf::from("test_concurrent.db");
     let _ = fs::remove_file(&path);
-    let engine = Engine::new(path);
+    let engine = Engine::new(path.clone());
 
     // Shared metrics for tracking set() and get() call counts.
     let set_metrics = Arc::new(Mutex::new(Vec::<usize>::new()));
@@ -98,4 +98,6 @@ fn main() {
     println!(" Number of threads: {}", thread_count);
     println!(" Average set() latency: {:?} (total calls: {}, calls/sec: {:.2})", avg_set, total_set_calls, calls_set_per_sec);
     println!(" Average get() latency: {:?} (total calls: {}, calls/sec: {:.2})", avg_get, total_get_calls, calls_get_per_sec);
+    drop(engine);
+    fs::remove_file(&path).unwrap();
 }

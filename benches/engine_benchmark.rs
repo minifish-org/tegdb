@@ -1,6 +1,7 @@
 //! Benchmark tests for TegDB engine operations using Criterion.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use std::fs;
 use std::path::PathBuf;
 use tegdb::Engine;
 use tokio::runtime::Runtime;
@@ -9,7 +10,7 @@ use rand::distr::Alphanumeric;
 
 fn engine_benchmark(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
-    let engine = Engine::new(PathBuf::from("test.db"));
+    let engine = Engine::new(PathBuf::from("bench_test.db"));
     let key = b"key";
     let value = b"value";
 
@@ -65,11 +66,13 @@ fn engine_benchmark(c: &mut Criterion) {
     });
 
     group.finish();
+    drop(engine);
+    fs::remove_file("bench_test.db").unwrap();
 }
 
 /// Sequential benchmark tests using keys with varying value sizes.
 async fn engine_seq_benchmark(c: &mut Criterion, value_size: usize) {
-    let engine = Engine::new(PathBuf::from("test.db"));
+    let engine = Engine::new(PathBuf::from("test_seq_bench.db"));
     let value = vec![0; value_size];
 
     let mut group = c.benchmark_group(format!("engine_seq_{}", value_size));
@@ -127,6 +130,8 @@ async fn engine_seq_benchmark(c: &mut Criterion, value_size: usize) {
     });
 
     group.finish();
+    drop(engine);
+    fs::remove_file("test_seq_bench.db").unwrap();
 }
 
 /// Benchmark with a short value size.
@@ -179,6 +184,8 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                 }
             });
         });
+        drop(engine);
+        fs::remove_file("concurrent.db").unwrap();
     });
 
     // Concurrent benchmark for get.
@@ -203,6 +210,8 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                 }
             });
         });
+        drop(engine);
+        fs::remove_file("concurrent.db").unwrap();
     });
 
     // Concurrent benchmark for scan.
@@ -226,6 +235,8 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                 }
             });
         });
+        drop(engine);
+        fs::remove_file("concurrent.db").unwrap();
     });
 
     // Concurrent benchmark for delete.
@@ -250,6 +261,8 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                 }
             });
         });
+        drop(engine);
+        fs::remove_file("concurrent.db").unwrap();
     });
 
     group.finish();
