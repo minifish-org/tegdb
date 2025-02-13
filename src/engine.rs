@@ -116,6 +116,7 @@ impl Engine {
     /// Compacts the log by building a new log file containing only valid entries.
     /// The new log replaces the old one to reclaim storage space.
     fn compact(&mut self) -> Result<(), std::io::Error> {
+        println!("Compacting log...");
         let mut tmp_path = self.log.path.clone();
         tmp_path.set_extension("new");
         let (mut new_log, new_key_map) = self.construct_log(tmp_path)?;
@@ -126,6 +127,7 @@ impl Engine {
         for (k, v) in new_key_map {
             self.key_map.insert(k, v);
         }
+        println!("Compacting done.");
         Ok(())
     }
 

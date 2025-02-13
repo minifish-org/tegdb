@@ -56,20 +56,23 @@ impl Database {
             .unwrap_or(u128::MAX)
     }
 
-    // Update: Spawns a background task for garbage collection.
+    // Alternative: Using a std thread to run GC.
     fn start_gc(&self) {
         let db_clone = self.clone();
-        tokio::task::spawn_blocking(move || {
-            tokio::runtime::Runtime::new().unwrap().block_on(async {
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(async {
                 loop {
-                    // Check if stop flag is set.
+                    println!("In GC loop, stop flag: {}", db_clone.stop_gc.load(Ordering::Relaxed));
                     if db_clone.stop_gc.load(Ordering::Relaxed) {
                         break;
                     }
                     if let Err(e) = db_clone.garbage_collect().await {
                         eprintln!("GC error: {:?}", e);
                     }
+                    println!("Start GC sleep");
                     sleep(Duration::from_secs(60)).await;
+                    println!("End GC sleep");
                 }
             });
         });
@@ -78,10 +81,12 @@ impl Database {
     // New: Garbage collection implementation.
     pub async fn garbage_collect(&self) -> Result<(), Error> {
         let oldest_read_snapshot = self.get_oldest_read_snapshot();
+        println!("GC: Starting garbage collection cycle. Oldest read snapshot: {}", oldest_read_snapshot);
         const DELETED_MARKER: &[u8] = b"__deleted__";
 
         let lower_bound = vec![0];
         let upper_bound = vec![255];
+        println!("GC: Scanning keys between {:?} and {:?}", lower_bound, upper_bound);
         let mut iter = self.engine.reverse_scan(lower_bound.clone()..upper_bound.clone()).await?;
         // Modified: versions now stores (snapshot, bool) flag for deleted marker.
         let mut versions: HashMap<Vec<u8>, (u128, bool)> = HashMap::new();
@@ -101,8 +106,10 @@ impl Database {
                 }
             }
         }
+        println!("GC: Collected {} logical keys for deletion processing", versions.len());
         let mut keys_to_delete = Vec::new();
         for (logical_key, (_max_snapshot, deleted_flag)) in versions.iter() {
+            println!("GC: Processing logical key {:?} with deleted_flag: {}", logical_key, deleted_flag);
             let mut lb = logical_key.clone();
             lb.extend_from_slice(b":0");
             let mut ub = logical_key.clone();
@@ -126,7 +133,9 @@ impl Database {
                 }
             }
         }
+        println!("GC: Total keys to delete: {}", keys_to_delete.len());
         for k in keys_to_delete {
+            println!("GC: Deleting key: {:?}", String::from_utf8_lossy(&k));
             self.engine.del(&k).await?;
         }
         Ok(())
@@ -136,10 +145,9 @@ impl Database {
     pub fn new_transaction(&self) -> crate::transaction::Transaction {
         Transaction::begin(self.clone())
     }
-}
 
-impl Drop for Database {
-    fn drop(&mut self) {
+    // New: Explicit shutdown method to stop the GC thread.
+    pub fn shutdown(&self) {
         self.stop_gc();
     }
 }
