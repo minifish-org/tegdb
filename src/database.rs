@@ -1,4 +1,5 @@
 use crate::engine::Engine;
+use crate::transaction::Transaction;
 use crossbeam_skiplist::SkipSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -129,6 +130,11 @@ impl Database {
             self.engine.del(&k).await?;
         }
         Ok(())
+    }
+
+    // Updated: API to begin a new transaction using Transaction::begin from transaction.rs.
+    pub fn new_transaction(&self) -> crate::transaction::Transaction {
+        Transaction::begin(self.clone())
     }
 }
 
