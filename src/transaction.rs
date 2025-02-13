@@ -8,7 +8,8 @@ pub struct Transaction {
     db: Database,
     // Snapshot timestamp in milliseconds used for MVCC.
     snapshot: u128,
-    read_snapshot: u128,
+    // read_snapshot holds the oldest active snapshot when this transaction began.
+    pub read_snapshot: u128,
     ops: Vec<Vec<u8>>,
 }
 
@@ -19,12 +20,14 @@ impl Transaction {
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
             .as_millis();
+        // Get the current oldest read snapshot from the Database.
+        let current_oldest = db.get_oldest_read_snapshot();
+        let read_snapshot = if current_oldest == u128::MAX { snapshot } else { current_oldest };
         db.register_transaction(snapshot);
-        let oldest = db.active_transactions().get(0).cloned().unwrap_or(snapshot);
         Self {
             db,
             snapshot,
-            read_snapshot: oldest,
+            read_snapshot,
             ops: Vec::new(),
         }
     }
@@ -82,7 +85,7 @@ impl Transaction {
     }
 
     /// Reads a value by checking buffered operations first,
-    /// then performing a reverse scan over the range from key+":0" to key+":"+snapshot+1.
+    /// then performing a reverse scan over the range from key+":0" to key+":"+(read_snapshot+1).
     /// Returns the first found record.
     pub async fn select(&self, key: &[u8]) -> Option<Vec<u8>> {
         // Build range: lower bound "key:0", upper bound "key:snapshot+1"

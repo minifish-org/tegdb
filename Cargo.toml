@@ -17,9 +17,9 @@ license = "AGPL-3.0"
 [dependencies]
 dashmap = { version = "6.1.0", features = ["inline"] }
 crossbeam-skiplist = "0.1"
+tokio = { version = "1.43.0", features = ["full"] }
 
 [dev-dependencies]
-tokio = { version = "1.43.0", features = ["full"] }
 criterion = { version = "0.5.1", features = ["html_reports"] }
 sled = "0.34.7" # for performance comparison
 redb = "1.5.0"
