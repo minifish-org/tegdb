@@ -7,18 +7,15 @@ const SNAPSHOT_KEY: &[u8] = b"__snapshot__";
 // GLOBAL_SNAPSHOT is wrapped in an Arc<Mutex<_>> for optional persistence control if needed.
 static GLOBAL_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 
-// Changed: Make init_snapshot a synchronous function.
-pub fn init_snapshot(engine: &Engine) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let persisted = rt.block_on(async {
-        match engine.get(SNAPSHOT_KEY).await {
-            Some(val) => match String::from_utf8(val) {
-                Ok(s) => s.trim().parse::<Snapshot>().unwrap_or(1),
-                Err(_) => 1,
-            },
-            None => 1,
-        }
-    });
+// Change synchronous init_snapshot to async.
+pub async fn init_snapshot(engine: &Engine) {
+    let persisted = match engine.get(SNAPSHOT_KEY).await {
+        Some(val) => match String::from_utf8(val) {
+            Ok(s) => s.trim().parse::<Snapshot>().unwrap_or(1),
+            Err(_) => 1,
+        },
+        None => 1,
+    };
     GLOBAL_SNAPSHOT.store(persisted, Ordering::Relaxed);
 }
 

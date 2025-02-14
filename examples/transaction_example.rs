@@ -10,9 +10,8 @@ async fn main() {
 
     sleep(std::time::Duration::from_secs(120)).await;
     // Start Transaction API.
-    let mut tx = db.new_transaction(); // changed from db.begin()
+    let mut tx = db.new_transaction().await;  // updated
 
-    //sleep(std::time::Duration::from_secs(120)).await;
     // INSERT using Transaction API.
     tx.insert(b"key1", b"value1".to_vec()).await.unwrap();
     println!("Inserted key1 -> value1");

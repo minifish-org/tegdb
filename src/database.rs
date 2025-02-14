@@ -170,8 +170,11 @@ pub struct Database {
 impl Database {
     pub fn new(path: PathBuf) -> Self {
         let engine = Engine::new(path);
-        // Changed: Call the synchronous init_snapshot without a runtime block.
-        crate::snapshot_generator::init_snapshot(&engine);
+        let engine_clone = engine.clone();
+        // Replace blocking init_snapshot call with non-blocking tokio::spawn.
+        tokio::spawn(async move {
+            crate::snapshot_generator::init_snapshot(&engine_clone).await;
+        });
         let tm = TransactionManager::new();
         tm.start_gc(engine.clone());
         Self {
@@ -206,8 +209,8 @@ impl Database {
     }
 
     // Updated: API to begin a new transaction.
-    pub async fn new_transaction(&self) -> crate::transaction::Transaction {
-        crate::transaction::Transaction::begin(self.clone()).await
+    pub async fn new_transaction(&self) -> Transaction {
+        Transaction::begin(self.clone()).await
     }
 
     // Updated: Shutdown GC and persist the snapshot key on shutdown.
