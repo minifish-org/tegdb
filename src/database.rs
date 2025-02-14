@@ -76,8 +76,10 @@ impl TransactionManager {
                     if let Err(e) = tm.garbage_collect(&engine).await {
                         eprintln!("GC error: {:?}", e);
                     }
-                    // Reset counters after GC.
-                    tm.total_new.store(0, Ordering::Relaxed);
+                    // Reset counters after GC: total_new = total_new - total_old, total_old = 0.
+                    let tn = tm.total_new.load(Ordering::Relaxed);
+                    let to = tm.total_old.load(Ordering::Relaxed);
+                    tm.total_new.store(tn.saturating_sub(to), Ordering::Relaxed);
                     tm.total_old.store(0, Ordering::Relaxed);
                 }
             });
