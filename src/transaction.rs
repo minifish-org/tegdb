@@ -1,6 +1,6 @@
 use crate::database::Database;
+use crate::snapshot_generator::get_atomic_snapshot;
 use std::io::Error;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const DELETED_MARKER: &[u8] = b"__deleted__";
 
@@ -18,11 +18,9 @@ pub struct Transaction {
 
 impl Transaction {
     /// Begins a new transaction from the given Database.
-    pub fn begin(db: Database) -> Self {
-        let snapshot = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_millis();
+    pub fn begin(db: crate::database::Database) -> Self {
+        // Use the engine to generate an atomic snapshot by blocking on the async call.
+        let snapshot = tokio::runtime::Handle::current().block_on(get_atomic_snapshot());
         // Get the current oldest read snapshot from the Database.
         let current_oldest = db.get_oldest_read_snapshot();
         let read_snapshot = if current_oldest == u128::MAX { snapshot } else { current_oldest };

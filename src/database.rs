@@ -73,6 +73,8 @@ impl TransactionManager {
                     tm.gc_notify.notified().await;
                     if tm.stop_gc.load(Ordering::Relaxed) { break; }
                     println!("GC thread awakened by notify");
+                    // Persist the snapshot key once per GC cycle.
+                    crate::snapshot_generator::persist_snapshot(&engine).await;
                     if let Err(e) = tm.garbage_collect(&engine).await {
                         eprintln!("GC error: {:?}", e);
                     }
@@ -166,8 +168,15 @@ pub struct Database {
 impl Database {
     pub fn new(path: PathBuf) -> Self {
         let engine = Engine::new(path);
+        // Initialize snapshot synchronously.
+        {
+            let engine_clone = engine.clone();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                crate::snapshot_generator::init_snapshot(&engine_clone).await;
+            });
+        }
         let tm = TransactionManager::new();
-        // Start GC using engine clone.
         tm.start_gc(engine.clone());
         Self {
             engine,
@@ -205,8 +214,13 @@ impl Database {
         Transaction::begin(self.clone())
     }
 
-    // Updated: Shutdown GC via TransactionManager.
+    // Updated: Shutdown GC and persist the snapshot key on shutdown.
     pub fn shutdown(&self) {
         self.transaction_manager.stop_gc();
+        // Persist snapshot asynchronously on shutdown.
+        let engine = self.engine.clone();
+        tokio::spawn(async move {
+            crate::snapshot_generator::persist_snapshot(&engine).await;
+        });
     }
 }
