@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use tokio::{self, time::sleep}; // ...existing code...
 use tegdb::Database; // adjust module path as necessary
 
 #[tokio::main]
@@ -8,7 +7,6 @@ async fn main() {
     let db_path = PathBuf::from("data.db");
     let db = Database::new(db_path);
 
-    sleep(std::time::Duration::from_secs(120)).await;
     // Start Transaction API.
     let mut tx = db.new_transaction().await;  // updated
 
@@ -30,10 +28,6 @@ async fn main() {
 
     // Commit transaction.
     tx.commit().await.unwrap();
-
-    // Hold the Database instance long enough for a GC cycle.
-    println!("Holding db instance for an extra GC cycle. Waiting 120 seconds...");
-    sleep(std::time::Duration::from_secs(120)).await;
 
     //println!("Dropping database now.");
     db.shutdown();
