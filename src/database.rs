@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::io::Error;
 use std::collections::HashMap;
-use tokio::time::{sleep, Duration};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use tokio::sync::Notify;
 
 // Updated: TransactionManager now holds transaction fields and GC logic.
 pub struct TransactionManager {
@@ -16,6 +16,8 @@ pub struct TransactionManager {
     // New: Global counters for committed changes.
     pub total_new: AtomicUsize,
     pub total_old: AtomicUsize,
+    // New: Notification for waking the GC thread.
+    pub gc_notify: Arc<Notify>,
 }
 
 impl Clone for TransactionManager {
@@ -26,6 +28,7 @@ impl Clone for TransactionManager {
             stop_gc: self.stop_gc.clone(),
             total_new: AtomicUsize::new(self.total_new.load(Ordering::Relaxed)),
             total_old: AtomicUsize::new(self.total_old.load(Ordering::Relaxed)),
+            gc_notify: self.gc_notify.clone(),
         }
     }
 }
@@ -38,6 +41,7 @@ impl TransactionManager {
             stop_gc: Arc::new(AtomicBool::new(false)),
             total_new: AtomicUsize::new(0),
             total_old: AtomicUsize::new(0),
+            gc_notify: Arc::new(Notify::new()),
         }
     }
     
@@ -58,39 +62,23 @@ impl TransactionManager {
             .unwrap_or(u128::MAX)
     }
     
-    // Modified start_gc loop: use total_old/total_new as garbage ratio. If >= 30%, then GC.
+    // Modified start_gc: Wait by default on Notify, then run GC when signaled.
     pub fn start_gc(&self, engine: Engine) {
         let tm = self.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             runtime.block_on(async move {
                 loop {
-                    // Compute garbage ratio
-                    let total_new = tm.total_new.load(Ordering::Relaxed);
-                    let total_old = tm.total_old.load(Ordering::Relaxed);
-                    let ratio = if total_new > 0 {
-                        (total_old as f64) / (total_new as f64)
-                    } else {
-                        0.0
-                    };
-                    println!("Global GC ratio: {:.2}", ratio);
-                    
-                    // If ratio >= 30%, trigger garbage collection.
-                    if ratio >= 0.3 {
-                        println!("GC triggered due to ratio >= 0.30");
-                        if let Err(e) = tm.garbage_collect(&engine).await {
-                            eprintln!("GC error: {:?}", e);
-                        }
-                        // Reset counters after GC.
-                        tm.total_new.store(0, Ordering::Relaxed);
-                        tm.total_old.store(0, Ordering::Relaxed);
-                    } else {
-                        println!("GC not needed. Ratio below threshold.");
-                    }
-                    
-                    // Sleep a fixed interval before next check.
-                    sleep(Duration::from_secs(30)).await;
+                    // Wait indefinitely until notified or check stop flag.
+                    tm.gc_notify.notified().await;
                     if tm.stop_gc.load(Ordering::Relaxed) { break; }
+                    println!("GC thread awakened by notify");
+                    if let Err(e) = tm.garbage_collect(&engine).await {
+                        eprintln!("GC error: {:?}", e);
+                    }
+                    // Reset counters after GC.
+                    tm.total_new.store(0, Ordering::Relaxed);
+                    tm.total_old.store(0, Ordering::Relaxed);
                 }
             });
         });
@@ -148,10 +136,15 @@ impl TransactionManager {
         Ok(())
     }
     
-    // New: Push transaction counters.
+    // New: Push counters and notify GC thread if threshold reached.
     pub fn push_counters(&self, new: usize, old: usize) {
         self.total_new.fetch_add(new, Ordering::Relaxed);
         self.total_old.fetch_add(old, Ordering::Relaxed);
+        let tn = self.total_new.load(Ordering::Relaxed);
+        let to = self.total_old.load(Ordering::Relaxed);
+        if tn > 0 && (to as f64) / (tn as f64) >= 0.3 {
+            self.gc_notify.notify_one();
+        }
     }
 
     // New: Stops the GC loop.
