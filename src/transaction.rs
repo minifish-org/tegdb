@@ -1,15 +1,16 @@
 use crate::database::Database;
 use crate::snapshot_generator::get_atomic_snapshot;
+use crate::types::Snapshot;
 use std::io::Error;
 
 const DELETED_MARKER: &[u8] = b"__deleted__";
 
 pub struct Transaction {
     db: Database,
-    // Snapshot timestamp in milliseconds used for MVCC.
-    snapshot: u128,
+    // Snapshot timestamp used for MVCC.
+    snapshot: Snapshot,
     // read_snapshot holds the oldest active snapshot when this transaction began.
-    pub read_snapshot: u128,
+    pub read_snapshot: Snapshot,
     ops: Vec<Vec<u8>>,
     // New: Combined counters for GC change tracking.
     pub new_counter: usize, // counts insertions and new version updates.
@@ -18,12 +19,11 @@ pub struct Transaction {
 
 impl Transaction {
     /// Begins a new transaction from the given Database.
-    pub fn begin(db: crate::database::Database) -> Self {
-        // Use the engine to generate an atomic snapshot by blocking on the async call.
-        let snapshot = tokio::runtime::Handle::current().block_on(get_atomic_snapshot());
-        // Get the current oldest read snapshot from the Database.
+    pub async fn begin(db: crate::database::Database) -> Self {
+        let snapshot = get_atomic_snapshot();
+        // Optional: Await any async initialization if needed.
         let current_oldest = db.get_oldest_read_snapshot();
-        let read_snapshot = if current_oldest == u128::MAX { snapshot } else { current_oldest };
+        let read_snapshot = if current_oldest == Snapshot::MAX { snapshot } else { current_oldest };
         db.register_transaction(snapshot);
         Self {
             db,

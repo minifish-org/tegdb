@@ -7,11 +7,12 @@ use std::io::Error;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Notify;
+use crate::types::Snapshot;
 
 // Updated: TransactionManager now holds transaction fields and GC logic.
 pub struct TransactionManager {
-    pub active_transactions: Arc<SkipSet<u128>>,
-    pub oldest_read_snapshot: Arc<SkipSet<u128>>,
+    pub active_transactions: Arc<SkipSet<Snapshot>>,
+    pub oldest_read_snapshot: Arc<SkipSet<Snapshot>>,
     pub stop_gc: Arc<AtomicBool>,
     // New: Global counters for committed changes.
     pub total_new: AtomicUsize,
@@ -45,21 +46,22 @@ impl TransactionManager {
         }
     }
     
-    pub fn register_transaction(&self, snapshot: u128) {
+    // Update register_transaction/unregister_transaction to use Snapshot.
+    pub fn register_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.insert(snapshot);
         self.oldest_read_snapshot.insert(snapshot);
     }
     
-    pub fn unregister_transaction(&self, snapshot: u128) {
+    pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.remove(&snapshot);
         self.oldest_read_snapshot.remove(&snapshot);
     }
     
-    pub fn get_oldest_read_snapshot(&self) -> u128 {
+    pub fn get_oldest_read_snapshot(&self) -> Snapshot {
         self.oldest_read_snapshot.iter()
             .next()
             .map(|entry| *entry.value())
-            .unwrap_or(u128::MAX)
+            .unwrap_or(Snapshot::MAX)
     }
     
     // Modified start_gc: Wait by default on Notify, then run GC when signaled.
@@ -98,12 +100,12 @@ impl TransactionManager {
         println!("GC: Scanning keys between {:?} and {:?}", lower_bound, upper_bound);
         
         let mut iter = engine.reverse_scan(lower_bound.clone()..upper_bound.clone()).await?;
-        let mut versions: HashMap<Vec<u8>, (u128, bool)> = HashMap::new();
+        let mut versions: HashMap<Vec<u8>, (Snapshot, bool)> = HashMap::new();
         while let Some((key, value)) = iter.next() {
             if let Some(pos) = key.iter().rposition(|&b| b == b':') {
                 let logical_key = key[..pos].to_vec();
                 if let Ok(snap_str) = std::str::from_utf8(&key[pos + 1..]) {
-                    if let Ok(snapshot) = snap_str.parse::<u128>() {
+                    if let Ok(snapshot) = snap_str.parse::<Snapshot>() {
                         if snapshot < oldest_read_snapshot {
                             let deleted_flag = value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER);
                             versions.entry(logical_key.clone()).and_modify(|(existing_snapshot, flag)| {
@@ -168,14 +170,8 @@ pub struct Database {
 impl Database {
     pub fn new(path: PathBuf) -> Self {
         let engine = Engine::new(path);
-        // Initialize snapshot synchronously.
-        {
-            let engine_clone = engine.clone();
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                crate::snapshot_generator::init_snapshot(&engine_clone).await;
-            });
-        }
+        // Changed: Call the synchronous init_snapshot without a runtime block.
+        crate::snapshot_generator::init_snapshot(&engine);
         let tm = TransactionManager::new();
         tm.start_gc(engine.clone());
         Self {
@@ -195,23 +191,23 @@ impl Database {
     }
 
     // Updated: Delegate transaction registration.
-    pub fn register_transaction(&self, snapshot: u128) {
+    pub fn register_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.register_transaction(snapshot);
     }
 
     // Updated: Delegate transaction unregistration.
-    pub fn unregister_transaction(&self, snapshot: u128) {
+    pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.unregister_transaction(snapshot);
     }
 
     // Updated: Delegate to TransactionManager.
-    pub fn get_oldest_read_snapshot(&self) -> u128 {
+    pub fn get_oldest_read_snapshot(&self) -> Snapshot {
         self.transaction_manager.get_oldest_read_snapshot()
     }
 
     // Updated: API to begin a new transaction.
-    pub fn new_transaction(&self) -> crate::transaction::Transaction {
-        Transaction::begin(self.clone())
+    pub async fn new_transaction(&self) -> crate::transaction::Transaction {
+        crate::transaction::Transaction::begin(self.clone()).await
     }
 
     // Updated: Shutdown GC and persist the snapshot key on shutdown.
