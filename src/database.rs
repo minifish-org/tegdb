@@ -4,7 +4,6 @@ use crossbeam_skiplist::SkipSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::io::Error;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Notify;
 use crate::types::Snapshot;
