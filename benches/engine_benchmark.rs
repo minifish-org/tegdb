@@ -67,7 +67,7 @@ fn engine_benchmark(c: &mut Criterion) {
 
     group.finish();
     drop(engine);
-    fs::remove_file("bench_test.db").unwrap();
+    fs::remove_dir_all("bench_test.db").unwrap();
 }
 
 /// Sequential benchmark tests using keys with varying value sizes.
@@ -131,7 +131,7 @@ async fn engine_seq_benchmark(c: &mut Criterion, value_size: usize) {
 
     group.finish();
     drop(engine);
-    fs::remove_file("test_seq_bench.db").unwrap();
+    fs::remove_dir_all("test_seq_bench.db").unwrap();
 }
 
 /// Benchmark with a short value size.
@@ -158,7 +158,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(4));
 
     // Remove concurrent.db once before running the benchmarks.
-    std::fs::remove_file("concurrent.db").ok();
+    std::fs::remove_dir_all("concurrent.db").ok();
 
     // Concurrent benchmark for set.
     group.bench_function("set", |b| {
@@ -185,7 +185,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
             });
         });
         drop(engine);
-        fs::remove_file("concurrent.db").unwrap();
+        fs::remove_dir_all("concurrent.db").unwrap();
     });
 
     // Concurrent benchmark for get.
@@ -211,7 +211,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
             });
         });
         drop(engine);
-        fs::remove_file("concurrent.db").unwrap();
+        fs::remove_dir_all("concurrent.db").unwrap();
     });
 
     // Concurrent benchmark for scan.
@@ -236,7 +236,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
             });
         });
         drop(engine);
-        fs::remove_file("concurrent.db").unwrap();
+        fs::remove_dir_all("concurrent.db").unwrap();
     });
 
     // Concurrent benchmark for delete.
@@ -262,7 +262,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
             });
         });
         drop(engine);
-        fs::remove_file("concurrent.db").unwrap();
+        fs::remove_dir_all("concurrent.db").unwrap();
     });
 
     group.finish();

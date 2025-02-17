@@ -23,7 +23,7 @@ async fn test_insert_and_select() -> Result<(), Error> {
 
     // Drop the database.
     drop(db);
-    fs::remove_file(&path).unwrap();
+    fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
 
@@ -48,7 +48,7 @@ async fn test_update() -> Result<(), Error> {
 
     // Drop the database.
     drop(db);
-    fs::remove_file(&path).unwrap();
+    fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
 
@@ -71,7 +71,7 @@ async fn test_delete() -> Result<(), Error> {
 
     // Drop the database.
     drop(db);
-    fs::remove_file(&path).unwrap();
+    fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
 
@@ -92,6 +92,6 @@ async fn test_rollback_effect() -> Result<(), Error> {
     }
     // Drop the database.
     drop(db);
-    fs::remove_file(&path).unwrap();
+    fs::remove_dir_all(&path).unwrap();
     Ok(())
 }

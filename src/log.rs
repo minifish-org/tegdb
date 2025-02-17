@@ -26,29 +26,47 @@ impl Log {
         let key_map = dashmap::DashMap::new();
         let mut insert_count = 0;
         let mut remove_count = 0;
-        let mut file = OpenOptions::new().read(true).open(&self.path).unwrap();
-        let file_len = file.metadata().unwrap().len();
-        let mut r = BufReader::new(&mut file);
-        let mut pos = r.seek(SeekFrom::Start(0)).unwrap();
-        let mut len_buf = [0u8; 4];
-        while pos < file_len {
-            r.read_exact(&mut len_buf).unwrap();
-            let key_len = u32::from_be_bytes(len_buf);
-            r.read_exact(&mut len_buf).unwrap();
-            let value_len = u32::from_be_bytes(len_buf);
-            let value_pos = pos + 4 + 4 + key_len as u64;
-            let mut key = vec![0; key_len as usize];
-            r.read_exact(&mut key).unwrap();
-            let mut value = vec![0; value_len as usize];
-            r.read_exact(&mut value).unwrap();
-            if value_len == 0 {
-                key_map.remove(&key);
-                remove_count += 1;
-            } else {
-                key_map.insert(key, value);
-                insert_count += 1;
+        // Iterate through all log.N files
+        let parent = self.path.parent().expect("Invalid directory");
+        let mut log_files: Vec<(u32, PathBuf)> = std::fs::read_dir(parent)
+            .expect("Failed to read log directory")
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let file_name = entry.file_name().to_string_lossy().into_owned();
+                if let Some(num_str) = file_name.strip_prefix("log.") {
+                    if let Ok(num) = num_str.parse::<u32>() {
+                        return Some((num, entry.path()));
+                    }
+                }
+                None
+            })
+            .collect();
+        log_files.sort_by_key(|(num, _)| *num);
+        for (_num, file_path) in log_files {
+            let mut file = OpenOptions::new().read(true).open(&file_path).unwrap();
+            let file_len = file.metadata().unwrap().len();
+            let mut r = BufReader::new(&mut file);
+            let mut pos = r.seek(SeekFrom::Start(0)).unwrap();
+            let mut len_buf = [0u8; 4];
+            while pos < file_len {
+                r.read_exact(&mut len_buf).unwrap();
+                let key_len = u32::from_be_bytes(len_buf);
+                r.read_exact(&mut len_buf).unwrap();
+                let value_len = u32::from_be_bytes(len_buf);
+                let value_pos = pos + 4 + 4 + key_len as u64;
+                let mut key = vec![0; key_len as usize];
+                r.read_exact(&mut key).unwrap();
+                let mut value = vec![0; value_len as usize];
+                r.read_exact(&mut value).unwrap();
+                if value_len == 0 {
+                    key_map.remove(&key);
+                    remove_count += 1;
+                } else {
+                    key_map.insert(key, value);
+                    insert_count += 1;
+                }
+                pos = value_pos + value_len as u64;
             }
-            pos = value_pos + value_len as u64;
         }
         (key_map, (insert_count, remove_count))
     }

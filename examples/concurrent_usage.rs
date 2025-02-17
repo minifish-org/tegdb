@@ -20,7 +20,7 @@ fn main() {
 
     // Initialize the engine and remove any pre-existing data file.
     let path = PathBuf::from("test_concurrent.db");
-    let _ = fs::remove_file(&path);
+    let _ = fs::remove_dir_all(&path);
     let engine = Engine::new(path.clone());
 
     // Shared metrics for tracking set() and get() call counts.
@@ -99,5 +99,5 @@ fn main() {
     println!(" Average set() latency: {:?} (total calls: {}, calls/sec: {:.2})", avg_set, total_set_calls, calls_set_per_sec);
     println!(" Average get() latency: {:?} (total calls: {}, calls/sec: {:.2})", avg_get, total_get_calls, calls_get_per_sec);
     drop(engine);
-    fs::remove_file(&path).unwrap();
+    fs::remove_dir_all(&path).unwrap();
 }

@@ -52,7 +52,7 @@ async fn test_engine() {
         expected_strings, result_strings
     );
     drop(engine);
-    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(path).unwrap();
 }
 
 #[tokio::test]
@@ -76,5 +76,5 @@ async fn test_concurrent_access() {
         t.await.unwrap();
     }
     drop(engine);
-    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(path).unwrap();
 }

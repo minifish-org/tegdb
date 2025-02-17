@@ -20,7 +20,11 @@ impl Engine {
     /// Initializes the underlying log, reconstructs the in-memory key map from the log,
     /// and performs compaction if the removal/insertion ratio is at least 0.3.
     pub fn new(path: PathBuf) -> Self {
-        let log = Arc::new(log::Log::new(path));
+        // Create the directory if it doesn't exist.
+        std::fs::create_dir_all(&path).expect("Failed to create directory");
+        // Set the log file to "log.0" inside the directory.
+        let log_path = path.join("log.0");
+        let log = Arc::new(log::Log::new(log_path));
         let (key_map, (insert_count, remove_count)) = log.build_key_map();
         let mut s = Self { log, key_map: Arc::new(key_map) };
         println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
@@ -112,17 +116,24 @@ impl Engine {
         Ok(())
     }
 
-    /// Compacts the log by building a new log file containing only valid entries.
-    /// The new log replaces the old one to reclaim storage space.
+    /// Compacts logs by switching new writes to a new log file (number incremented by 1)
+    /// and then rewriting the old log with compacted data.
     fn compact(&mut self) -> Result<(), std::io::Error> {
         println!("Compacting log...");
-        let mut tmp_path = self.log.path.clone();
-        tmp_path.set_extension("new");
-        let new_log = self.construct_log(tmp_path)?;
-        std::fs::rename(&new_log.path, &self.log.path)?;
-        let mut updated_log = new_log;
-        updated_log.path = self.log.path.clone();
-        self.log = Arc::new(updated_log);
+        // Save old log path (e.g., log.N)
+        let old_log_path = self.log.path.clone();
+        let parent = old_log_path.parent().expect("Invalid directory");
+        // Parse current log number
+        let filename = old_log_path.file_name().unwrap().to_string_lossy();
+        let current_num: u32 = filename.strip_prefix("log.")
+            .and_then(|num_str| num_str.parse::<u32>().ok())
+            .unwrap_or(0);
+        // Create new log file with incremented number
+        let new_log_path = parent.join(format!("log.{}", current_num + 1));
+        let new_log = log::Log::new(new_log_path);
+        self.log = Arc::new(new_log);
+        // Compact the old log file (log.N) by rewriting valid entries
+        self.construct_log(old_log_path)?;
         println!("Compacting done.");
         Ok(())
     }

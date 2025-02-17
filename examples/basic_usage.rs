@@ -42,5 +42,5 @@ async fn main() {
 
     // Engine cleanup is handled automatically when it goes out of scope.
     drop(engine);
-    fs::remove_file(&path).unwrap();
+    fs::remove_dir_all(&path).unwrap();
 }
