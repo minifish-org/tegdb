@@ -22,8 +22,8 @@ impl Log {
         }
     }
 
-    pub fn build_key_map(&self) -> std::collections::BTreeMap<Vec<u8>, Vec<u8>> {
-        let mut key_map = std::collections::BTreeMap::new();
+    pub fn build_key_map(&self) -> dashmap::DashMap<Vec<u8>, Vec<u8>> {
+        let key_map = dashmap::DashMap::new();
         let mut file = OpenOptions::new().read(true).open(&self.path).unwrap();
         let file_len = file.metadata().unwrap().len();
         let mut r = BufReader::new(&mut file);

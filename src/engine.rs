@@ -21,11 +21,7 @@ impl Engine {
     /// and performs an immediate compaction to optimize storage.
     pub fn new(path: PathBuf) -> Self {
         let log = Arc::new(log::Log::new(path));
-        let built_map = log.build_key_map();
-        let key_map = Arc::new(DashMap::new());
-        for (k, v) in built_map {
-            key_map.insert(k, v);
-        }
+        let key_map = Arc::new(log.build_key_map());
         let mut s = Self { log, key_map };
         s.compact().expect("Failed to compact log");
         s
