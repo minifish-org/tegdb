@@ -26,23 +26,19 @@ impl Log {
         let key_map = dashmap::DashMap::new();
         let mut insert_count = 0;
         let mut remove_count = 0;
-        // Iterate through all log.N files
+        // Build the list of logs in the order: log.old then log.new.
         let parent = self.path.parent().expect("Invalid directory");
-        let mut log_files: Vec<(u32, PathBuf)> = std::fs::read_dir(parent)
-            .expect("Failed to read log directory")
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let file_name = entry.file_name().to_string_lossy().into_owned();
-                if let Some(num_str) = file_name.strip_prefix("log.") {
-                    if let Ok(num) = num_str.parse::<u32>() {
-                        return Some((num, entry.path()));
-                    }
-                }
-                None
-            })
-            .collect();
-        log_files.sort_by_key(|(num, _)| *num);
-        for (_num, file_path) in log_files {
+        let mut log_files: Vec<PathBuf> = Vec::new();
+        let log_old = parent.join("log.old");
+        if log_old.exists() {
+            log_files.push(log_old);
+        }
+        let log_new = parent.join("log.new");
+        if log_new.exists() {
+            log_files.push(log_new);
+        }
+        // Process entries from log.old first then log.new.
+        for file_path in log_files {
             let mut file = OpenOptions::new().read(true).open(&file_path).unwrap();
             let file_len = file.metadata().unwrap().len();
             let mut r = BufReader::new(&mut file);

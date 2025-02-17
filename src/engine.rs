@@ -22,8 +22,8 @@ impl Engine {
     pub fn new(path: PathBuf) -> Self {
         // Create the directory if it doesn't exist.
         std::fs::create_dir_all(&path).expect("Failed to create directory");
-        // Set the log file to "log.0" inside the directory.
-        let log_path = path.join("log.0");
+        // Use a fixed log file for new writes.
+        let log_path = path.join("log.new");
         let log = Arc::new(log::Log::new(log_path));
         let (key_map, (insert_count, remove_count)) = log.build_key_map();
         let mut s = Self { log, key_map: Arc::new(key_map) };
@@ -120,20 +120,21 @@ impl Engine {
     /// and then rewriting the old log with compacted data.
     fn compact(&mut self) -> Result<(), std::io::Error> {
         println!("Compacting log...");
-        // Save old log path (e.g., log.N)
+        // Rename the current active log ("log.new") to "log.old".
         let old_log_path = self.log.path.clone();
         let parent = old_log_path.parent().expect("Invalid directory");
-        // Parse current log number
-        let filename = old_log_path.file_name().unwrap().to_string_lossy();
-        let current_num: u32 = filename.strip_prefix("log.")
-            .and_then(|num_str| num_str.parse::<u32>().ok())
-            .unwrap_or(0);
-        // Create new log file with incremented number
-        let new_log_path = parent.join(format!("log.{}", current_num + 1));
+        let new_old_log_path = parent.join("log.old");
+        // Remove existing log.old if it exists to avoid panic.
+        if new_old_log_path.exists() {
+            std::fs::remove_file(&new_old_log_path)?;
+        }
+        std::fs::rename(&old_log_path, &new_old_log_path)?;
+        // Create a new "log.new" file for fresh writes.
+        let new_log_path = parent.join("log.new");
         let new_log = log::Log::new(new_log_path);
         self.log = Arc::new(new_log);
-        // Compact the old log file (log.N) by rewriting valid entries
-        self.construct_log(old_log_path)?;
+        // Compact the renamed old log.
+        self.construct_log(new_old_log_path)?;
         println!("Compacting done.");
         Ok(())
     }
