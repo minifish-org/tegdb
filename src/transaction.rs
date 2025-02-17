@@ -94,39 +94,21 @@ impl Transaction {
     /// For each candidate, if its corresponding txn_marker key (formed as "txn_marker:<snapshot>")
     /// shows "commit", the candidate is used. If the txn_marker is "rollback" or missing, the candidate is deleted and the scan continues.
     pub async fn select(&self, key: &[u8]) -> Option<Vec<u8>> {
-        eprintln!("Debug: Attempting to select key: {:?}", key);
         // Check current transaction changes first.
         let current_txn_key = Self::make_snapshot_key(key, self.snapshot);
-        eprintln!("Debug: Checking current_txn_key: {:?}", current_txn_key);
         if let Some(value) = self.db.engine.get(&current_txn_key).await {
             if value == DELETED_MARKER {
-                eprintln!("Debug at line {}: returning None due to DELETED_MARKER", line!());
                 return None;
             } else {
-                eprintln!("Debug at line {}: returning from select with value: {:?}", line!(), value);
                 return Some(value);
             }
-        }
-
-        // Perform a forward scan over the entire engine and print each key-value pair for debugging.
-        let mut iter = self.db.engine.scan(Vec::new()..vec![0xff]).await.ok()?;
-        while let Some((k, v)) = iter.next() {
-            eprintln!("Debug: full data k={}, v={}", 
-                String::from_utf8_lossy(&k),
-                String::from_utf8_lossy(&v));
         }
 
         // Build range: lower bound "key:0", upper bound "key:(read_snapshot+1)"
         let lower = Self::make_snapshot_key(key, 0);
         let upper = Self::make_snapshot_key(key, self.read_snapshot + 1);
-        eprintln!("Debug: scan range lower={}, upper={}", 
-            String::from_utf8_lossy(&lower),
-            String::from_utf8_lossy(&upper));
-        eprintln!("Debug: read_snapshot is {}", self.read_snapshot);
-        eprintln!("Debug: snapshot is {}", self.snapshot);
         let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await.ok()?;
         while let Some((candidate_key, candidate_value)) = rev_iter.next() {
-            eprintln!("Debug: Found candidate_key: {:?}", candidate_key);
             if let Some(pos) = candidate_key.iter().rposition(|&b| b == b':') {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
@@ -135,10 +117,8 @@ impl Transaction {
                         if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
                             if marker_value == TXN_MARKER_COMMIT {
                                 return if candidate_value == DELETED_MARKER {
-                                    eprintln!("Debug at line {}: returning None due to DELETED_MARKER", line!());
                                     None
                                 } else {
-                                    eprintln!("Debug at line {}: returning from select with candidate_value: {:?}", line!(), candidate_value);
                                     Some(candidate_value)
                                 };
                             } else {
@@ -154,7 +134,6 @@ impl Transaction {
             }
             let _ = self.db.engine.del(&candidate_key).await;
         }
-        eprintln!("Debug at line {}: returning None at end of select", line!());
         None
     }
 
