@@ -22,8 +22,10 @@ impl Log {
         }
     }
 
-    pub fn build_key_map(&self) -> dashmap::DashMap<Vec<u8>, Vec<u8>> {
+    pub fn build_key_map(&self) -> (dashmap::DashMap<Vec<u8>, Vec<u8>>, (u64, u64)) {
         let key_map = dashmap::DashMap::new();
+        let mut insert_count = 0;
+        let mut remove_count = 0;
         let mut file = OpenOptions::new().read(true).open(&self.path).unwrap();
         let file_len = file.metadata().unwrap().len();
         let mut r = BufReader::new(&mut file);
@@ -41,12 +43,14 @@ impl Log {
             r.read_exact(&mut value).unwrap();
             if value_len == 0 {
                 key_map.remove(&key);
+                remove_count += 1;
             } else {
                 key_map.insert(key, value);
+                insert_count += 1;
             }
             pos = value_pos + value_len as u64;
         }
-        key_map
+        (key_map, (insert_count, remove_count))
     }
 
     pub fn write_entry(&self, key: &[u8], value: &[u8]) {

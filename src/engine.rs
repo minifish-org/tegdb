@@ -18,12 +18,15 @@ pub struct Engine {
 impl Engine {
     /// Creates a new Engine instance.
     /// Initializes the underlying log, reconstructs the in-memory key map from the log,
-    /// and performs an immediate compaction to optimize storage.
+    /// and performs compaction if the removal/insertion ratio is at least 0.3.
     pub fn new(path: PathBuf) -> Self {
         let log = Arc::new(log::Log::new(path));
-        let key_map = Arc::new(log.build_key_map());
-        let mut s = Self { log, key_map };
-        s.compact().expect("Failed to compact log");
+        let (key_map, (insert_count, remove_count)) = log.build_key_map();
+        let mut s = Self { log, key_map: Arc::new(key_map) };
+        println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
+        if insert_count > 0 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
+            s.compact().expect("Failed to compact log");
+        }
         s
     }
 
