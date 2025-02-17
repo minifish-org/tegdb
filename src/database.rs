@@ -69,6 +69,8 @@ impl TransactionManager {
         let tm = self.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Runtime::new().unwrap();
+            // Make engine mutable for compaction.
+            let mut engine = engine;
             runtime.block_on(async move {
                 loop {
                     // Wait indefinitely until notified or check stop flag.
@@ -79,6 +81,11 @@ impl TransactionManager {
                     crate::snapshot_generator::persist_snapshot(&engine).await;
                     if let Err(e) = tm.garbage_collect(&engine).await {
                         eprintln!("GC error: {:?}", e);
+                    } else {
+                        // Trigger compaction at the end of the GC cycle.
+                        if let Err(e) = engine.compact() {
+                            eprintln!("Compaction error: {:?}", e);
+                        }
                     }
                     // Reset counters after GC: total_new = total_new - total_old, total_old = 0.
                     let tn = tm.total_new.load(Ordering::Relaxed);

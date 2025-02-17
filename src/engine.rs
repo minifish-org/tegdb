@@ -118,7 +118,7 @@ impl Engine {
 
     /// Compacts logs by switching new writes to a new log file (number incremented by 1)
     /// and then rewriting the old log with compacted data.
-    fn compact(&mut self) -> Result<(), std::io::Error> {
+    pub fn compact(&mut self) -> Result<(), std::io::Error> {
         println!("Compacting log...");
         // Rename the current active log ("log.new") to "log.old".
         let old_log_path = self.log.path.clone();
