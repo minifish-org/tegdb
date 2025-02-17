@@ -100,52 +100,38 @@ impl TransactionManager {
         });
     }
     
-    /// Runs garbage collection based on the oldest snapshot.
+    /// Runs garbage collection based on the oldest snapshot using a single scan.
     pub async fn garbage_collect(&self, engine: &Engine) -> Result<(), Error> {
         let oldest_read_snapshot = self.get_oldest_read_snapshot();
         println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
         const DELETED_MARKER: &[u8] = b"__deleted__";
-        let lower_bound = vec![0];
-        let upper_bound = vec![255];
-        println!("GC: Scanning keys between {:?} and {:?}", lower_bound, upper_bound);
         
-        let mut iter = engine.reverse_scan(lower_bound.clone()..upper_bound.clone()).await?;
-        let mut versions: HashMap<Vec<u8>, (Snapshot, bool)> = HashMap::new();
+        let mut current_key: Option<Vec<u8>> = None;
+        
+        let mut iter = engine.reverse_scan(vec![0]..vec![255]).await?;
         while let Some((key, value)) = iter.next() {
             if let Some(pos) = key.iter().rposition(|&b| b == b':') {
                 let logical_key = key[..pos].to_vec();
                 if let Ok(snap_str) = std::str::from_utf8(&key[pos + 1..]) {
                     if let Ok(snapshot) = snap_str.parse::<Snapshot>() {
                         if snapshot < oldest_read_snapshot {
-                            let deleted_flag = value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER);
-                            versions.entry(logical_key.clone()).and_modify(|(existing_snapshot, flag)| {
-                                if snapshot > *existing_snapshot {
-                                    *existing_snapshot = snapshot;
-                                    *flag = deleted_flag;
+                            match &current_key {
+                                Some(current) if *current == logical_key => {
+                                    // Not the first version, can be deleted
+                                    engine.del(&key).await?;
                                 }
-                            }).or_insert((snapshot, deleted_flag));
+                                _ => {
+                                    // First version of a new key
+                                    current_key = Some(logical_key);
+                                    
+                                    // If it's marked as deleted, remove it
+                                    if value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER) {
+                                        engine.del(&key).await?;
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
-        
-        for (logical_key, (_max_snapshot, deleted_flag)) in versions.iter() {
-            let mut lb = logical_key.clone();
-            lb.extend_from_slice(b":0");
-            let mut ub = logical_key.clone();
-            ub.extend_from_slice(b":");
-            ub.extend_from_slice(oldest_read_snapshot.to_string().as_bytes());
-            let mut version_iter = engine.reverse_scan(lb..ub).await?;
-            if *deleted_flag {
-                while let Some((k, _)) = version_iter.next() {
-                    engine.del(&k).await?;
-                }
-            } else {
-                let mut first = true;
-                while let Some((k, _)) = version_iter.next() {
-                    if first { first = false; continue; }
-                    engine.del(&k).await?;
                 }
             }
         }
