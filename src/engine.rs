@@ -118,33 +118,30 @@ impl Engine {
         println!("Compacting log...");
         let mut tmp_path = self.log.path.clone();
         tmp_path.set_extension("new");
-        let (mut new_log, new_key_map) = self.construct_log(tmp_path)?;
+        let new_log = self.construct_log(tmp_path)?;
         std::fs::rename(&new_log.path, &self.log.path)?;
-        new_log.path = self.log.path.clone();
-        self.log = Arc::new(new_log);
-        self.key_map = Arc::new(DashMap::new());
-        for (k, v) in new_key_map {
-            self.key_map.insert(k, v);
-        }
+        let mut updated_log = new_log;
+        updated_log.path = self.log.path.clone();
+        self.log = Arc::new(updated_log);
         println!("Compacting done.");
         Ok(())
     }
 
-    /// Constructs a compacted log file and a corresponding key map based on valid entries.
-    fn construct_log(&mut self, path: PathBuf) -> Result<(log::Log, DashMap<Vec<u8>, Vec<u8>>), std::io::Error> {
-        let new_key_map = DashMap::new();
+    /// Constructs a compacted log file based on valid entries from the current key map.
+    fn construct_log(&mut self, path: PathBuf) -> Result<log::Log, std::io::Error> {
         let new_log = log::Log::new(path);
         {
+            // Clear new log file
             let file = std::fs::OpenOptions::new()
                 .write(true)
                 .open(&new_log.path)?;
             file.set_len(0)?;
         }
+        // Write existing key map entries to the new log
         for entry in self.key_map.iter() {
             new_log.write_entry(entry.key(), entry.value());
-            new_key_map.insert(entry.key().clone(), entry.value().clone());
         }
-        Ok((new_log, new_key_map))
+        Ok(new_log)
     }
 }
 
