@@ -6,7 +6,7 @@ use std::io::Error;
 
 const TXN_MARKER_COMMIT: &[u8] = b"commit";
 const TXN_MARKER_ROLLBACK: &[u8] = b"rollback";
-pub const DELETED_MARKER: &[u8] = b"__deleted__";
+const DELETED_MARKER: &[u8] = b"__deleted__";
 
 pub struct Transaction {
     db: Database,
@@ -93,6 +93,18 @@ impl Transaction {
     /// For each candidate, if its corresponding txn_marker key (formed as "txn_marker:<snapshot>")
     /// shows "commit", the candidate is used. If the txn_marker is "rollback" or missing, the candidate is deleted and the scan continues.
     pub async fn select(&self, key: &[u8]) -> Option<Vec<u8>> {
+        // Check current transaction changes first.
+        let mut current_txn_key = key.to_vec();
+        current_txn_key.extend_from_slice(b":");
+        current_txn_key.extend_from_slice(self.snapshot.to_string().as_bytes());
+        if let Some(value) = self.db.engine.get(&current_txn_key).await {
+            if value == DELETED_MARKER {
+                return None;
+            } else {
+                return Some(value);
+            }
+        }
+
         // Build range: lower bound "key:0", upper bound "key:(read_snapshot+1)"
         let mut lower = key.to_vec();
         lower.extend_from_slice(b":0");
