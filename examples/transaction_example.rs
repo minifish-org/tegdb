@@ -5,7 +5,7 @@ use tegdb::Database; // adjust module path as necessary
 async fn main() {
     // Initialize database with a file path.
     let db_path = PathBuf::from("data.db");
-    let db = Database::new(db_path);
+    let db = Database::new(db_path).await;
 
     // Start Transaction API.
     let mut tx = db.new_transaction().await;  // updated

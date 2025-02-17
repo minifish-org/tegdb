@@ -1,5 +1,5 @@
 use crate::database::Database;
-use crate::snapshot_generator::get_atomic_snapshot;
+use crate::snapshot::get_atomic_snapshot;
 use crate::types::Snapshot;
 use std::io::Error;
 

@@ -2,7 +2,7 @@ mod engine;
 mod log;
 mod transaction;
 mod database;
-mod snapshot_generator;
+mod snapshot;
 mod types;
 
 pub use engine::Engine;

@@ -8,7 +8,7 @@ use tegdb::Database;
 #[tokio::test]
 async fn test_insert_and_select() -> Result<(), Error> {
     let path = PathBuf::from("test_insert_and_select.db");
-    let db = Database::new(path.clone());
+    let db = Database::new(path.clone()).await;
     let mut txn = db.new_transaction().await;
     let key = b"test_key";
     let value = b"test_value".to_vec();
@@ -30,7 +30,7 @@ async fn test_insert_and_select() -> Result<(), Error> {
 #[tokio::test]
 async fn test_update() -> Result<(), Error> {
     let path = PathBuf::from("test_update.db");
-    let db = Database::new(path.clone());
+    let db = Database::new(path.clone()).await;
     let mut txn = db.new_transaction().await;
     let key = b"test_key";
     let initial = b"initial".to_vec();
@@ -55,7 +55,7 @@ async fn test_update() -> Result<(), Error> {
 #[tokio::test]
 async fn test_delete() -> Result<(), Error> {
     let path = PathBuf::from("test_delete.db");
-    let db = Database::new(path.clone());
+    let db = Database::new(path.clone()).await;
     let mut txn = db.new_transaction().await;
     let key = b"test_key";
     let value = b"to_delete".to_vec();
@@ -78,7 +78,7 @@ async fn test_delete() -> Result<(), Error> {
 #[tokio::test]
 async fn test_rollback_effect() -> Result<(), Error> {
     let path = PathBuf::from("test_rollback_effect.db");
-    let db = Database::new(path.clone());
+    let db = Database::new(path.clone()).await;
     {
         let mut txn = db.new_transaction().await;
         txn.insert(b"temp_key", b"temp_value".to_vec()).await?;
