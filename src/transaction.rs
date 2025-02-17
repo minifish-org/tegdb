@@ -94,33 +94,53 @@ impl Transaction {
         Ok(())
     }
 
-    /// Reads a value by checking buffered operations first,
-    /// then performing a reverse scan over the range from key+":0" to key+":"+(read_snapshot+1).
-    /// Returns the first found record.
+    /// Reads a value by checking buffered operations first, then performing a reverse scan.
+    /// For each candidate, if its corresponding txn_marker key (formed as "txn_marker:<snapshot>")
+    /// shows "commit", the candidate is used. If the txn_marker is "rollback" or missing, the candidate is deleted and the scan continues.
     pub async fn select(&self, key: &[u8]) -> Option<Vec<u8>> {
-        // Build range: lower bound "key:0", upper bound "key:snapshot+1"
+        // Build range: lower bound "key:0", upper bound "key:(read_snapshot+1)"
         let mut lower = key.to_vec();
         lower.extend_from_slice(b":0");
-
         let mut upper = key.to_vec();
-        upper.extend_from_slice(b":");
-        // Use read_snapshot + 1
         let upper_bound = self.read_snapshot + 1;
         upper.extend_from_slice(upper_bound.to_string().as_bytes());
-
-        // Perform a reverse scan using the Engine API and return the first record.
         let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await.ok()?;
-        rev_iter.next().and_then(|(_, v)| {
-            if v == DELETED_MARKER { None } else { Some(v) }
-        })
+        while let Some((candidate_key, candidate_value)) = rev_iter.next() {
+            if let Some(pos) = candidate_key.iter().rposition(|&b| b == b':') {
+                let snapshot_bytes = &candidate_key[pos + 1..];
+                if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
+                    if let Ok(snapshot) = snapshot_str.parse::<u64>() {
+                        let txn_marker_key = format!("txn_marker:{}", snapshot);
+                        if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
+                            if marker_value == b"commit" {
+                                return if candidate_value == DELETED_MARKER {
+                                    None
+                                } else {
+                                    Some(candidate_value)
+                                };
+                            } else {
+                                let _ = self.db.engine.del(&candidate_key).await;
+                                continue;
+                            }
+                        } else {
+                            let _ = self.db.engine.del(&candidate_key).await;
+                            continue;
+                        }
+                    }
+                }
+            }
+            let _ = self.db.engine.del(&candidate_key).await;
+        }
+        None
     }
 
     /// Commits the buffered operations and writes a commit marker.
     pub async fn commit(self) -> Result<(), Error> {
         // New: Push the transaction's change counters to TransactionManager.
         self.db.push_counters(self.new_counter, self.old_counter);
-        let commit_marker = format!("txn:{}:commit", self.snapshot);
-        self.db.engine.set(b"__txn_marker__", commit_marker.as_bytes().to_vec()).await?;
+        // Write the marker in the key; value is "commit".
+        let marker_key = format!("txn_marker:{}", self.snapshot);
+        self.db.engine.set(marker_key.as_bytes(), b"commit".to_vec()).await?;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
@@ -130,8 +150,9 @@ impl Transaction {
         for mk in &self.ops {
             self.db.engine.del(mk).await?;
         }
-        let rollback_marker = format!("txn:{}:rollback", self.snapshot);
-        self.db.engine.set(b"__txn_marker__", rollback_marker.as_bytes().to_vec()).await?;
+        // Write the rollback marker with snapshot in key; value is "rollback".
+        let marker_key = format!("txn_marker:{}", self.snapshot);
+        self.db.engine.set(marker_key.as_bytes(), b"rollback".to_vec()).await?;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
