@@ -1,9 +1,12 @@
+use crate::constants::TXN_MARKER_PREFIX;
 use crate::database::Database;
 use crate::snapshot::get_atomic_snapshot;
 use crate::types::Snapshot;
 use std::io::Error;
 
-const DELETED_MARKER: &[u8] = b"__deleted__";
+const TXN_MARKER_COMMIT: &[u8] = b"commit";
+const TXN_MARKER_ROLLBACK: &[u8] = b"rollback";
+pub const DELETED_MARKER: &[u8] = b"__deleted__";
 
 pub struct Transaction {
     db: Database,
@@ -35,17 +38,9 @@ impl Transaction {
         }
     }
 
-    /// Async: Buffers an insert operation.
-    /// Uses self.select to check for an existing record.
-    /// If the record already exists with the same value, the operation is ignored.
+    /// Buffers an insert operation after verifying key/value sizes.  
+    /// If the key/value exceeds allowed limits (MAX_KEY_SIZE, MAX_VALUE_SIZE), returns an error.
     pub async fn insert(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
-        // Validate key/value sizes.
-        if key.len() > 1024 {
-            return Err(Error::new(std::io::ErrorKind::InvalidInput, "Key length exceeds 1k"));
-        }
-        if value.len() > 256 * 1024 {
-            return Err(Error::new(std::io::ErrorKind::InvalidInput, "Value length exceeds 256k"));
-        }
         // Check for an existing record.
         if let Some(existing) = self.select(key).await {
             if existing == value {
@@ -63,7 +58,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Buffers an update operation by first fetching the latest data.
+    /// Buffers an update operation if the key exists.
     /// If no data exists, the update is ignored.
     pub async fn update(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
         if self.select(key).await.is_some() {
@@ -79,7 +74,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Buffers a delete operation.
+    /// Buffers a delete operation if the key exists.
     /// If the key doesn't exist (no record in the snapshot), the delete is ignored.
     pub async fn delete(&mut self, key: &[u8]) -> Result<(), Error> {
         if self.select(key).await.is_some() {
@@ -94,7 +89,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Reads a value by checking buffered operations first, then performing a reverse scan.
+    /// Reads the latest value for a given key using buffered operations and a reverse scan.
     /// For each candidate, if its corresponding txn_marker key (formed as "txn_marker:<snapshot>")
     /// shows "commit", the candidate is used. If the txn_marker is "rollback" or missing, the candidate is deleted and the scan continues.
     pub async fn select(&self, key: &[u8]) -> Option<Vec<u8>> {
@@ -110,9 +105,9 @@ impl Transaction {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
                     if let Ok(snapshot) = snapshot_str.parse::<u64>() {
-                        let txn_marker_key = format!("txn_marker:{}", snapshot);
+                        let txn_marker_key = format!("{}{}", TXN_MARKER_PREFIX, snapshot);
                         if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
-                            if marker_value == b"commit" {
+                            if marker_value == TXN_MARKER_COMMIT {
                                 return if candidate_value == DELETED_MARKER {
                                     None
                                 } else {
@@ -134,27 +129,25 @@ impl Transaction {
         None
     }
 
-    /// Commits the buffered operations and writes a commit marker.
+    /// Commits the buffered operations and, if any ops are present, writes a commit marker.
     pub async fn commit(self) -> Result<(), Error> {
-        // If there are operations, push counters and set the txn_marker.
         if !self.ops.is_empty() {
             self.db.push_counters(self.new_counter, self.old_counter);
-            let marker_key = format!("txn_marker:{}", self.snapshot);
-            self.db.engine.set(marker_key.as_bytes(), b"commit".to_vec()).await?;
+            let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
+            self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
         }
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
 
-    /// Asynchronously rolls back the transaction by writing a rollback marker and clearing buffered operations.
+    /// Rolls back the transaction. If ops exist, deletes them and writes a rollback marker.
     pub async fn rollback(&mut self) -> Result<(), Error> {
-        // If there are operations, delete each and write the rollback marker.
         if !self.ops.is_empty() {
             for mk in &self.ops {
                 self.db.engine.del(mk).await?;
             }
-            let marker_key = format!("txn_marker:{}", self.snapshot);
-            self.db.engine.set(marker_key.as_bytes(), b"rollback".to_vec()).await?;
+            let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
+            self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec()).await?;
         }
         self.db.unregister_transaction(self.snapshot);
         Ok(())

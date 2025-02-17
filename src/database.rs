@@ -14,10 +14,10 @@ pub struct TransactionManager {
     pub active_transactions: Arc<SkipSet<Snapshot>>,
     pub oldest_read_snapshot: Arc<SkipSet<Snapshot>>,
     pub stop_gc: Arc<AtomicBool>,
-    // New: Global counters for committed changes.
+    // Global counters for committed modifications.
     pub total_new: AtomicUsize,
     pub total_old: AtomicUsize,
-    // New: Notification for waking the GC thread.
+    // Notify GC thread when thresholds are met.
     pub gc_notify: Arc<Notify>,
 }
 
@@ -35,6 +35,7 @@ impl Clone for TransactionManager {
 }
 
 impl TransactionManager {
+    /// Creates a new TransactionManager with empty state.
     pub fn new() -> Self {
         Self {
             active_transactions: Arc::new(SkipSet::new()),
@@ -46,17 +47,19 @@ impl TransactionManager {
         }
     }
     
-    // Update register_transaction/unregister_transaction to use Snapshot.
+    /// Registers a transaction by inserting its snapshot.
     pub fn register_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.insert(snapshot);
         self.oldest_read_snapshot.insert(snapshot);
     }
     
+    /// Unregisters a transaction.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.remove(&snapshot);
         self.oldest_read_snapshot.remove(&snapshot);
     }
     
+    /// Returns the oldest active transaction snapshot or MAX if none.
     pub fn get_oldest_read_snapshot(&self) -> Snapshot {
         self.oldest_read_snapshot.iter()
             .next()
@@ -64,7 +67,7 @@ impl TransactionManager {
             .unwrap_or(Snapshot::MAX)
     }
     
-    // Modified start_gc: Wait by default on Notify, then run GC when signaled.
+    /// Starts the GC thread using a dedicated runtime.
     pub fn start_gc(&self, engine: Engine) {
         let tm = self.clone();
         std::thread::spawn(move || {
@@ -97,7 +100,7 @@ impl TransactionManager {
         });
     }
     
-    // Revert garbage_collect to its previous version.
+    /// Runs garbage collection based on the oldest snapshot.
     pub async fn garbage_collect(&self, engine: &Engine) -> Result<(), Error> {
         let oldest_read_snapshot = self.get_oldest_read_snapshot();
         println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
@@ -149,7 +152,7 @@ impl TransactionManager {
         Ok(())
     }
     
-    // New: Push counters and notify GC thread if threshold reached.
+    /// Pushes counters and notifies GC if the removal ratio threshold is reached.
     pub fn push_counters(&self, new: usize, old: usize) {
         self.total_new.fetch_add(new, Ordering::Relaxed);
         self.total_old.fetch_add(old, Ordering::Relaxed);
@@ -160,7 +163,7 @@ impl TransactionManager {
         }
     }
 
-    // New: Stops the GC loop.
+    /// Signals the GC thread to stop.
     pub fn stop_gc(&self) {
         self.stop_gc.store(true, Ordering::Relaxed);
     }
@@ -175,6 +178,7 @@ pub struct Database {
 }
 
 impl Database {
+    /// Initializes a new Database with an Engine and starts GC.
     pub async fn new(path: PathBuf) -> Self {
         let engine = Engine::new(path);
         // Directly await snapshot init.
@@ -187,37 +191,37 @@ impl Database {
         }
     }
 
-    // New: Expose push_counters.
+    /// Exposes push_counters to update GC metrics.
     pub fn push_counters(&self, new: usize, old: usize) {
         self.transaction_manager.push_counters(new, old);
     }
 
-    // New: Public method to stop GC thread.
+    /// Stops the GC thread.
     pub fn stop_gc(&self) {
         self.transaction_manager.stop_gc();
     }
 
-    // Updated: Delegate transaction registration.
+    /// Delegates transaction registration.
     pub fn register_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.register_transaction(snapshot);
     }
 
-    // Updated: Delegate transaction unregistration.
+    /// Delegates transaction unregistration.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.unregister_transaction(snapshot);
     }
 
-    // Updated: Delegate to TransactionManager.
+    /// Returns the current oldest snapshot.
     pub fn get_oldest_read_snapshot(&self) -> Snapshot {
         self.transaction_manager.get_oldest_read_snapshot()
     }
 
-    // Updated: API to begin a new transaction.
+    /// Begins a new transaction.
     pub async fn new_transaction(&self) -> Transaction {
         Transaction::begin(self.clone()).await
     }
 
-    // Updated: Shutdown GC and persist the snapshot key on shutdown.
+    /// Initiates shutdown by stopping GC and persisting snapshots.
     pub fn shutdown(&self) {
         self.transaction_manager.stop_gc();
         // Persist snapshot asynchronously on shutdown.

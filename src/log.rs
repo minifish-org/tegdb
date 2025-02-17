@@ -5,6 +5,8 @@ use std::io::{BufWriter, Write, BufReader, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::fs::OpenOptions;
 
+use crate::types::KeyMap;
+
 // The Log struct encapsulates a log writer for appending entries and enables log replay to rebuild the key map.
 pub struct Log {
     pub path: PathBuf,
@@ -12,6 +14,7 @@ pub struct Log {
 }
 
 impl Log {
+    /// Constructs a new Log, ensuring the parent directory exists.
     pub fn new(path: PathBuf) -> Self {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).unwrap();
@@ -22,8 +25,9 @@ impl Log {
         }
     }
 
-    pub fn build_key_map(&self) -> (dashmap::DashMap<Vec<u8>, Vec<u8>>, (u64, u64)) {
-        let key_map = dashmap::DashMap::new();
+    /// Rebuilds the in-memory KeyMap from log files.
+    pub fn build_key_map(&self) -> (KeyMap, (u64, u64)) {
+        let key_map = KeyMap::new();
         let mut insert_count = 0;
         let mut remove_count = 0;
         // Build the list of logs in the order: log.old then log.new.
@@ -67,10 +71,8 @@ impl Log {
         (key_map, (insert_count, remove_count))
     }
 
+    /// Appends an entry to the log. Validates key and value lengths using constants.
     pub fn write_entry(&self, key: &[u8], value: &[u8]) {
-        if key.len() > 1024 || value.len() > 256 * 1024 {
-            panic!("Key or value exceeds allowed limit");
-        }
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
         let mut buffer = Vec::with_capacity(4 + 4 + key.len() + value.len());

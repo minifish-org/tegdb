@@ -2,17 +2,20 @@
 //! This module implements CRUD operations and log rebuilding to maintain data integrity.
 
 use crate::log;
+use crate::types::KeyMap; // Updated to include KeyMap
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::ops::Range;
-use dashmap::DashMap;
+
+const MAX_KEY_SIZE: usize = 1024;
+const MAX_VALUE_SIZE: usize = 256 * 1024;
 
 /// Core storage engine that provides CRUD operations with log compaction.
 #[derive(Clone)]
 pub struct Engine {
     log: Arc<log::Log>,
-    key_map: Arc<DashMap<Vec<u8>, Vec<u8>>>,
+    key_map: Arc<KeyMap>, // Updated to use KeyMap type alias
 }
 
 impl Engine {
@@ -43,16 +46,16 @@ impl Engine {
     /// If an empty value is provided, the key is removed.
     /// Returns an error if the key or value exceeds predefined size limits.
     pub async fn set(&self, key: &[u8], value: Vec<u8>) -> Result<(), std::io::Error> {
-        if key.len() > 1024 {
+        if key.len() > MAX_KEY_SIZE {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Key length exceeds 1k",
+                "Key length exceeds allowed limit",
             ));
         }
-        if value.len() > 256 * 1024 {
+        if value.len() > MAX_VALUE_SIZE {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Value length exceeds 256k",
+                "Value length exceeds allowed limit",
             ));
         }
         if value.is_empty() {
