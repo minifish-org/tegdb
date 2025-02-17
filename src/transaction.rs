@@ -136,23 +136,26 @@ impl Transaction {
 
     /// Commits the buffered operations and writes a commit marker.
     pub async fn commit(self) -> Result<(), Error> {
-        // New: Push the transaction's change counters to TransactionManager.
-        self.db.push_counters(self.new_counter, self.old_counter);
-        // Write the marker in the key; value is "commit".
-        let marker_key = format!("txn_marker:{}", self.snapshot);
-        self.db.engine.set(marker_key.as_bytes(), b"commit".to_vec()).await?;
+        // If there are operations, push counters and set the txn_marker.
+        if !self.ops.is_empty() {
+            self.db.push_counters(self.new_counter, self.old_counter);
+            let marker_key = format!("txn_marker:{}", self.snapshot);
+            self.db.engine.set(marker_key.as_bytes(), b"commit".to_vec()).await?;
+        }
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
 
     /// Asynchronously rolls back the transaction by writing a rollback marker and clearing buffered operations.
     pub async fn rollback(&mut self) -> Result<(), Error> {
-        for mk in &self.ops {
-            self.db.engine.del(mk).await?;
+        // If there are operations, delete each and write the rollback marker.
+        if !self.ops.is_empty() {
+            for mk in &self.ops {
+                self.db.engine.del(mk).await?;
+            }
+            let marker_key = format!("txn_marker:{}", self.snapshot);
+            self.db.engine.set(marker_key.as_bytes(), b"rollback".to_vec()).await?;
         }
-        // Write the rollback marker with snapshot in key; value is "rollback".
-        let marker_key = format!("txn_marker:{}", self.snapshot);
-        self.db.engine.set(marker_key.as_bytes(), b"rollback".to_vec()).await?;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
