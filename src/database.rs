@@ -124,9 +124,19 @@ impl TransactionManager {
                                     // First version of a new key
                                     current_key = Some(logical_key);
                                     
-                                    // If it's marked as deleted, remove it
-                                    if value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER) {
-                                        engine.del(&key).await?;
+                                    // Check transaction marker
+                                    let txn_marker_key = format!("{}{}", crate::constants::TXN_MARKER_PREFIX, snapshot);
+                                    match engine.get(txn_marker_key.as_bytes()).await {
+                                        Some(marker) if marker == b"commit" => {
+                                            // If committed but marked as deleted, remove it
+                                            if value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER) {
+                                                engine.del(&key).await?;
+                                            }
+                                        }
+                                        _ => {
+                                            // Transaction not committed, delete the key
+                                            engine.del(&key).await?;
+                                        }
                                     }
                                 }
                             }
