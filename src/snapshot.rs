@@ -1,4 +1,4 @@
-use crate::constants::{TXN_MARKER_PREFIX};
+use crate::constants::TXN_MARKER_PREFIX;
 use std::sync::atomic::{AtomicU64, Ordering};
 use crate::engine::Engine;
 use crate::types::Snapshot;
