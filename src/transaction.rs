@@ -57,16 +57,17 @@ impl Transaction {
         }
         use crate::lock_manager::LockManager;
         let key_vec = key.to_vec();
-        LockManager::acquire_lock(key_vec.clone()).await;
+        // Pass the transaction snapshot as the transaction ID.
+        LockManager::acquire_lock(key_vec.clone(), self.snapshot).await;
         self.locks.push(key_vec);
         Ok(())
     }
 
-    // New: Release all acquired locks.
+    // Updated: Release all acquired locks using the transaction snapshot.
     async fn release_locks(&mut self) {
         use crate::lock_manager::LockManager;
         for lock in self.locks.drain(..) {
-            LockManager::release_lock(lock).await;
+            LockManager::release_lock(lock, self.snapshot).await;
         }
     }
 
