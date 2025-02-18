@@ -49,8 +49,12 @@ impl Transaction {
         }
     }
 
-    // New: Acquire a lock for the given key.
+    // Updated: Acquire a lock for the given key if not already held.
     pub async fn acquire_lock(&mut self, key: &[u8]) -> Result<(), Error> {
+        // Skip reacquisition if already owned.
+        if self.locks.iter().any(|l| l == key) {
+            return Ok(());
+        }
         use crate::lock_manager::LockManager;
         let key_vec = key.to_vec();
         LockManager::acquire_lock(key_vec.clone()).await;
@@ -168,7 +172,7 @@ impl Transaction {
 
     /// Commits the buffered operations and, if any ops are present, writes a commit marker.
     pub async fn commit(mut self) -> Result<(), Error> {
-        if (!self.ops.is_empty()) {
+        if !self.ops.is_empty() {
             self.db.push_counters(self.new_counter, self.old_counter);
             let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
             self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
@@ -180,7 +184,7 @@ impl Transaction {
 
     /// Rolls back the transaction. If ops exist, deletes them and writes a rollback marker.
     pub async fn rollback(&mut self) -> Result<(), Error> {
-        if (!self.ops.is_empty()) {
+        if !self.ops.is_empty() {
             for mk in &self.ops {
                 self.db.engine.del(mk).await?;
             }
