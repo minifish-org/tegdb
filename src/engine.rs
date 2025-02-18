@@ -30,7 +30,7 @@ impl Engine {
         let log = Arc::new(log::Log::new(log_path));
         let (key_map, (insert_count, remove_count)) = log.build_key_map();
         let mut s = Self { log, key_map: Arc::new(key_map) };
-        println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
+        // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
         if insert_count > 0 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
             s.compact().expect("Failed to compact log");
         }
@@ -122,7 +122,7 @@ impl Engine {
     /// Compacts logs by switching new writes to a new log file (number incremented by 1)
     /// and then rewriting the old log with compacted data.
     pub fn compact(&mut self) -> Result<(), std::io::Error> {
-        println!("Compacting log...");
+        //println!("Compacting log...");
         // Rename the current active log ("log.new") to "log.old".
         let old_log_path = self.log.path.clone();
         let parent = old_log_path.parent().expect("Invalid directory");
@@ -138,7 +138,7 @@ impl Engine {
         self.log = Arc::new(new_log);
         // Compact the renamed old log.
         self.construct_log(new_old_log_path)?;
-        println!("Compacting done.");
+        //println!("Compacting done.");
         Ok(())
     }
 

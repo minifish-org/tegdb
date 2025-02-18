@@ -33,7 +33,7 @@ pub async fn recover_snapshot(engine: &Engine) -> Result<(), Error> {
     }
     let new_snapshot = max_snapshot + 1;
     engine.set(SNAPSHOT_KEY, new_snapshot.to_string().into_bytes()).await?;
-    println!("Recovery updated snapshot counter to {}", new_snapshot);
+    // println!("Recovery updated snapshot counter to {}", new_snapshot);
     Ok(())
 }
 

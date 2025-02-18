@@ -78,7 +78,7 @@ impl TransactionManager {
                     // Wait indefinitely until notified or check stop flag.
                     tm.gc_notify.notified().await;
                     if tm.stop_gc.load(Ordering::Relaxed) { break; }
-                    println!("GC thread awakened by notify");
+                    // println!("GC thread awakened by notify");
                     // Persist the snapshot key once per GC cycle.
                     crate::snapshot::persist_snapshot(&engine).await;
                     if let Err(e) = tm.garbage_collect(&engine).await {
@@ -102,7 +102,7 @@ impl TransactionManager {
     /// Runs garbage collection based on the oldest snapshot using a single scan.
     pub async fn garbage_collect(&self, engine: &Engine) -> Result<(), Error> {
         let oldest_read_snapshot = self.get_oldest_read_snapshot();
-        println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
+        // println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
         const DELETED_MARKER: &[u8] = b"__deleted__";
         
         let mut current_key: Option<Vec<u8>> = None;

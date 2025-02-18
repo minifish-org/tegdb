@@ -32,6 +32,10 @@ name = "engine_benchmark"
 harness = false
 
 [[bench]]
+name = "database_benchmark"
+harness = false
+
+[[bench]]
 name = "sled_benchmark"
 harness = false
 
