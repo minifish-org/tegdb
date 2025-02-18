@@ -6,6 +6,7 @@ mod snapshot;
 mod types;
 mod constants;
 mod logger;
+mod lock_manager;
 
 pub use engine::Engine;
 pub use transaction::Transaction;

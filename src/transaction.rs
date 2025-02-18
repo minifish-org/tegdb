@@ -18,6 +18,8 @@ pub struct Transaction {
     // New: Combined counters for GC change tracking.
     pub new_counter: usize, // counts insertions and new version updates.
     pub old_counter: usize, // counts old version updates and deletes.
+    // New: List of acquired locks.
+    locks: Vec<Vec<u8>>,
 }
 
 impl Transaction {
@@ -43,12 +45,33 @@ impl Transaction {
             ops: Vec::new(),
             new_counter: 0,
             old_counter: 0,
+            locks: Vec::new(),
+        }
+    }
+
+    // New: Acquire a lock for the given key.
+    pub async fn acquire_lock(&mut self, key: &[u8]) -> Result<(), Error> {
+        use crate::lock_manager::LockManager;
+        let key_vec = key.to_vec();
+        LockManager::acquire_lock(key_vec.clone()).await;
+        self.locks.push(key_vec);
+        Ok(())
+    }
+
+    // New: Release all acquired locks.
+    async fn release_locks(&mut self) {
+        use crate::lock_manager::LockManager;
+        for lock in self.locks.drain(..) {
+            LockManager::release_lock(lock).await;
         }
     }
 
     /// Buffers an insert operation after verifying key/value sizes.  
     /// If the key/value exceeds allowed limits (MAX_KEY_SIZE, MAX_VALUE_SIZE), returns an error.
     pub async fn insert(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
+        // Acquire lock for the key.
+        self.acquire_lock(key).await?;
+
         // Check for an existing record.
         if let Some(existing) = self.select(key).await {
             if existing == value {
@@ -66,6 +89,9 @@ impl Transaction {
     /// Buffers an update operation if the key exists.
     /// If no data exists, the update is ignored.
     pub async fn update(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
+        // Acquire lock for the key.
+        self.acquire_lock(key).await?;
+
         if self.select(key).await.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, value).await?;
@@ -80,6 +106,9 @@ impl Transaction {
     /// Buffers a delete operation if the key exists.
     /// If the key doesn't exist (no record in the snapshot), the delete is ignored.
     pub async fn delete(&mut self, key: &[u8]) -> Result<(), Error> {
+        // Acquire lock for the key.
+        self.acquire_lock(key).await?;
+
         if self.select(key).await.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
@@ -138,25 +167,27 @@ impl Transaction {
     }
 
     /// Commits the buffered operations and, if any ops are present, writes a commit marker.
-    pub async fn commit(self) -> Result<(), Error> {
-        if !self.ops.is_empty() {
+    pub async fn commit(mut self) -> Result<(), Error> {
+        if (!self.ops.is_empty()) {
             self.db.push_counters(self.new_counter, self.old_counter);
             let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
             self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
         }
+        self.release_locks().await;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
 
     /// Rolls back the transaction. If ops exist, deletes them and writes a rollback marker.
     pub async fn rollback(&mut self) -> Result<(), Error> {
-        if !self.ops.is_empty() {
+        if (!self.ops.is_empty()) {
             for mk in &self.ops {
                 self.db.engine.del(mk).await?;
             }
             let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
             self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec()).await?;
         }
+        self.release_locks().await;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
