@@ -3,6 +3,7 @@
 
 use crate::log;
 use crate::types::KeyMap; // Updated to include KeyMap
+use crate::logger::Logger; // Added logger
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,6 +21,7 @@ pub struct Engine {
     // Add lock_file to prevent concurrent access
     lock_file: Arc<std::fs::File>,
     lock_path: PathBuf,
+    logger: Arc<Logger>, // New logger field
 }
 
 impl Engine {
@@ -40,12 +42,16 @@ impl Engine {
         let log_path = path.join("log.new");
         let log = Arc::new(log::Log::new(log_path));
         let (key_map, (insert_count, remove_count)) = log.build_key_map();
+        // Initialize the logger using the same data directory.
+        let logger = Logger::new(&path).expect("Failed to initialize logger");
         let mut s = Self { 
             log, 
             key_map: Arc::new(key_map),
             lock_file: Arc::new(lock_file),
             lock_path,
+            logger: logger.clone(),
         };
+        s.logger.log("Engine initialized");
         // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
         if insert_count > 0 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
             s.compact().expect("Failed to compact log");
@@ -130,6 +136,7 @@ impl Engine {
 
     /// Flushes the current log and shuts down the log writer to ensure data persistence.
     fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.logger.log("Flushing logs");
         self.log.writer.flush();
         self.log.writer.shutdown();
         Ok(())
@@ -138,6 +145,7 @@ impl Engine {
     /// Compacts logs by switching new writes to a new log file (number incremented by 1)
     /// and then rewriting the old log with compacted data.
     pub fn compact(&mut self) -> Result<(), std::io::Error> {
+        self.logger.log("Compacting log...");
         //println!("Compacting log...");
         // Rename the current active log ("log.new") to "log.old".
         let old_log_path = self.log.path.clone();
@@ -154,6 +162,7 @@ impl Engine {
         self.log = Arc::new(new_log);
         // Compact the renamed old log.
         self.construct_log(new_old_log_path)?;
+        self.logger.log("Compacting done.");
         //println!("Compacting done.");
         Ok(())
     }

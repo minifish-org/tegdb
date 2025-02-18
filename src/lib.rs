@@ -5,6 +5,7 @@ mod database;
 mod snapshot;
 mod types;
 mod constants;
+mod logger;
 
 pub use engine::Engine;
 pub use transaction::Transaction;
