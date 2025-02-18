@@ -1,5 +1,5 @@
 mod engine;
-mod log;
+mod wal;         // Renamed from log to wal
 mod transaction;
 mod database;
 mod snapshot;

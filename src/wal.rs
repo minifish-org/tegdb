@@ -7,42 +7,38 @@ use std::fs::OpenOptions;
 
 use crate::types::KeyMap;
 
-// The Log struct encapsulates a log writer for appending entries and enables log replay to rebuild the key map.
-pub struct Log {
+pub struct Wal {
     pub path: PathBuf,
-    pub writer: LogWriter,
+    pub writer: WalWriter,
 }
 
-impl Log {
-    /// Constructs a new Log, ensuring the parent directory exists.
+impl Wal {
     pub fn new(path: PathBuf) -> Self {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).unwrap();
         }
         Self {
             path: path.clone(),
-            writer: LogWriter::new(path),
+            writer: WalWriter::new(path),
         }
     }
 
-    /// Rebuilds the in-memory KeyMap from log files.
     pub fn build_key_map(&self) -> (KeyMap, (u64, u64)) {
+        // ...existing code...
         let key_map = KeyMap::new();
         let mut insert_count = 0;
         let mut remove_count = 0;
-        // Build the list of logs in the order: log.old then log.new.
         let parent = self.path.parent().expect("Invalid directory");
-        let mut log_files: Vec<PathBuf> = Vec::new();
-        let log_old = parent.join("log.old");
-        if log_old.exists() {
-            log_files.push(log_old);
+        let mut wal_files: Vec<PathBuf> = Vec::new();
+        let wal_old = parent.join("wal.old");
+        if wal_old.exists() {
+            wal_files.push(wal_old);
         }
-        let log_new = parent.join("log.new");
-        if log_new.exists() {
-            log_files.push(log_new);
+        let wal_new = parent.join("wal.new");
+        if wal_new.exists() {
+            wal_files.push(wal_new);
         }
-        // Process entries from log.old first then log.new.
-        for file_path in log_files {
+        for file_path in wal_files {
             let mut file = OpenOptions::new().read(true).open(&file_path).unwrap();
             let file_len = file.metadata().unwrap().len();
             let mut r = BufReader::new(&mut file);
@@ -71,7 +67,6 @@ impl Log {
         (key_map, (insert_count, remove_count))
     }
 
-    /// Appends an entry to the log. Validates key and value lengths using constants.
     pub fn write_entry(&self, key: &[u8], value: &[u8]) {
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
@@ -84,7 +79,7 @@ impl Log {
     }
 }
 
-impl Clone for Log {
+impl Clone for Wal {
     fn clone(&self) -> Self {
         Self {
             path: self.path.clone(),
@@ -93,41 +88,39 @@ impl Clone for Log {
     }
 }
 
-// Messages used to control the log writer thread.
-pub enum LogMessage {
+pub enum WalMessage {
     Write(Vec<u8>),
     Flush,
     Shutdown,
 }
 
-pub struct LogWriter {
-    sender: Sender<LogMessage>,
+pub struct WalWriter {
+    sender: Sender<WalMessage>,
 }
 
-impl LogWriter {
+impl WalWriter {
     pub fn new(path: PathBuf) -> Self {
         let file = File::options()
             .append(true)
             .create(true)
             .open(&path)
-            .expect("failed to open log file");
+            .expect("failed to open wal file");
         let (sender, receiver) = mpsc::channel();
-        // Spawn dedicated thread to process log messages.
         thread::spawn(move || {
             let mut writer = BufWriter::new(file);
             while let Ok(msg) = receiver.recv() {
                 match msg {
-                    LogMessage::Write(data) => {
+                    WalMessage::Write(data) => {
                         if let Err(e) = writer.write_all(&data) {
-                            eprintln!("Failed to write log: {}", e);
+                            eprintln!("Failed to write wal: {}", e);
                         }
                     },
-                    LogMessage::Flush => {
+                    WalMessage::Flush => {
                         if let Err(e) = writer.flush() {
-                            eprintln!("Failed to flush log: {}", e);
+                            eprintln!("Failed to flush wal: {}", e);
                         }
                     },
-                    LogMessage::Shutdown => break,
+                    WalMessage::Shutdown => break,
                 }
             }
         });
@@ -135,20 +128,19 @@ impl LogWriter {
     }
 
     pub fn write(&self, data: Vec<u8>) {
-        let _ = self.sender.send(LogMessage::Write(data));
+        let _ = self.sender.send(WalMessage::Write(data));
     }
 
     pub fn flush(&self) {
-        let _ = self.sender.send(LogMessage::Flush);
+        let _ = self.sender.send(WalMessage::Flush);
     }
 
-    /// Initiates shutdown of the log writer thread.
     pub fn shutdown(&self) {
-        let _ = self.sender.send(LogMessage::Shutdown);
+        let _ = self.sender.send(WalMessage::Shutdown);
     }
 }
 
-impl Clone for LogWriter {
+impl Clone for WalWriter {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
