@@ -7,6 +7,7 @@ use crate::types::KeyMap; // Updated to include KeyMap
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::ops::Range;
+use std::fs::OpenOptions; // Added for lock file creation
 
 const MAX_KEY_SIZE: usize = 1024;
 const MAX_VALUE_SIZE: usize = 256 * 1024;
@@ -16,6 +17,9 @@ const MAX_VALUE_SIZE: usize = 256 * 1024;
 pub struct Engine {
     log: Arc<log::Log>,
     key_map: Arc<KeyMap>, // Updated to use KeyMap type alias
+    // Add lock_file to prevent concurrent access
+    lock_file: Arc<std::fs::File>,
+    lock_path: PathBuf,
 }
 
 impl Engine {
@@ -25,11 +29,23 @@ impl Engine {
     pub fn new(path: PathBuf) -> Self {
         // Create the directory if it doesn't exist.
         std::fs::create_dir_all(&path).expect("Failed to create directory");
+        // Create a lock file for exclusive access.
+        let lock_path = path.join("lock.lock");
+        let lock_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+            .expect("Data directory is already in use by another instance");
         // Use a fixed log file for new writes.
         let log_path = path.join("log.new");
         let log = Arc::new(log::Log::new(log_path));
         let (key_map, (insert_count, remove_count)) = log.build_key_map();
-        let mut s = Self { log, key_map: Arc::new(key_map) };
+        let mut s = Self { 
+            log, 
+            key_map: Arc::new(key_map),
+            lock_file: Arc::new(lock_file),
+            lock_path,
+        };
         // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
         if insert_count > 0 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
             s.compact().expect("Failed to compact log");
@@ -163,5 +179,9 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         self.flush().unwrap();
+        // Remove the lock file only once.
+        if Arc::strong_count(&self.lock_file) == 1 {
+            let _ = std::fs::remove_file(&self.lock_path);
+        }
     }
 }
