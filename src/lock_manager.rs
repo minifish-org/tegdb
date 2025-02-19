@@ -57,30 +57,26 @@ impl LockManager {
                 let mut locks = LOCKS.lock().await;
                 if let Some(lock_arc) = locks.get(&key) {
                     let mut lock = lock_arc.lock().await;
-                    // If lock is free or already owned by this transaction, acquire it.
                     if !lock.locked || lock.owner == Some(txn_id) {
                         lock.locked = true;
                         lock.owner = Some(txn_id);
-                        // Remove any waiting edge if present.
+                        // Notification of waiting tasks happens in release_lock.
                         remove_waiting_edge(txn_id, lock.owner.unwrap_or_default()).await;
                         return;
                     }
-                    // Record waiting edge: txn_id waits for lock.owner.
                     let owner = lock.owner.unwrap();
                     {
                         let mut graph = WAIT_GRAPH.lock().await;
                         graph.entry(txn_id).or_default().insert(owner);
                     }
-                    // Check for deadlock.
                     let mut visited = HashSet::new();
                     if has_deadlock(txn_id, &mut visited).await {
-                        // Remove the waiting edge before returning.
                         remove_waiting_edge(txn_id, owner).await;
-                        panic!("Deadlock detected between transactions."); // or handle error accordingly.
+                        panic!("Deadlock detected between transactions.");
                     }
+                    // The clone of notify is awaited below.
                     lock.notify.clone()
                 } else {
-                    // Create a new lock owned by txn_id.
                     let new_lock = Arc::new(Mutex::new(Lock {
                         locked: true,
                         owner: Some(txn_id),
@@ -90,12 +86,11 @@ impl LockManager {
                     return;
                 }
             };
-            // Wait until notified that the lock might be available.
             notify.notified().await;
         }
     }
 
-    // Updated: Releases the lock for the given key if owned by txn_id.
+    // Updated: Releases the lock and notifies waiting tasks.
     pub async fn release_lock(key: Vec<u8>, txn_id: u64) {
         let locks = LOCKS.lock().await;
         if let Some(lock_arc) = locks.get(&key) {
