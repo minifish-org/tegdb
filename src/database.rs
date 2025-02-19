@@ -153,7 +153,7 @@ impl TransactionManager {
         self.total_old.fetch_add(old, Ordering::Relaxed);
         let tn = self.total_new.load(Ordering::Relaxed);
         let to = self.total_old.load(Ordering::Relaxed);
-        if tn > 0 && (to as f64) / (tn as f64) >= 0.3 {
+        if tn > 10000 && (to as f64) / (tn as f64) >= 0.3 {
             self.gc_notify.notify_one();
         }
     }

@@ -52,7 +52,7 @@ impl Engine {
         };
         s.logger.log("Engine initialized");
         // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
-        if insert_count > 0 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
+        if insert_count > 10000 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
             s.compact().expect("Failed to compact wal");
         }
         s
@@ -135,7 +135,6 @@ impl Engine {
 
     /// Flushes the current log and shuts down the log writer to ensure data persistence.
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        self.logger.log("Flushing wal");
         self.wal.writer.flush();
         self.wal.writer.shutdown();
         Ok(())
