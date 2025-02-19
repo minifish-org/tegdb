@@ -9,6 +9,7 @@ use tokio::sync::{Notify, Mutex};
 use std::pin::Pin;
 use std::collections::{HashMap, HashSet};
 use crate::types::Snapshot;
+use std::future::Future; // New import for Future
 
 // New: Lock struct definition.
 pub struct Lock {
@@ -231,7 +232,12 @@ impl TransactionManager {
         }
     }
 
-    fn has_deadlock<'a>(wait_graph: &'a Mutex<HashMap<u64, HashSet<u64>>>, txn_id: u64, visited: &'a mut HashSet<u64>) -> Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>> {
+    // Updated: Use Future instead of std::future::Future in the return type.
+    fn has_deadlock<'a>(
+        wait_graph: &'a Mutex<HashMap<u64, HashSet<u64>>>,
+        txn_id: u64,
+        visited: &'a mut HashSet<u64>
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
         Box::pin(async move {
             if !visited.insert(txn_id) {
                 return true;
