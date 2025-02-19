@@ -161,6 +161,7 @@ impl TransactionManager {
     /// Signals the GC thread to stop.
     pub fn stop_gc(&self) {
         self.stop_gc.store(true, Ordering::Relaxed);
+        self.gc_notify.notify_one(); // notify GC thread to wake and exit
     }
 }
 
