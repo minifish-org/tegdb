@@ -5,8 +5,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::io::Error;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, Mutex};
+use std::pin::Pin;
+use std::collections::{HashMap, HashSet};
 use crate::types::Snapshot;
+
+// New: Lock struct definition.
+pub struct Lock {
+    pub locked: bool,
+    pub owner: Option<u64>,
+    pub notify: Arc<Notify>,
+}
 
 // Updated: TransactionManager now holds transaction fields and GC logic.
 pub struct TransactionManager {
@@ -18,6 +27,10 @@ pub struct TransactionManager {
     pub total_old: AtomicUsize,
     // Notify GC thread when thresholds are met.
     pub gc_notify: Arc<Notify>,
+
+    // New: Lock and wait graph now per-database.
+    pub locks: Mutex<HashMap<Vec<u8>, Arc<Mutex<Lock>>>>,
+    pub wait_graph: Mutex<HashMap<u64, HashSet<u64>>>,
 }
 
 impl Clone for TransactionManager {
@@ -29,6 +42,8 @@ impl Clone for TransactionManager {
             total_new: AtomicUsize::new(self.total_new.load(Ordering::Relaxed)),
             total_old: AtomicUsize::new(self.total_old.load(Ordering::Relaxed)),
             gc_notify: self.gc_notify.clone(),
+            locks: Mutex::new(HashMap::new()),
+            wait_graph: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -43,6 +58,8 @@ impl TransactionManager {
             total_new: AtomicUsize::new(0),
             total_old: AtomicUsize::new(0),
             gc_notify: Arc::new(Notify::new()),
+            locks: Mutex::new(HashMap::new()),
+            wait_graph: Mutex::new(HashMap::new()),
         }
     }
     
@@ -163,6 +180,84 @@ impl TransactionManager {
         self.stop_gc.store(true, Ordering::Relaxed);
         self.gc_notify.notify_one(); // notify GC thread to wake and exit
     }
+
+    // New: Acquires a lock for key with txn_id.
+    pub async fn acquire_lock(&self, key: Vec<u8>, txn_id: u64) {
+        loop {
+            let notify = {
+                let mut locks = self.locks.lock().await;
+                if let Some(lock_arc) = locks.get(&key) {
+                    let mut lock = lock_arc.lock().await;
+                    if !lock.locked || lock.owner == Some(txn_id) {
+                        lock.locked = true;
+                        lock.owner = Some(txn_id);
+                        Self::remove_waiting_edge(&self.wait_graph, txn_id, lock.owner.unwrap_or_default()).await;
+                        return;
+                    }
+                    let owner = lock.owner.unwrap();
+                    {
+                        self.wait_graph.lock().await.entry(txn_id).or_default().insert(owner);
+                    }
+                    let mut visited = HashSet::new();
+                    if Self::has_deadlock(&self.wait_graph, txn_id, &mut visited).await {
+                        Self::remove_waiting_edge(&self.wait_graph, txn_id, owner).await;
+                        panic!("Deadlock detected between transactions.");
+                    }
+                    lock.notify.clone()
+                } else {
+                    let new_lock = Arc::new(Mutex::new(Lock {
+                        locked: true,
+                        owner: Some(txn_id),
+                        notify: Arc::new(Notify::new()),
+                    }));
+                    locks.insert(key.clone(), new_lock);
+                    return;
+                }
+            };
+            notify.notified().await;
+        }
+    }
+
+    // New: Releases the lock for key held by txn_id.
+    pub async fn release_lock(&self, key: Vec<u8>, txn_id: u64) {
+        let locks = self.locks.lock().await;
+        if let Some(lock_arc) = locks.get(&key) {
+            let mut lock = lock_arc.lock().await;
+            if lock.owner == Some(txn_id) {
+                lock.locked = false;
+                lock.owner = None;
+                lock.notify.notify_waiters();
+            }
+        }
+    }
+
+    fn has_deadlock<'a>(wait_graph: &'a Mutex<HashMap<u64, HashSet<u64>>>, txn_id: u64, visited: &'a mut HashSet<u64>) -> Pin<Box<dyn std::future::Future<Output = bool> + Send + 'a>> {
+        Box::pin(async move {
+            if !visited.insert(txn_id) {
+                return true;
+            }
+            let graph = wait_graph.lock().await;
+            if let Some(waiting_on) = graph.get(&txn_id) {
+                for &other in waiting_on {
+                    if Self::has_deadlock(wait_graph, other, visited).await {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
+    }
+
+    // New: Removes a waiting edge.
+    async fn remove_waiting_edge(wait_graph: &Mutex<HashMap<u64, HashSet<u64>>>, waiter: u64, owner: u64) {
+        let mut graph = wait_graph.lock().await;
+        if let Some(set) = graph.get_mut(&waiter) {
+            set.remove(&owner);
+            if set.is_empty() {
+                graph.remove(&waiter);
+            }
+        }
+    }
 }
 
 // Updated: Database no longer holds engine separately; GC is managed in TransactionManager.
@@ -170,7 +265,7 @@ impl TransactionManager {
 pub struct Database {
     pub engine: Engine,
     // Combined transaction fields and GC logic in TransactionManager.
-    transaction_manager: TransactionManager,
+    pub transaction_manager: TransactionManager,
 }
 
 impl Database {

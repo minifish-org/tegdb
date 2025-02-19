@@ -49,25 +49,23 @@ impl Transaction {
         }
     }
 
-    // Updated: Acquire a lock for the given key if not already held.
+    // Updated: Acquire a lock via the TransactionManager.
     pub async fn acquire_lock(&mut self, key: &[u8]) -> Result<(), Error> {
-        // Skip reacquisition if already owned.
+        // Skip reacquisition if already held.
         if self.locks.iter().any(|l| l == key) {
             return Ok(());
         }
-        use crate::lock_manager::LockManager;
         let key_vec = key.to_vec();
-        // Pass the transaction snapshot as the transaction ID.
-        LockManager::acquire_lock(key_vec.clone(), self.snapshot).await;
+        // Use the TransactionManager of the associated Database.
+        self.db.transaction_manager.acquire_lock(key_vec.clone(), self.snapshot).await;
         self.locks.push(key_vec);
         Ok(())
     }
 
-    // Updated: Release all acquired locks using the transaction snapshot.
+    // Updated: Release all acquired locks.
     async fn release_locks(&mut self) {
-        use crate::lock_manager::LockManager;
         for lock in self.locks.drain(..) {
-            LockManager::release_lock(lock, self.snapshot).await;
+            self.db.transaction_manager.release_lock(lock, self.snapshot).await;
         }
     }
 
