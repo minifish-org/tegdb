@@ -11,6 +11,7 @@ use crate::types::Snapshot;
 use crate::constants::{KEY_SEPARATOR, MAX_KEY_BYTE, MIN_KEY_BYTE}; // New import for constants
 use dashmap::DashMap; // new import for DashMap
 use std::sync::atomic::AtomicU64; // new import for AtomicU64
+use crate::utils::make_marker_key; // new import for make_marker_key
 
 /// Simplified Lock using an atomic owner field.
 pub struct Lock {
@@ -142,7 +143,7 @@ impl TransactionManager {
                                     current_key = Some(logical_key);
                                     
                                     // Check transaction marker
-                                    let txn_marker_key = format!("{}{}", crate::constants::TXN_MARKER_PREFIX, snapshot);
+                                    let txn_marker_key = make_marker_key(snapshot);
                                     match engine.get(txn_marker_key.as_bytes()).await {
                                         Some(marker) if marker == b"commit" => {
                                             // If committed but marked as deleted, remove it

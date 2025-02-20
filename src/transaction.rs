@@ -3,6 +3,7 @@ use crate::database::Database;
 use crate::snapshot::get_atomic_snapshot;
 use crate::types::Snapshot;
 use std::io::Error;
+use crate::utils::make_marker_key;
 
 const TXN_MARKER_COMMIT: &[u8] = b"commit";
 const TXN_MARKER_ROLLBACK: &[u8] = b"rollback";
@@ -145,7 +146,7 @@ impl Transaction {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
                     if let Ok(snapshot) = snapshot_str.parse::<u64>() {
-                        let txn_marker_key = format!("{}{}", TXN_MARKER_PREFIX, snapshot);
+                        let txn_marker_key = make_marker_key(snapshot);
                         if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
                             if marker_value == TXN_MARKER_COMMIT {
                                 return if candidate_value == DELETED_MARKER {
@@ -173,7 +174,7 @@ impl Transaction {
     pub async fn commit(mut self) -> Result<(), Error> {
         if !self.ops.is_empty() {
             self.db.push_counters(self.new_counter, self.old_counter);
-            let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
+            let marker_key = make_marker_key(self.snapshot);
             self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
         }
         self.release_locks().await;
@@ -187,7 +188,7 @@ impl Transaction {
             for mk in &self.ops {
                 self.db.engine.del(mk).await?;
             }
-            let marker_key = format!("{}{}", TXN_MARKER_PREFIX, self.snapshot);
+            let marker_key = make_marker_key(self.snapshot);
             self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec()).await?;
         }
         self.release_locks().await;
