@@ -46,7 +46,7 @@ fn database_benchmark(c: &mut Criterion) {
     });
 
     group.finish();
-    db.shutdown();
+    rt.block_on(db.shutdown());
     fs::remove_dir_all("bench_db").ok();
 }
 

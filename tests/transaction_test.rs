@@ -21,8 +21,7 @@ async fn test_insert_and_select() -> Result<(), Error> {
     assert_eq!(txn.select(key).await, Some(value));
     txn.rollback().await?;
 
-    // Drop the database.
-    drop(db);
+    db.shutdown().await;
     fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
@@ -46,8 +45,7 @@ async fn test_update() -> Result<(), Error> {
     assert_eq!(txn.select(key).await, Some(updated));
     txn.rollback().await?;
 
-    // Drop the database.
-    drop(db);
+    db.shutdown().await;
     fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
@@ -69,8 +67,7 @@ async fn test_delete() -> Result<(), Error> {
     assert!(txn.select(key).await.is_none());
     txn.rollback().await?;
 
-    // Drop the database.
-    drop(db);
+    db.shutdown().await;
     fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
@@ -90,8 +87,8 @@ async fn test_rollback_effect() -> Result<(), Error> {
         assert_eq!(txn.select(b"temp_key").await, None);
         txn.rollback().await?;
     }
-    // Drop the database.
-    drop(db);
+
+    db.shutdown().await;
     fs::remove_dir_all(&path).unwrap();
     Ok(())
 }

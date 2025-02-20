@@ -279,7 +279,6 @@ impl Database {
     /// Initializes a new Database with Engine and starts the GC thread.
     pub async fn new(path: PathBuf) -> Self {
         let engine = Engine::new(path);
-        // Directly await snapshot init.
         crate::snapshot::init_snapshot(&engine).await;
         let tm = TransactionManager::new();
         tm.start_gc(engine.clone());
@@ -319,13 +318,9 @@ impl Database {
         Transaction::begin(self.clone()).await
     }
 
-    /// Initiates shutdown by stopping GC and persisting snapshots.
-    pub fn shutdown(&self) {
+    // Simplify shutdown: no atomic flag check.
+    pub async fn shutdown(&self) {
         self.transaction_manager.stop_gc();
-        // Persist snapshot asynchronously on shutdown.
-        let engine = self.engine.clone();
-        tokio::spawn(async move {
-            crate::snapshot::persist_snapshot(&engine).await;
-        });
+        crate::snapshot::persist_snapshot(&self.engine).await;
     }
 }

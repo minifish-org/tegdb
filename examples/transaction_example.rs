@@ -30,5 +30,5 @@ async fn main() {
     tx.commit().await.unwrap();
 
     //println!("Dropping database now.");
-    db.shutdown();
+    db.shutdown().await;
 }
