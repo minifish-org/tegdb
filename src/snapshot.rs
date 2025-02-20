@@ -4,6 +4,7 @@ use crate::engine::Engine;
 use crate::types::Snapshot;
 use std::io::Error;
 
+/// The key under which the snapshot counter is persisted.
 pub const SNAPSHOT_KEY: &[u8] = b"__snapshot__";
 
 // Global snapshot counter.

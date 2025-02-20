@@ -12,6 +12,16 @@ pub struct Wal {
     pub writer: WalWriter,
 }
 
+// New: Helper function to read a big-endian u32 from the given reader.
+fn read_u32(reader: &mut BufReader<&mut File>) -> Result<u32, std::io::Error> {
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf)?;
+    Ok(u32::from_be_bytes(buf))
+}
+
+// New: Constant for length-sizing fields.
+const LEN_FIELD_SIZE: u64 = 4;
+
 impl Wal {
     pub fn new(path: PathBuf) -> Self {
         if let Some(dir) = path.parent() {
@@ -43,13 +53,10 @@ impl Wal {
             let file_len = file.metadata().unwrap().len();
             let mut r = BufReader::new(&mut file);
             let mut pos = r.seek(SeekFrom::Start(0)).unwrap();
-            let mut len_buf = [0u8; 4];
             while pos < file_len {
-                r.read_exact(&mut len_buf).unwrap();
-                let key_len = u32::from_be_bytes(len_buf);
-                r.read_exact(&mut len_buf).unwrap();
-                let value_len = u32::from_be_bytes(len_buf);
-                let value_pos = pos + 4 + 4 + key_len as u64;
+                let key_len = read_u32(&mut r).expect("Failed to read key length");
+                let value_len = read_u32(&mut r).expect("Failed to read value length");
+                let value_pos = pos + LEN_FIELD_SIZE + LEN_FIELD_SIZE + key_len as u64;
                 let mut key = vec![0; key_len as usize];
                 r.read_exact(&mut key).unwrap();
                 let mut value = vec![0; value_len as usize];

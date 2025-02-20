@@ -52,7 +52,8 @@ impl Engine {
         };
         s.logger.log("Engine initialized");
         // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
-        if insert_count > 10000 && ((remove_count as f64) / (insert_count as f64)) >= 0.3 {
+        if insert_count > crate::constants::COMPACTION_INSERT_THRESHOLD &&
+           ((remove_count as f64) / (insert_count as f64)) >= crate::constants::REMOVAL_RATIO_THRESHOLD {
             s.compact().expect("Failed to compact wal");
         }
         s
@@ -103,18 +104,28 @@ impl Engine {
         Ok(())
     }
 
-    /// Returns an iterator over key-value pairs within the specified range.
-    pub async fn scan<'a>(
-        &'a self,
-        range: Range<Vec<u8>>,
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
+    // New: Internal helper for scanning key_map to reduce duplicated code.
+    fn scan_internal(&self, range: Range<Vec<u8>>, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>)> {
         let mut results: Vec<(Vec<u8>, Vec<u8>)> = self
             .key_map
             .iter()
             .filter(|entry| entry.key() >= &range.start && entry.key() < &range.end)
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect();
-        results.sort_by(|a, b| a.0.cmp(&b.0));
+        if reverse {
+            results.sort_by(|a, b| b.0.cmp(&a.0));
+        } else {
+            results.sort_by(|a, b| a.0.cmp(&b.0));
+        }
+        results
+    }
+    
+    /// Returns an iterator over key-value pairs within the specified range.
+    pub async fn scan<'a>(
+        &'a self,
+        range: Range<Vec<u8>>,
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
+        let results = self.scan_internal(range, false);
         Ok(Box::new(results.into_iter()))
     }
 
@@ -123,13 +134,7 @@ impl Engine {
         &self,
         range: Range<Vec<u8>>,
     ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)>>, std::io::Error> {
-        let mut results: Vec<(Vec<u8>, Vec<u8>)> = self
-            .key_map
-            .iter()
-            .filter(|entry| entry.key() >= &range.start && entry.key() < &range.end)
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
-        results.sort_by(|a, b| b.0.cmp(&a.0)); // sort in descending order
+        let results = self.scan_internal(range, true);
         Ok(Box::new(results.into_iter()))
     }
 

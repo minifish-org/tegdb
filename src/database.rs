@@ -10,15 +10,16 @@ use std::pin::Pin;
 use std::collections::{HashMap, HashSet};
 use crate::types::Snapshot;
 use std::future::Future; // New import for Future
+use crate::constants::{KEY_SEPARATOR, MAX_KEY_BYTE, MIN_KEY_BYTE}; // New import for constants
 
-// New: Lock struct definition.
+/// Lock structure representing state for a specific key.
 pub struct Lock {
     pub locked: bool,
     pub owner: Option<u64>,
     pub notify: Arc<Notify>,
 }
 
-// Updated: TransactionManager now holds transaction fields and GC logic.
+/// Manages active transactions, locks and garbage collection.
 pub struct TransactionManager {
     pub active_transactions: Arc<SkipSet<Snapshot>>,
     pub oldest_read_snapshot: Arc<SkipSet<Snapshot>>,
@@ -76,7 +77,7 @@ impl TransactionManager {
         self.oldest_read_snapshot.remove(&snapshot);
     }
     
-    /// Returns the oldest active transaction snapshot or MAX if none.
+    /// Returns the oldest active transaction snapshot or `Snapshot::MAX` if none.
     pub fn get_oldest_read_snapshot(&self) -> Snapshot {
         self.oldest_read_snapshot.iter()
             .next()
@@ -84,7 +85,7 @@ impl TransactionManager {
             .unwrap_or(Snapshot::MAX)
     }
     
-    /// Starts the GC thread using a dedicated runtime.
+    /// Spawns the GC thread in a dedicated runtime.
     pub fn start_gc(&self, engine: Engine) {
         let tm = self.clone();
         std::thread::spawn(move || {
@@ -125,9 +126,9 @@ impl TransactionManager {
         
         let mut current_key: Option<Vec<u8>> = None;
         
-        let mut iter = engine.reverse_scan(vec![0]..vec![255]).await?;
+        let mut iter = engine.reverse_scan(vec![MIN_KEY_BYTE]..vec![MAX_KEY_BYTE]).await?;
         while let Some((key, value)) = iter.next() {
-            if let Some(pos) = key.iter().rposition(|&b| b == b':') {
+            if let Some(pos) = key.iter().rposition(|&b| b == KEY_SEPARATOR) {
                 let logical_key = key[..pos].to_vec();
                 if let Ok(snap_str) = std::str::from_utf8(&key[pos + 1..]) {
                     if let Ok(snapshot) = snap_str.parse::<Snapshot>() {
@@ -165,13 +166,14 @@ impl TransactionManager {
         Ok(())
     }
     
-    /// Pushes counters and notifies GC if the removal ratio threshold is reached.
+    /// Pushes counters and notifies the GC thread when GC thresholds are exceeded.
     pub fn push_counters(&self, new: usize, old: usize) {
         self.total_new.fetch_add(new, Ordering::Relaxed);
         self.total_old.fetch_add(old, Ordering::Relaxed);
         let tn = self.total_new.load(Ordering::Relaxed);
         let to = self.total_old.load(Ordering::Relaxed);
-        if tn > 10000 && (to as f64) / (tn as f64) >= 0.3 {
+        if tn > crate::constants::GC_INSERT_THRESHOLD &&
+           (to as f64) / (tn as f64) >= crate::constants::GC_REMOVAL_RATIO_THRESHOLD {
             self.gc_notify.notify_one();
         }
     }
@@ -182,7 +184,7 @@ impl TransactionManager {
         self.gc_notify.notify_one(); // notify GC thread to wake and exit
     }
 
-    // New: Acquires a lock for key with txn_id.
+    /// Asynchronously acquires a lock for the given key and transaction.
     pub async fn acquire_lock(&self, key: Vec<u8>, txn_id: u64) {
         loop {
             let notify = {
@@ -219,7 +221,7 @@ impl TransactionManager {
         }
     }
 
-    // New: Releases the lock for key held by txn_id.
+    /// Releases the lock for the given key held by the transaction.
     pub async fn release_lock(&self, key: Vec<u8>, txn_id: u64) {
         let locks = self.locks.lock().await;
         if let Some(lock_arc) = locks.get(&key) {
@@ -232,7 +234,7 @@ impl TransactionManager {
         }
     }
 
-    // Updated: Use Future instead of std::future::Future in the return type.
+    /// Checks for deadlock cycles asynchronously.
     fn has_deadlock<'a>(
         wait_graph: &'a Mutex<HashMap<u64, HashSet<u64>>>,
         txn_id: u64,
@@ -254,7 +256,7 @@ impl TransactionManager {
         })
     }
 
-    // New: Removes a waiting edge.
+    /// Removes a waiting edge from the transaction dependency graph.
     async fn remove_waiting_edge(wait_graph: &Mutex<HashMap<u64, HashSet<u64>>>, waiter: u64, owner: u64) {
         let mut graph = wait_graph.lock().await;
         if let Some(set) = graph.get_mut(&waiter) {
@@ -266,16 +268,15 @@ impl TransactionManager {
     }
 }
 
-// Updated: Database no longer holds engine separately; GC is managed in TransactionManager.
+/// Database encapsulating the Engine and TransactionManager.
 #[derive(Clone)]
 pub struct Database {
     pub engine: Engine,
-    // Combined transaction fields and GC logic in TransactionManager.
     pub transaction_manager: TransactionManager,
 }
 
 impl Database {
-    /// Initializes a new Database with an Engine and starts GC.
+    /// Initializes a new Database with Engine and starts the GC thread.
     pub async fn new(path: PathBuf) -> Self {
         let engine = Engine::new(path);
         // Directly await snapshot init.
@@ -288,7 +289,7 @@ impl Database {
         }
     }
 
-    /// Exposes push_counters to update GC metrics.
+    /// Updates GC metrics from transactions.
     pub fn push_counters(&self, new: usize, old: usize) {
         self.transaction_manager.push_counters(new, old);
     }
@@ -298,17 +299,17 @@ impl Database {
         self.transaction_manager.stop_gc();
     }
 
-    /// Delegates transaction registration.
+    /// Registers a new transaction.
     pub fn register_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.register_transaction(snapshot);
     }
 
-    /// Delegates transaction unregistration.
+    /// Unregisters a transaction.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.unregister_transaction(snapshot);
     }
 
-    /// Returns the current oldest snapshot.
+    /// Retrieves the oldest active snapshot.
     pub fn get_oldest_read_snapshot(&self) -> Snapshot {
         self.transaction_manager.get_oldest_read_snapshot()
     }

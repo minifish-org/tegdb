@@ -23,10 +23,10 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    /// Helper function to create a snapshot key in the format "key:snapshot"
+    /// Creates a snapshot key by appending the separator and the snapshot value to the given key.
     fn make_snapshot_key(key: &[u8], snapshot: Snapshot) -> Vec<u8> {
         let mut snapshot_key = key.to_vec();
-        snapshot_key.extend_from_slice(b":");
+        snapshot_key.push(crate::constants::KEY_SEPARATOR);
         snapshot_key.extend_from_slice(snapshot.to_string().as_bytes());
         snapshot_key
     }
@@ -141,7 +141,7 @@ impl Transaction {
         let upper = Self::make_snapshot_key(key, self.read_snapshot + 1);
         let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await.ok()?;
         while let Some((candidate_key, candidate_value)) = rev_iter.next() {
-            if let Some(pos) = candidate_key.iter().rposition(|&b| b == b':') {
+            if let Some(pos) = candidate_key.iter().rposition(|&b| b == crate::constants::KEY_SEPARATOR) {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
                     if let Ok(snapshot) = snapshot_str.parse::<u64>() {
