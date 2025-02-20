@@ -1,4 +1,3 @@
-use crate::constants::TXN_MARKER_PREFIX;
 use crate::database::Database;
 use crate::snapshot::get_atomic_snapshot;
 use crate::types::Snapshot;
