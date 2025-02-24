@@ -28,8 +28,7 @@ async fn transaction_cycle(db: &Database) -> Result<(), Box<dyn std::error::Erro
 fn database_benchmark(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let db = rt.block_on(async {
-        let db = Database::new(PathBuf::from("bench_db")).await;
-        db
+        Database::new(PathBuf::from("bench_db")).await
     });
     let mut group = c.benchmark_group("database_transaction");
     group.warm_up_time(std::time::Duration::from_secs(5));
@@ -37,10 +36,75 @@ fn database_benchmark(c: &mut Criterion) {
     group.sample_size(100);
     group.throughput(Throughput::Elements(1));
 
+    // Transaction cycle benchmark.
     group.bench_function("transaction_cycle", |b| {
         b.iter(|| {
             rt.block_on(async {
                 transaction_cycle(&db).await.unwrap();
+            })
+        })
+    });
+
+    // Prepopulate key for select benchmark.
+    rt.block_on(async {
+        let mut tx = db.new_transaction().await;
+        tx.insert(black_box(b"keyselect"), black_box(b"value".to_vec())).await.unwrap();
+        tx.commit().await.unwrap();
+    });
+    group.bench_function("select_only", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let mut tx = db.new_transaction().await;
+                let _ = tx.select(black_box(b"keyselect")).await.unwrap_or(Vec::new());
+                tx.rollback().await.unwrap();
+            })
+        })
+    });
+
+    // Prepopulate key for update benchmark.
+    rt.block_on(async {
+        let mut tx = db.new_transaction().await;
+        let key = b"key_update";
+        tx.insert(black_box(key), black_box(b"old_value".to_vec())).await.ok();
+        tx.commit().await.ok();
+    });
+    group.bench_function("update", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let mut tx = db.new_transaction().await;
+                let key = b"key_update";
+                tx.update(black_box(key), black_box(b"new_value".to_vec())).await.unwrap();
+                tx.commit().await.unwrap();
+            })
+        })
+    });
+
+    // Benchmark for insert.
+    group.bench_function("insert", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let mut tx = db.new_transaction().await;
+                let key = b"key_insert";
+                tx.insert(black_box(key), black_box(b"insert_value".to_vec())).await.unwrap();
+                tx.commit().await.unwrap();
+            })
+        })
+    });
+
+    // Prepopulate key for delete benchmark.
+    rt.block_on(async {
+        let mut tx = db.new_transaction().await;
+        let key = b"key_delete";
+        tx.insert(black_box(key), black_box(b"delete_value".to_vec())).await.ok();
+        tx.commit().await.ok();
+    });
+    group.bench_function("delete", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let mut tx = db.new_transaction().await;
+                let key = b"key_delete";
+                tx.delete(black_box(key)).await.unwrap();
+                tx.commit().await.unwrap();
             })
         })
     });
