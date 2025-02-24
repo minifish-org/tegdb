@@ -36,15 +36,6 @@ fn database_benchmark(c: &mut Criterion) {
     group.sample_size(100);
     group.throughput(Throughput::Elements(1));
 
-    // Transaction cycle benchmark.
-    group.bench_function("transaction_cycle", |b| {
-        b.iter(|| {
-            rt.block_on(async {
-                transaction_cycle(&db).await.unwrap();
-            })
-        })
-    });
-
     // Prepopulate key for select benchmark.
     rt.block_on(async {
         let mut tx = db.new_transaction().await;
@@ -105,6 +96,15 @@ fn database_benchmark(c: &mut Criterion) {
                 let key = b"key_delete";
                 tx.delete(black_box(key)).await.unwrap();
                 tx.commit().await.unwrap();
+            })
+        })
+    });
+
+    // Transaction cycle benchmark.
+    group.bench_function("transaction_cycle", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                transaction_cycle(&db).await.unwrap();
             })
         })
     });
