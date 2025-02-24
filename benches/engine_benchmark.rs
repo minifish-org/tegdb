@@ -56,6 +56,21 @@ fn engine_benchmark(c: &mut Criterion) {
         })
     });
 
+    // New: Benchmark for reverse_scan operation.
+    group.bench_function("reverse_scan", |b| {
+        let start_key = b"a";
+        let end_key = b"z";
+        b.iter(|| {
+            rt.block_on(async {
+                let _ = engine
+                    .reverse_scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
+                    .await
+                    .unwrap()
+                    .collect::<Vec<_>>();
+            });
+        })
+    });
+
     // Benchmark for delete operation.
     group.bench_function("del", |b| {
         b.iter(|| {
@@ -237,6 +252,31 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
         });
         drop(engine);
         fs::remove_dir_all("concurrent.db").unwrap();
+    });
+
+    // New: Concurrent benchmark for reverse_scan.
+    group.bench_function("reverse_scan", |b| {
+        let engine = Engine::new(PathBuf::from("concurrent_rev.db"));
+        b.iter(|| {
+            rt.block_on(async {
+                let mut tasks = Vec::new();
+                for _ in 0..4 {
+                    let engine_clone = engine.clone();
+                    tasks.push(tokio::spawn(async move {
+                        let _ = engine_clone
+                            .reverse_scan(b"a".to_vec()..b"z".to_vec())
+                            .await
+                            .unwrap()
+                            .collect::<Vec<_>>();
+                    }));
+                }
+                for t in tasks {
+                    t.await.unwrap();
+                }
+            });
+        });
+        drop(engine);
+        fs::remove_dir_all("concurrent_rev.db").unwrap();
     });
 
     // Concurrent benchmark for delete.
