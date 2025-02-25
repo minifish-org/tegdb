@@ -184,16 +184,15 @@ impl TransactionManager {
     }
 
     /// Asynchronously acquires a lock for the given key and transaction.
-    pub async fn acquire_lock(&self, key: Vec<u8>, txn_id: u64) {
+    pub async fn acquire_lock(&self, key: Vec<u8>, txn_id: u64) -> Result<(), std::io::Error> {
+        use std::io::{Error, ErrorKind};
         loop {
             if let Some(lock_entry) = self.locks.get(&key) {
                 let lock_arc = lock_entry.value();
                 let current = lock_arc.owner.load(Ordering::Acquire);
                 if current == 0 || current == txn_id {
-                    if lock_arc.owner.compare_exchange(
-                        current, txn_id, Ordering::AcqRel, Ordering::Acquire
-                    ).is_ok() {
-                        return;
+                    if lock_arc.owner.compare_exchange(current, txn_id, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                        return Ok(());
                     }
                 }
                 // Replace entry API: update wait_graph for txn_id.
@@ -210,7 +209,7 @@ impl TransactionManager {
                 let mut visited = HashSet::new();
                 if Self::has_deadlock(&self.wait_graph, txn_id, &mut visited) {
                     Self::remove_waiting_edge(&self.wait_graph, txn_id, current);
-                    panic!("Deadlock detected between transactions.");
+                    return Err(Error::new(ErrorKind::Other, "Deadlock detected between transactions."));
                 }
                 lock_arc.notify.notified().await;
             } else {
@@ -219,7 +218,7 @@ impl TransactionManager {
                     notify: Notify::new(),
                 });
                 self.locks.insert(key.clone(), new_lock);
-                return;
+                return Ok(());
             }
         }
     }

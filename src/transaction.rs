@@ -1,7 +1,7 @@
 use crate::database::Database;
 use crate::snapshot::get_atomic_snapshot;
 use crate::types::Snapshot;
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use crate::utils::make_marker_key;
 
 const TXN_MARKER_COMMIT: &[u8] = b"commit";
@@ -20,6 +20,8 @@ pub struct Transaction {
     pub old_counter: usize, // counts old version updates and deletes.
     // New: List of acquired locks.
     locks: Vec<Vec<u8>>,
+    // New: Transaction status flag to mark if it should be aborted.
+    pub should_abort: bool,
 }
 
 impl Transaction {
@@ -46,6 +48,7 @@ impl Transaction {
             new_counter: 0,
             old_counter: 0,
             locks: Vec::new(),
+            should_abort: false, // Initialize the abort status
         }
     }
 
@@ -56,8 +59,10 @@ impl Transaction {
             return Ok(());
         }
         let key_vec = key.to_vec();
-        // Use the TransactionManager of the associated Database.
-        self.db.transaction_manager.acquire_lock(key_vec.clone(), self.snapshot).await;
+        if let Err(e) = self.db.transaction_manager.acquire_lock(key_vec.clone(), self.snapshot).await {
+            self.mark_abort();
+            return Err(e);
+        }
         self.locks.push(key_vec);
         Ok(())
     }
@@ -72,11 +77,14 @@ impl Transaction {
     /// Buffers an insert operation after verifying key/value sizes.  
     /// If the key/value exceeds allowed limits (MAX_KEY_SIZE, MAX_VALUE_SIZE), returns an error.
     pub async fn insert(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
+        if self.should_abort {
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
+        }
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
 
         // Check for an existing record.
-        if let Some(existing) = self.select(key).await {
+        if let Some(existing) = self.select(key).await? {
             if existing == value {
                 return Ok(());
             }
@@ -92,10 +100,13 @@ impl Transaction {
     /// Buffers an update operation if the key exists.
     /// If no data exists, the update is ignored.
     pub async fn update(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
+        if self.should_abort {
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
+        }
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
 
-        if self.select(key).await.is_some() {
+        if self.select(key).await?.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
@@ -109,10 +120,13 @@ impl Transaction {
     /// Buffers a delete operation if the key exists.
     /// If the key doesn't exist (no record in the snapshot), the delete is ignored.
     pub async fn delete(&mut self, key: &[u8]) -> Result<(), Error> {
+        if self.should_abort {
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
+        }
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
 
-        if self.select(key).await.is_some() {
+        if self.select(key).await?.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
             self.ops.push(mod_key);
@@ -125,21 +139,20 @@ impl Transaction {
     /// Reads the latest value for a given key using buffered operations and a reverse scan.
     /// For each candidate, if its corresponding txn_marker key (formed as "txn_marker:<snapshot>")
     /// shows "commit", the candidate is used. If the txn_marker is "rollback" or missing, the candidate is deleted and the scan continues.
-    pub async fn select(&self, key: &[u8]) -> Option<Vec<u8>> {
+    pub async fn select(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
+        if self.should_abort {
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
+        }
         // Check current transaction changes first.
         let current_txn_key = Self::make_snapshot_key(key, self.snapshot);
         if let Some(value) = self.db.engine.get(&current_txn_key).await {
-            if value == DELETED_MARKER {
-                return None;
-            } else {
-                return Some(value);
-            }
+            return Ok(if value == DELETED_MARKER { None } else { Some(value) });
         }
 
         // Build range: lower bound "key:0", upper bound "key:(read_snapshot+1)"
         let lower = Self::make_snapshot_key(key, 0);
         let upper = Self::make_snapshot_key(key, self.read_snapshot + 1);
-        let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await.ok()?;
+        let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await?;
         while let Some((candidate_key, candidate_value)) = rev_iter.next() {
             if let Some(pos) = candidate_key.iter().rposition(|&b| b == crate::constants::KEY_SEPARATOR) {
                 let snapshot_bytes = &candidate_key[pos + 1..];
@@ -148,11 +161,11 @@ impl Transaction {
                         let txn_marker_key = make_marker_key(snapshot);
                         if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
                             if marker_value == TXN_MARKER_COMMIT {
-                                return if candidate_value == DELETED_MARKER {
+                                return Ok(if candidate_value == DELETED_MARKER {
                                     None
                                 } else {
                                     Some(candidate_value)
-                                };
+                                });
                             } else {
                                 let _ = self.db.engine.del(&candidate_key).await;
                                 continue;
@@ -166,11 +179,16 @@ impl Transaction {
             }
             let _ = self.db.engine.del(&candidate_key).await;
         }
-        None
+        Ok(None)
     }
 
     /// Commits the buffered operations and, if any ops are present, writes a commit marker.
     pub async fn commit(mut self) -> Result<(), Error> {
+        if self.should_abort {
+            // Rollback first, then return error.
+            self.rollback().await?;
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted; commit not allowed, already rolled back"));
+        }
         if !self.ops.is_empty() {
             self.db.push_counters(self.new_counter, self.old_counter);
             let marker_key = make_marker_key(self.snapshot);
@@ -193,5 +211,10 @@ impl Transaction {
         self.release_locks().await;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
+    }
+
+    // New: Mark the transaction to be aborted.
+    pub fn mark_abort(&mut self) {
+        self.should_abort = true;
     }
 }

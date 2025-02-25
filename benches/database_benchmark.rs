@@ -16,7 +16,7 @@ async fn transaction_cycle(db: &Database) -> Result<(), Box<dyn std::error::Erro
     // Update key.
     tx.update(black_box(key), black_box(updated_value.to_vec())).await?;
     // Select key.
-    let _ = tx.select(black_box(key)).await.unwrap_or(Vec::new());
+    let _ = tx.select(black_box(key)).await.unwrap().unwrap_or(Vec::new());
     // Delete key.
     tx.delete(black_box(key)).await?;
     // Commit transaction.
@@ -46,7 +46,7 @@ fn database_benchmark(c: &mut Criterion) {
         b.iter(|| {
             rt.block_on(async {
                 let mut tx = db.new_transaction().await;
-                let _ = tx.select(black_box(b"keyselect")).await.unwrap_or(Vec::new());
+                let _ = tx.select(black_box(b"keyselect")).await.unwrap().unwrap_or(Vec::new());
                 tx.rollback().await.unwrap();
             })
         })
