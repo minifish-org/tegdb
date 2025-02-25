@@ -61,6 +61,7 @@ impl Engine {
 
     /// Retrieves the value associated with the given key asynchronously.
     pub async fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        // Updated: Using SkipMap's API which returns a reference where value() retrieves the stored value.
         self.key_map.get(key).map(|entry| entry.value().clone())
     }
 
@@ -84,11 +85,12 @@ impl Engine {
             return self.del(key).await;
         }
         if let Some(existing) = self.key_map.get(key) {
-            if *existing == value {
+            if *existing.value() == value {
                 return Ok(());
             }
         }
         self.wal.write_entry(key, &value);
+        // Updated: SkipMap insert API
         self.key_map.insert(key.to_vec(), value);
         Ok(())
     }
@@ -100,32 +102,27 @@ impl Engine {
             return Ok(());
         }
         self.wal.write_entry(key, &[]);
+        // Updated: SkipMap removal API
         self.key_map.remove(key);
         Ok(())
     }
 
-    // New: Internal helper for scanning key_map to reduce duplicated code.
-    fn scan_internal(&self, range: Range<Vec<u8>>, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let mut results: Vec<(Vec<u8>, Vec<u8>)> = self
-            .key_map
-            .iter()
-            .filter(|entry| entry.key() >= &range.start && entry.key() < &range.end)
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
-            .collect();
+    // Updated: Use SkipMap's range API.
+    fn scan_internal(&self, start: Vec<u8>, end: Vec<u8>, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>)> {
+        let range_iter = self.key_map.range(start..end).map(|entry| (entry.key().clone(), entry.value().clone()));
         if reverse {
-            results.sort_by(|a, b| b.0.cmp(&a.0));
+            range_iter.rev().collect()
         } else {
-            results.sort_by(|a, b| a.0.cmp(&b.0));
+            range_iter.collect()
         }
-        results
     }
-    
+
     /// Returns an iterator over key-value pairs within the specified range.
     pub async fn scan<'a>(
         &'a self,
         range: Range<Vec<u8>>,
     ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
-        let results = self.scan_internal(range, false);
+        let results = self.scan_internal(range.start, range.end, false);
         Ok(Box::new(results.into_iter()))
     }
 
@@ -134,7 +131,7 @@ impl Engine {
         &self,
         range: Range<Vec<u8>>,
     ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)>>, std::io::Error> {
-        let results = self.scan_internal(range, true);
+        let results = self.scan_internal(range.start, range.end, true);
         Ok(Box::new(results.into_iter()))
     }
 
