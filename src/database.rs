@@ -1,6 +1,6 @@
 use crate::engine::Engine;
 use crate::transaction::Transaction;
-use crossbeam_skiplist::SkipSet;
+use crossbeam_skiplist::{SkipSet, SkipMap}; // Changed from dashmap::DashMap
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::io::Error;
@@ -9,7 +9,6 @@ use tokio::sync::Notify;
 use std::collections::HashSet;
 use crate::types::Snapshot;
 use crate::constants::{KEY_SEPARATOR, MAX_KEY_BYTE, MIN_KEY_BYTE}; // New import for constants
-use dashmap::DashMap; // new import for DashMap
 use std::sync::atomic::AtomicU64; // new import for AtomicU64
 use crate::utils::make_marker_key; // new import for make_marker_key
 
@@ -30,9 +29,9 @@ pub struct TransactionManager {
     // Notify GC thread when thresholds are met.
     pub gc_notify: Arc<Notify>,
 
-    // New: Lock and wait graph now per-database.
-    pub locks: DashMap<Vec<u8>, Arc<Lock>>,
-    pub wait_graph: DashMap<u64, HashSet<u64>>,
+    // New: Lock and wait graph now use SkipMap.
+    pub locks: SkipMap<Vec<u8>, Arc<Lock>>,
+    pub wait_graph: SkipMap<u64, HashSet<u64>>,
 }
 
 impl Clone for TransactionManager {
@@ -44,8 +43,8 @@ impl Clone for TransactionManager {
             total_new: AtomicUsize::new(self.total_new.load(Ordering::Relaxed)),
             total_old: AtomicUsize::new(self.total_old.load(Ordering::Relaxed)),
             gc_notify: self.gc_notify.clone(),
-            locks: DashMap::new(),
-            wait_graph: DashMap::new(),
+            locks: SkipMap::new(),
+            wait_graph: SkipMap::new(),
         }
     }
 }
@@ -60,8 +59,8 @@ impl TransactionManager {
             total_new: AtomicUsize::new(0),
             total_old: AtomicUsize::new(0),
             gc_notify: Arc::new(Notify::new()),
-            locks: DashMap::new(),
-            wait_graph: DashMap::new(),
+            locks: SkipMap::new(),
+            wait_graph: SkipMap::new(),
         }
     }
     
@@ -187,7 +186,8 @@ impl TransactionManager {
     /// Asynchronously acquires a lock for the given key and transaction.
     pub async fn acquire_lock(&self, key: Vec<u8>, txn_id: u64) {
         loop {
-            if let Some(lock_arc) = self.locks.get(&key) {
+            if let Some(lock_entry) = self.locks.get(&key) {
+                let lock_arc = lock_entry.value();
                 let current = lock_arc.owner.load(Ordering::Acquire);
                 if current == 0 || current == txn_id {
                     if lock_arc.owner.compare_exchange(
@@ -195,13 +195,18 @@ impl TransactionManager {
                     ).is_ok() {
                         return;
                     }
-                    // retry if CAS failed
                 }
-                self.wait_graph.entry(txn_id).and_modify(|s| { s.insert(current); }).or_insert_with(|| {
+                // Replace entry API: update wait_graph for txn_id.
+                if let Some(entry) = self.wait_graph.get(&txn_id) {
+                    let mut set = entry.value().clone();
+                    set.insert(current);
+                    self.wait_graph.remove(&txn_id);
+                    self.wait_graph.insert(txn_id, set);
+                } else {
                     let mut set = HashSet::new();
                     set.insert(current);
-                    set
-                });
+                    self.wait_graph.insert(txn_id, set);
+                }
                 let mut visited = HashSet::new();
                 if Self::has_deadlock(&self.wait_graph, txn_id, &mut visited) {
                     Self::remove_waiting_edge(&self.wait_graph, txn_id, current);
@@ -221,7 +226,8 @@ impl TransactionManager {
 
     /// Releases the lock for the given key held by the transaction.
     pub async fn release_lock(&self, key: Vec<u8>, txn_id: u64) {
-        if let Some(lock_arc) = self.locks.get(&key) {
+        if let Some(entry) = self.locks.get(&key) {
+            let lock_arc = entry.value();
             if lock_arc.owner.load(Ordering::Acquire) == txn_id {
                 lock_arc.owner.store(0, Ordering::Release);
                 lock_arc.notify.notify_waiters();
@@ -231,15 +237,15 @@ impl TransactionManager {
 
     /// Checks for deadlock cycles asynchronously.
     fn has_deadlock(
-        wait_graph: &DashMap<u64, HashSet<u64>>,
+        wait_graph: &SkipMap<u64, HashSet<u64>>,
         txn_id: u64,
         visited: &mut HashSet<u64>
     ) -> bool {
         if !visited.insert(txn_id) {
             return true;
         }
-        if let Some(waiting_on) = wait_graph.get(&txn_id) {
-            for &other in waiting_on.iter() {
+        if let Some(entry) = wait_graph.get(&txn_id) {
+            for &other in entry.value().iter() {
                 if Self::has_deadlock(wait_graph, other, visited) {
                     return true;
                 }
@@ -249,11 +255,14 @@ impl TransactionManager {
     }
 
     /// Removes a waiting edge from the transaction dependency graph.
-    fn remove_waiting_edge(wait_graph: &DashMap<u64, HashSet<u64>>, waiter: u64, owner: u64) {
-        if let Some(mut entry) = wait_graph.get_mut(&waiter) {
-            entry.remove(&owner);
-            if entry.is_empty() {
-                wait_graph.remove(&waiter);
+    fn remove_waiting_edge(wait_graph: &SkipMap<u64, HashSet<u64>>, waiter: u64, owner: u64) {
+        if let Some(entry) = wait_graph.get(&waiter) {
+            let mut set = entry.value().clone();
+            set.remove(&owner);
+            drop(entry);
+            wait_graph.remove(&waiter);
+            if !set.is_empty() {
+                wait_graph.insert(waiter, set);
             }
         }
     }
