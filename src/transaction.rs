@@ -67,18 +67,6 @@ impl Transaction {
         Ok(())
     }
 
-    // New: Check write conflict: If the selected key's snapshot is greater than the txn snapshot, release the lock and return error.
-    pub async fn check_write_conflict(&mut self, key: &[u8]) -> Result<(), Error> {
-        let (_, candidate_snap) = self.select(key).await?;
-        if candidate_snap > self.snapshot {
-            let key_vec = key.to_vec();
-            self.db.transaction_manager.release_lock(key_vec.clone(), self.snapshot).await;
-            self.locks.retain(|l| l != &key_vec);
-            return Err(Error::new(ErrorKind::Other, "Write conflict error"));
-        }
-        Ok(())
-    }
-
     // Updated: Release all acquired locks.
     async fn release_locks(&mut self) {
         for lock in self.locks.drain(..) {
@@ -86,19 +74,14 @@ impl Transaction {
         }
     }
 
-    /// Buffers an insert operation after verifying key/value sizes.  
-    /// If the key/value exceeds allowed limits (MAX_KEY_SIZE, MAX_VALUE_SIZE), returns an error.
+    /// Updated: Merged write conflict check into a single select call in insert.
     pub async fn insert(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        // Acquire lock for the key.
         self.acquire_lock(key).await?;
-        // Check for write conflict.
-        self.check_write_conflict(key).await?;
-
-        // Check for an existing record.
-        if let Some(existing) = self.select(key).await?.0 {
+        let (existing, _) = self.check_conflict_and_get(key).await?;
+        if let Some(existing) = existing {
             if existing == value {
                 return Ok(());
             }
@@ -106,49 +89,38 @@ impl Transaction {
         let mod_key = Self::make_snapshot_key(key, self.snapshot);
         self.db.engine.set(&mod_key, value).await?;
         self.ops.push(mod_key);
-        // Count as new data.
         self.new_counter += 1;
         Ok(())
     }
 
-    /// Buffers an update operation if the key exists.
-    /// If no data exists, the update is ignored.
+    /// Updated: Merged write conflict check into a single select call in update.
     pub async fn update(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        // Acquire lock for the key.
         self.acquire_lock(key).await?;
-        // Check for write conflict.
-        self.check_write_conflict(key).await?;
-
-        if self.select(key).await?.0.is_some() {
+        let (existing, _) = self.check_conflict_and_get(key).await?;
+        if existing.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
-            // For update: count one new version and one old version.
             self.new_counter += 1;
             self.old_counter += 1;
         }
         Ok(())
     }
 
-    /// Buffers a delete operation if the key exists.
-    /// If the key doesn't exist (no record in the snapshot), the delete is ignored.
+    /// Updated: Merged write conflict check into a single select call in delete.
     pub async fn delete(&mut self, key: &[u8]) -> Result<(), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        // Acquire lock for the key.
         self.acquire_lock(key).await?;
-        // Check for write conflict.
-        self.check_write_conflict(key).await?;
-
-        if self.select(key).await?.0.is_some() {
+        let (existing, _) = self.check_conflict_and_get(key).await?;
+        if existing.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
             self.ops.push(mod_key);
-            // Count delete as one old version replaced.
             self.old_counter += 1;
         }
         Ok(())
@@ -242,5 +214,19 @@ impl Transaction {
     // New: Mark the transaction to be aborted.
     pub fn mark_abort(&mut self) {
         self.should_abort = true;
+    }
+
+    // New: Extracted function to check write conflict and return the current value and candidate snapshot.
+    async fn check_conflict_and_get(&mut self, key: &[u8]) -> Result<(Option<Vec<u8>>, u64), Error> {
+        let result = self.select(key).await?;
+        let (_, candidate_snap) = result;
+        if candidate_snap > self.snapshot {
+            self.mark_abort();
+            let key_vec = key.to_vec();
+            self.db.transaction_manager.release_lock(key_vec.clone(), self.snapshot).await;
+            self.locks.retain(|l| l != &key_vec);
+            return Err(Error::new(ErrorKind::Other, "Write conflict error"));
+        }
+        Ok(result)
     }
 }
