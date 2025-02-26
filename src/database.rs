@@ -317,6 +317,13 @@ impl Database {
         Transaction::begin(self.clone()).await
     }
 
+    /// Returns all active transaction snapshots from the TransactionManager.
+    pub fn get_active_transactions(&self) -> Vec<crate::types::Snapshot> {
+        self.transaction_manager.active_transactions.iter()
+            .map(|entry| *entry.value())
+            .collect()
+    }
+
     // Simplify shutdown: no atomic flag check.
     pub async fn shutdown(&self) {
         self.transaction_manager.stop_gc();

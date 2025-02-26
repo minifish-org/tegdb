@@ -12,8 +12,8 @@ pub struct Transaction {
     db: Database,
     // Snapshot timestamp used for MVCC.
     snapshot: Snapshot,
-    // read_snapshot holds the oldest active snapshot when this transaction began.
-    pub read_snapshot: Snapshot,
+    // New: All active transaction snapshots.
+    pub active_transactions: Vec<Snapshot>,
     ops: Vec<Vec<u8>>,
     // New: Combined counters for GC change tracking.
     pub new_counter: usize, // counts insertions and new version updates.
@@ -36,14 +36,15 @@ impl Transaction {
     /// Begins a new transaction from the given Database.
     pub async fn begin(db: crate::database::Database) -> Self {
         let snapshot = get_atomic_snapshot();
-        // Optional: Await any async initialization if needed.
-        let current_oldest = db.get_oldest_read_snapshot();
-        let read_snapshot = if current_oldest == Snapshot::MAX { snapshot } else { current_oldest };
+        // New: Retrieve all active transactions from the DB.
+        let active_transactions = db.get_active_transactions();
+        // New: Determine the oldest active snapshot.
+        let oldest = active_transactions.iter().min().cloned().unwrap_or(snapshot);
         db.register_transaction(snapshot);
         Self {
             db,
             snapshot,
-            read_snapshot,
+            active_transactions,
             ops: Vec::new(),
             new_counter: 0,
             old_counter: 0,
@@ -146,9 +147,10 @@ impl Transaction {
             }
         }
 
-        // Build range: lower bound "key:0", upper bound "key:(read_snapshot+1)"
+        // New: Use the oldest active transaction snapshot from active_transactions.
+        let lowest_active = self.active_transactions.iter().min().cloned().unwrap_or(0);
         let lower = Self::make_snapshot_key(key, 0);
-        let upper = Self::make_snapshot_key(key, self.read_snapshot + 1);
+        let upper = Self::make_snapshot_key(key, lowest_active + 1);
         let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await?;
         while let Some((candidate_key, candidate_value)) = rev_iter.next() {
             if let Some(pos) = candidate_key.iter().rposition(|&b| b == crate::constants::KEY_SEPARATOR) {
