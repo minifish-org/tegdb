@@ -21,7 +21,6 @@ pub struct Lock {
 /// Manages active transactions, locks and garbage collection.
 pub struct TransactionManager {
     pub active_transactions: Arc<SkipSet<Snapshot>>,
-    pub oldest_read_snapshot: Arc<SkipSet<Snapshot>>,
     pub stop_gc: Arc<AtomicBool>,
     // Global counters for committed modifications.
     pub total_new: AtomicUsize,
@@ -38,7 +37,6 @@ impl Clone for TransactionManager {
     fn clone(&self) -> Self {
         Self {
             active_transactions: self.active_transactions.clone(),
-            oldest_read_snapshot: self.oldest_read_snapshot.clone(),
             stop_gc: self.stop_gc.clone(),
             total_new: AtomicUsize::new(self.total_new.load(Ordering::Relaxed)),
             total_old: AtomicUsize::new(self.total_old.load(Ordering::Relaxed)),
@@ -54,7 +52,6 @@ impl TransactionManager {
     pub fn new() -> Self {
         Self {
             active_transactions: Arc::new(SkipSet::new()),
-            oldest_read_snapshot: Arc::new(SkipSet::new()),
             stop_gc: Arc::new(AtomicBool::new(false)),
             total_new: AtomicUsize::new(0),
             total_old: AtomicUsize::new(0),
@@ -67,18 +64,16 @@ impl TransactionManager {
     /// Registers a transaction by inserting its snapshot.
     pub fn register_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.insert(snapshot);
-        self.oldest_read_snapshot.insert(snapshot);
     }
     
     /// Unregisters a transaction.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.remove(&snapshot);
-        self.oldest_read_snapshot.remove(&snapshot);
     }
     
     /// Returns the oldest active transaction snapshot or `Snapshot::MAX` if none.
-    pub fn get_oldest_read_snapshot(&self) -> Snapshot {
-        self.oldest_read_snapshot.iter()
+    pub fn get_safe_snapshot(&self) -> Snapshot {
+        self.active_transactions.iter()
             .next()
             .map(|entry| *entry.value())
             .unwrap_or(Snapshot::MAX)
@@ -119,7 +114,7 @@ impl TransactionManager {
     
     /// Runs garbage collection based on the oldest snapshot using a single scan.
     pub async fn garbage_collect(&self, engine: &Engine) -> Result<(), Error> {
-        let oldest_read_snapshot = self.get_oldest_read_snapshot();
+        let safe_snapshot = self.get_safe_snapshot();
         // println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
         const DELETED_MARKER: &[u8] = b"__deleted__";
         
@@ -131,7 +126,7 @@ impl TransactionManager {
                 let logical_key = key[..pos].to_vec();
                 if let Ok(snap_str) = std::str::from_utf8(&key[pos + 1..]) {
                     if let Ok(snapshot) = snap_str.parse::<Snapshot>() {
-                        if snapshot < oldest_read_snapshot {
+                        if snapshot < safe_snapshot {
                             match &current_key {
                                 Some(current) if *current == logical_key => {
                                     // Not the first version, can be deleted
@@ -305,11 +300,6 @@ impl Database {
     /// Unregisters a transaction.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.transaction_manager.unregister_transaction(snapshot);
-    }
-
-    /// Retrieves the oldest active snapshot.
-    pub fn get_oldest_read_snapshot(&self) -> Snapshot {
-        self.transaction_manager.get_oldest_read_snapshot()
     }
 
     /// Begins a new transaction.
