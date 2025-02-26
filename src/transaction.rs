@@ -38,8 +38,6 @@ impl Transaction {
         let snapshot = get_atomic_snapshot();
         // New: Retrieve all active transactions from the DB.
         let active_transactions = db.get_active_transactions();
-        // New: Determine the oldest active snapshot.
-        let oldest = active_transactions.iter().min().cloned().unwrap_or(snapshot);
         db.register_transaction(snapshot);
         Self {
             db,
@@ -136,34 +134,34 @@ impl Transaction {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        // Check current transaction changes first.
-        let current_txn_key = Self::make_snapshot_key(key, self.snapshot);
-        if let Some(value) = self.db.engine.get(&current_txn_key).await {
-            if value == DELETED_MARKER {
-                return Ok((None, self.snapshot));
-            } else {
-                // Updated: Return normal value with self.snapshot.
-                return Ok((Some(value), self.snapshot));
-            }
-        }
-
-        // New: Use the oldest active transaction snapshot from active_transactions.
-        let lowest_active = self.active_transactions.iter().min().cloned().unwrap_or(0);
+        
+        // Reverse scan from snapshot 0 up to current transaction's snapshot.
         let lower = Self::make_snapshot_key(key, 0);
-        let upper = Self::make_snapshot_key(key, lowest_active + 1);
+        let upper = Self::make_snapshot_key(key, self.snapshot + 1);
         let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await?;
         while let Some((candidate_key, candidate_value)) = rev_iter.next() {
             if let Some(pos) = candidate_key.iter().rposition(|&b| b == crate::constants::KEY_SEPARATOR) {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
                     if let Ok(candidate_snapshot) = snapshot_str.parse::<u64>() {
+                        // Skip candidate keys with snapshots in active transactions.
+                        if self.active_transactions.contains(&candidate_snapshot) {
+                            continue;
+                        }
+                        // New: If candidate snapshot equals transaction snapshot, return its value directly.
+                        if candidate_snapshot == self.snapshot {
+                            if candidate_value == DELETED_MARKER {
+                                return Ok((None, candidate_snapshot));
+                            } else {
+                                return Ok((Some(candidate_value), candidate_snapshot));
+                            }
+                        }
                         let txn_marker_key = make_marker_key(candidate_snapshot);
                         if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
                             if marker_value == TXN_MARKER_COMMIT {
                                 if candidate_value == DELETED_MARKER {
                                     return Ok((None, candidate_snapshot));
                                 } else {
-                                    // Updated: Return normal value with candidate_snapshot.
                                     return Ok((Some(candidate_value), candidate_snapshot));
                                 }
                             } else {
