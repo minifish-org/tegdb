@@ -84,7 +84,7 @@ impl Transaction {
         self.acquire_lock(key).await?;
 
         // Check for an existing record.
-        if let Some(existing) = self.select(key).await? {
+        if let Some(existing) = self.select(key).await?.0 {
             if existing == value {
                 return Ok(());
             }
@@ -106,7 +106,7 @@ impl Transaction {
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
 
-        if self.select(key).await?.is_some() {
+        if self.select(key).await?.0.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
@@ -126,7 +126,7 @@ impl Transaction {
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
 
-        if self.select(key).await?.is_some() {
+        if self.select(key).await?.0.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
             self.ops.push(mod_key);
@@ -137,16 +137,23 @@ impl Transaction {
     }
 
     /// Reads the latest value for a given key using buffered operations and a reverse scan.
-    /// For each candidate, if its corresponding txn_marker key (formed as "txn_marker:<snapshot>")
-    /// shows "commit", the candidate is used. If the txn_marker is "rollback" or missing, the candidate is deleted and the scan continues.
-    pub async fn select(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
+    /// Returns a tuple with an optional value and a snapshot:
+    /// - If a deleted record is found, returns (None, snapshot) using its snapshot.
+    /// - Otherwise, if a value is found, returns (Some(value), 0).
+    /// - If no valid candidate is found (line 180), returns (None, 0).
+    pub async fn select(&self, key: &[u8]) -> Result<(Option<Vec<u8>>, u64), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
         // Check current transaction changes first.
         let current_txn_key = Self::make_snapshot_key(key, self.snapshot);
         if let Some(value) = self.db.engine.get(&current_txn_key).await {
-            return Ok(if value == DELETED_MARKER { None } else { Some(value) });
+            if value == DELETED_MARKER {
+                return Ok((None, self.snapshot));
+            } else {
+                // Updated: Return normal value with self.snapshot.
+                return Ok((Some(value), self.snapshot));
+            }
         }
 
         // Build range: lower bound "key:0", upper bound "key:(read_snapshot+1)"
@@ -157,15 +164,16 @@ impl Transaction {
             if let Some(pos) = candidate_key.iter().rposition(|&b| b == crate::constants::KEY_SEPARATOR) {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
-                    if let Ok(snapshot) = snapshot_str.parse::<u64>() {
-                        let txn_marker_key = make_marker_key(snapshot);
+                    if let Ok(candidate_snapshot) = snapshot_str.parse::<u64>() {
+                        let txn_marker_key = make_marker_key(candidate_snapshot);
                         if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
                             if marker_value == TXN_MARKER_COMMIT {
-                                return Ok(if candidate_value == DELETED_MARKER {
-                                    None
+                                if candidate_value == DELETED_MARKER {
+                                    return Ok((None, candidate_snapshot));
                                 } else {
-                                    Some(candidate_value)
-                                });
+                                    // Updated: Return normal value with candidate_snapshot.
+                                    return Ok((Some(candidate_value), candidate_snapshot));
+                                }
                             } else {
                                 let _ = self.db.engine.del(&candidate_key).await;
                                 continue;
@@ -179,7 +187,7 @@ impl Transaction {
             }
             let _ = self.db.engine.del(&candidate_key).await;
         }
-        Ok(None)
+        Ok((None, 0))
     }
 
     /// Commits the buffered operations and, if any ops are present, writes a commit marker.
