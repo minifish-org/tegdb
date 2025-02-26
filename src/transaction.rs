@@ -67,6 +67,18 @@ impl Transaction {
         Ok(())
     }
 
+    // New: Check write conflict: If the selected key's snapshot is greater than the txn snapshot, release the lock and return error.
+    pub async fn check_write_conflict(&mut self, key: &[u8]) -> Result<(), Error> {
+        let (_, candidate_snap) = self.select(key).await?;
+        if candidate_snap > self.snapshot {
+            let key_vec = key.to_vec();
+            self.db.transaction_manager.release_lock(key_vec.clone(), self.snapshot).await;
+            self.locks.retain(|l| l != &key_vec);
+            return Err(Error::new(ErrorKind::Other, "Write conflict error"));
+        }
+        Ok(())
+    }
+
     // Updated: Release all acquired locks.
     async fn release_locks(&mut self) {
         for lock in self.locks.drain(..) {
@@ -82,6 +94,8 @@ impl Transaction {
         }
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
+        // Check for write conflict.
+        self.check_write_conflict(key).await?;
 
         // Check for an existing record.
         if let Some(existing) = self.select(key).await?.0 {
@@ -105,6 +119,8 @@ impl Transaction {
         }
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
+        // Check for write conflict.
+        self.check_write_conflict(key).await?;
 
         if self.select(key).await?.0.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
@@ -125,6 +141,8 @@ impl Transaction {
         }
         // Acquire lock for the key.
         self.acquire_lock(key).await?;
+        // Check for write conflict.
+        self.check_write_conflict(key).await?;
 
         if self.select(key).await?.0.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
