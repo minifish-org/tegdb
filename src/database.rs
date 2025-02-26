@@ -30,7 +30,7 @@ pub struct TransactionManager {
 
     // New: Lock and wait graph now use SkipMap.
     pub locks: SkipMap<Vec<u8>, Arc<Lock>>,
-    pub wait_graph: SkipMap<u64, HashSet<u64>>,
+    pub wait_graph: SkipMap<u64, HashSet<Snapshot>>,
 }
 
 impl Clone for TransactionManager {

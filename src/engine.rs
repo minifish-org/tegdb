@@ -3,12 +3,12 @@
 
 use crate::wal; // Changed from crate::log
 use crate::types::KeyMap;
-use crate::logger::Logger;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::ops::Range;
 use std::fs::OpenOptions;
+use log::info;
 
 const MAX_KEY_SIZE: usize = 1024;
 const MAX_VALUE_SIZE: usize = 256 * 1024;
@@ -20,7 +20,6 @@ pub struct Engine {
     key_map: Arc<KeyMap>,
     lock_file: Arc<std::fs::File>,
     lock_path: PathBuf,
-    logger: Arc<Logger>,
 }
 
 impl Engine {
@@ -41,16 +40,13 @@ impl Engine {
         let wal_path = path.join("wal.new"); // Updated file name
         let wal = Arc::new(wal::Wal::new(wal_path));
         let (key_map, (insert_count, remove_count)) = wal.build_key_map();
-        // Initialize the logger using the same data directory.
-        let logger = Logger::new(&path).expect("Failed to initialize logger");
         let mut s = Self { 
             wal, 
             key_map: Arc::new(key_map),
             lock_file: Arc::new(lock_file),
             lock_path,
-            logger: logger.clone(),
         };
-        s.logger.log("Engine initialized");
+        info!("Engine initialized");
         // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
         if insert_count > crate::constants::COMPACTION_INSERT_THRESHOLD &&
            ((remove_count as f64) / (insert_count as f64)) >= crate::constants::REMOVAL_RATIO_THRESHOLD {
@@ -145,7 +141,7 @@ impl Engine {
     /// Compacts logs by switching new writes to a new log file (number incremented by 1)
     /// and then rewriting the old log with compacted data.
     pub fn compact(&mut self) -> Result<(), std::io::Error> {
-        self.logger.log("Compacting wal...");
+        info!("Compacting wal...");
         //println!("Compacting log...");
         // Rename the current active log ("log.new") to "log.old".
         let old_wal_path = self.wal.path.clone();
@@ -162,7 +158,7 @@ impl Engine {
         self.wal = Arc::new(new_wal);
         // Compact the renamed old log.
         self.construct_wal(new_old_wal_path)?;
-        self.logger.log("Compacting done.");
+        info!("Compacting done.");
         //println!("Compacting done.");
         Ok(())
     }
