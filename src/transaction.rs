@@ -99,7 +99,11 @@ impl Transaction {
         }
         self.acquire_lock(key).await?;
         let (existing, _) = self.check_conflict_and_get(key).await?;
-        if existing.is_some() {
+        if let Some(existing_value) = existing {
+            if existing_value == value {
+                return Ok(()); // Existing value equals input; do nothing.
+            }
+            // Values differ; perform update.
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
