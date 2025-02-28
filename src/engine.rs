@@ -132,9 +132,14 @@ impl Engine {
     }
 
     /// Flushes the current log and shuts down the log writer to ensure data persistence.
-    fn flush(&mut self) -> Result<(), std::io::Error> {
+    fn shutdown(&mut self) -> Result<(), std::io::Error> {
         self.wal.writer.flush();
         self.wal.writer.shutdown();
+        Ok(())
+    }
+
+    pub fn flush(&self) -> Result<(), std::io::Error> {
+        self.wal.writer.flush();
         Ok(())
     }
 
@@ -142,7 +147,6 @@ impl Engine {
     /// and then rewriting the old log with compacted data.
     pub fn compact(&mut self) -> Result<(), std::io::Error> {
         info!("Compacting wal...");
-        //println!("Compacting log...");
         // Rename the current active log ("log.new") to "log.old".
         let old_wal_path = self.wal.path.clone();
         let parent = old_wal_path.parent().expect("Invalid directory");
@@ -159,7 +163,6 @@ impl Engine {
         // Compact the renamed old log.
         self.construct_wal(new_old_wal_path)?;
         info!("Compacting done.");
-        //println!("Compacting done.");
         Ok(())
     }
 
@@ -177,13 +180,16 @@ impl Engine {
         for entry in self.key_map.iter() {
             new_wal.write_entry(entry.key(), entry.value());
         }
+        // Flush and close the log file.
+        new_wal.writer.flush();
+        new_wal.writer.shutdown();
         Ok(new_wal)
     }
 }
 
 impl Drop for Engine {
     fn drop(&mut self) {
-        self.flush().unwrap();
+        self.shutdown().unwrap();
         // Remove the lock file only once.
         if Arc::strong_count(&self.lock_file) == 1 {
             let _ = std::fs::remove_file(&self.lock_path);

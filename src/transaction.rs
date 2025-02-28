@@ -195,6 +195,8 @@ impl Transaction {
             self.db.push_counters(self.new_counter, self.old_counter);
             let marker_key = make_marker_key(self.snapshot);
             self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
+            // Ensure the commit marker is flushed to disk.
+            self.db.engine.flush().expect("Failed to flush WAL");
         }
         self.release_locks().await;
         self.db.unregister_transaction(self.snapshot);
