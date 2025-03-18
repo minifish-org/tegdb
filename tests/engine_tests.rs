@@ -78,3 +78,71 @@ async fn test_concurrent_access() {
     drop(engine);
     fs::remove_dir_all(path).unwrap();
 }
+
+#[tokio::test]
+async fn test_engine_durability() {
+    let path = PathBuf::from("test_engine_durability.db");
+    
+    // Clean up any existing test directory
+    fs::remove_dir_all(&path).ok();
+    
+    // First phase: Write some data and close the engine
+    {
+        let engine = Engine::new(path.clone());
+        
+        // Insert multiple test keys
+        let test_data = vec![
+            (b"key1".as_ref(), b"value1".as_ref()),
+            (b"key2".as_ref(), b"value2".as_ref()),
+            (b"key3".as_ref(), b"value3".as_ref()),
+        ];
+        
+        for (key, value) in &test_data {
+            engine.set(key, value.to_vec()).await.unwrap();
+            // Verify data is immediately available
+            let get_value = engine.get(key).await.unwrap();
+            assert_eq!(get_value, value.to_vec(), 
+                "Expected: {}, Got: {}", 
+                String::from_utf8_lossy(value),
+                String::from_utf8_lossy(&get_value));
+        }
+        
+        // Force flush before dropping
+        engine.flush().unwrap();
+        // Drop the engine to ensure proper shutdown
+        drop(engine);
+        // Manually remove the lock file
+        fs::remove_file(path.join("lock.lock")).ok();
+    }
+    
+    // Second phase: Reopen engine and verify data persists
+    {
+        let engine = Engine::new(path.clone());
+        
+        // Verify all data is still there
+        let test_data = vec![
+            (b"key1".as_ref(), b"value1".as_ref()),
+            (b"key2".as_ref(), b"value2".as_ref()),
+            (b"key3".as_ref(), b"value3".as_ref()),
+        ];
+        
+        for (key, value) in &test_data {
+            let get_value = engine.get(key).await.unwrap();
+            assert_eq!(get_value, value.to_vec(),
+                "Data not found for key: {}, Expected: {}, Got: {}", 
+                String::from_utf8_lossy(key),
+                String::from_utf8_lossy(value),
+                String::from_utf8_lossy(&get_value));
+        }
+        
+        // Force flush before dropping
+        engine.flush().unwrap();
+        // Drop the engine to ensure proper shutdown
+        drop(engine);
+        // Manually remove the lock file
+        fs::remove_file(path.join("lock.lock")).ok();
+    }
+    
+    // Cleanup
+    fs::remove_dir_all(&path).unwrap();
+}

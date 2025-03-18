@@ -92,3 +92,70 @@ async fn test_rollback_effect() -> Result<(), Error> {
     fs::remove_dir_all(&path).unwrap();
     Ok(())
 }
+
+#[tokio::test]
+async fn test_data_durability() -> Result<(), Error> {
+    let path = PathBuf::from("test_durability.db");
+    
+    // Clean up any existing test directory and lock file
+    fs::remove_dir_all(&path).ok();
+    fs::remove_file(path.join("lock.lock")).ok();
+    
+    // First phase: Write some data and close the database
+    {
+        let db = Database::new(path.clone()).await;
+        let mut txn = db.new_transaction().await;
+        
+        // Insert multiple test keys
+        let test_data = vec![
+            (b"key1".as_ref(), b"value1".as_ref()),
+            (b"key2".as_ref(), b"value2".as_ref()),
+            (b"key3".as_ref(), b"value3".as_ref()),
+        ];
+        
+        for (key, value) in &test_data {
+            txn.insert(key, value.to_vec()).await?;
+            // Verify data is immediately available
+            assert_eq!(txn.select(key).await.unwrap().0, Some(value.to_vec()));
+        }
+        
+        txn.commit().await?;
+        // Force flush before shutdown
+        db.engine.flush()?;
+        // Stop GC and persist snapshot
+        db.shutdown().await;
+        // Manually remove the lock file
+        fs::remove_file(path.join("lock.lock"))?;
+    }
+    
+    // Second phase: Reopen database and verify data persists
+    {
+        let db = Database::new(path.clone()).await;
+        let mut txn = db.new_transaction().await;
+        
+        // Verify all data is still there
+        let test_data = vec![
+            (b"key1".as_ref(), b"value1".as_ref()),
+            (b"key2".as_ref(), b"value2".as_ref()),
+            (b"key3".as_ref(), b"value3".as_ref()),
+        ];
+        
+        for (key, value) in &test_data {
+            let result = txn.select(key).await.unwrap();
+            assert_eq!(result.0, Some(value.to_vec()), 
+                "Data not found for key: {}", String::from_utf8_lossy(key));
+        }
+        
+        txn.rollback().await?;
+        // Force flush before shutdown
+        db.engine.flush()?;
+        // Stop GC and persist snapshot
+        db.shutdown().await;
+        // Manually remove the lock file
+        fs::remove_file(path.join("lock.lock"))?;
+    }
+    
+    // Cleanup
+    fs::remove_dir_all(&path).unwrap();
+    Ok(())
+}
