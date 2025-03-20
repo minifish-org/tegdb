@@ -4,13 +4,13 @@
 //! This crate exposes the core Engine and Transaction types.
 
 mod engine;
-mod wal;         // Renamed from log to wal
+pub mod wal;         // Changed from mod wal to pub mod wal
 mod transaction;
 mod database;
 mod snapshot;
 mod types;
-mod constants;
-mod utils;
+pub mod constants;   // Changed from mod constants to pub mod constants
+pub mod utils;       // Changed from mod utils to pub mod utils
 
 pub use engine::Engine;
 pub use transaction::Transaction;
