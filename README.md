@@ -49,6 +49,7 @@ Upon startup, the database recovers its state by:
 2. Continuing from the last assigned transaction ID to avoid duplicate IDs.
 3. Asynchronously rolling back any uncommitted transactions when accessed by other transactions.
 4. Discarding uncommitted transactions during reads after checking transaction IDs and statuses.
+
 If a transaction encounters an abort error, subsequent operations report an error and a rollback is required. The rollback process efficiently reverses changes made during the transaction using the raw KV Engine API.
 
 ### Detailed Rollback Process
