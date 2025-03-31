@@ -129,6 +129,67 @@ The following rules are established to ensure the development of TegDB remains s
 2. Use the standard library whenever possible.
 3. Prioritize correctness and reliability.
 
+## TODO
+
+### Architecture Improvements
+
+- [ ] Better separation between Engine API and Database API layers
+- [ ] Clearer documentation of the two-layer architecture implementation
+- [ ] Better organization of code structure to match architectural layers
+- [ ] Separation of lock manager and MVCC into dedicated modules
+
+### Transaction Management
+
+- [ ] More robust testing for serializable isolation guarantees
+- [ ] Optimization of transaction rollback process
+- [ ] Better documentation of transaction recovery during startup
+- [ ] More efficient snapshot management during transactions
+
+### Write-Ahead Logging (WAL)
+
+- [ ] Improved documentation of WAL's role in crash recovery
+- [ ] More efficient log compaction process
+- [ ] Better implementation of background processing for log compaction
+- [ ] Optimization of garbage collection process
+
+### Documentation
+
+- [ ] Comprehensive documentation of implementation details
+- [ ] Better documentation of component relationships
+- [ ] More detailed API documentation
+- [ ] Documentation of configuration options
+
+### Error Handling
+
+- [ ] More robust and consistent error handling across the codebase
+- [ ] Better handling of abort errors and edge cases
+- [ ] Improved error reporting and recovery mechanisms
+
+### Testing
+
+- [ ] Comprehensive tests for ACID properties
+- [ ] Expanded benchmarking tests
+- [ ] Crash recovery tests
+- [ ] Performance optimization tests
+
+### Dependencies
+
+- [ ] Review and optimize external dependencies
+- [ ] Replace some dependencies with standard library implementations
+- [ ] Update dependency versions where needed
+
+### Configuration
+
+- [ ] Add configuration options for performance tuning
+- [ ] Make hardcoded values configurable
+- [ ] Add configuration documentation
+
+### API Design
+
+- [ ] More ergonomic and user-friendly API
+- [ ] Optimization for common use cases
+- [ ] Better API documentation
+
 ## License
 
 This project is licensed under the AGPL-3.0 License. The AGPL-3.0 License is a strong copyleft license that ensures any modifications to the code are shared with the community. It was chosen to promote open collaboration and ensure that improvements to the project remain freely available.
