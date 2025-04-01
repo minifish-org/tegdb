@@ -48,7 +48,7 @@ This document explains the key design decisions and architectural choices made i
 - Provides good balance between consistency and performance
 - Allows concurrent reads without blocking
 - Prevents dirty reads and non-repeatable reads
-- Simpler to implement than full serializability
+- Simpler to implement than full serializable
 
 **Trade-offs**:
 
@@ -180,7 +180,7 @@ This document explains the key design decisions and architectural choices made i
 - Requires rebalancing
 - Less flexible for modifications
 
-### 2. Full Serializability vs Snapshot Isolation
+### 2. Full Serializable vs Snapshot Isolation
 
 **Why Serializable Isolation was chosen**:
 
