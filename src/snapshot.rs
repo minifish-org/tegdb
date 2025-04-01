@@ -1,8 +1,8 @@
 use crate::constants::TXN_MARKER_PREFIX;
-use std::sync::atomic::{AtomicU64, Ordering};
 use crate::engine::Engine;
 use crate::types::Snapshot;
 use std::io::Error;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The key under which the snapshot counter is persisted.
 pub const SNAPSHOT_KEY: &[u8] = b"__snapshot__";
@@ -18,13 +18,15 @@ pub async fn recover_snapshot(engine: &Engine) -> Result<(), Error> {
     // For example, appending a high value character.
     let mut upper_bound = TXN_MARKER_PREFIX.as_bytes().to_vec();
     upper_bound.push(b';');
-    
-    let mut iter = engine.reverse_scan(lower_bound.clone()..upper_bound.clone()).await?;
+
+    let iter = engine
+        .reverse_scan(lower_bound.clone()..upper_bound.clone())
+        .await?;
     let mut max_snapshot = 0;
-    while let Some((key, _)) = iter.next() {
-        if let Ok(key_str) = std::str::from_utf8(&key) {
-            if key_str.starts_with(TXN_MARKER_PREFIX) {
-                if let Ok(snap) = key_str[TXN_MARKER_PREFIX.len()..].parse::<u64>() {
+    for (key, _) in iter {
+        if let Ok(key_str) = String::from_utf8(key.to_vec()) {
+            if let Some(stripped) = key_str.strip_prefix(TXN_MARKER_PREFIX) {
+                if let Ok(snap) = stripped.parse::<u64>() {
                     if snap > max_snapshot {
                         max_snapshot = snap;
                     }
@@ -33,7 +35,9 @@ pub async fn recover_snapshot(engine: &Engine) -> Result<(), Error> {
         }
     }
     let new_snapshot = max_snapshot + 1;
-    engine.set(SNAPSHOT_KEY, new_snapshot.to_string().into_bytes()).await?;
+    engine
+        .set(SNAPSHOT_KEY, new_snapshot.to_string().into_bytes())
+        .await?;
     // println!("Recovery updated snapshot counter to {}", new_snapshot);
     Ok(())
 }
@@ -62,5 +66,7 @@ pub fn get_atomic_snapshot() -> Snapshot {
 /// Persists the current snapshot counter asynchronously.
 pub async fn persist_snapshot(engine: &Engine) {
     let current = GLOBAL_SNAPSHOT.load(Ordering::Relaxed);
-    let _ = engine.set(SNAPSHOT_KEY, current.to_string().into_bytes()).await;
+    let _ = engine
+        .set(SNAPSHOT_KEY, current.to_string().into_bytes())
+        .await;
 }

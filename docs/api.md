@@ -331,8 +331,8 @@ match result {
 ### Crash Recovery
 
 1. Read WAL
-2. Replay committed transactions
-3. Roll back uncommitted transactions
+2. Continue from the last committed transaction
+3. Roll back uncommitted transactions asynchronously
 
 ### Lock Timeout
 

@@ -1,9 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput, BenchmarkGroup, measurement::WallTime};
+use criterion::{
+    black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
+    Throughput,
+};
+use rand::Rng;
 use std::fs;
 use std::path::PathBuf;
 use tegdb::Database;
-use tokio::runtime::Runtime;
-use rand::Rng; // Changed: import random number generator
+use tokio::runtime::Runtime; // Changed: import random number generator
 
 // Async function to run one transaction cycle with random inputs.
 async fn transaction_cycle(db: &Database) -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +19,12 @@ async fn transaction_cycle(db: &Database) -> Result<(), Box<dyn std::error::Erro
     let mut tx = db.new_transaction().await;
     tx.insert(black_box(&key), black_box(initial_value)).await?;
     tx.update(black_box(&key), black_box(updated_value)).await?;
-    let _ = tx.select(black_box(&key)).await.unwrap().0.unwrap_or(Vec::new());
+    let _ = tx
+        .select(black_box(&key))
+        .await
+        .unwrap()
+        .0
+        .unwrap_or(Vec::new());
     tx.delete(black_box(&key)).await?;
     tx.commit().await?;
     Ok(())
@@ -33,10 +41,15 @@ fn benchmark_select_only(rt: &Runtime, db: &Database, group: &mut BenchmarkGroup
                 let key = format!("select_key_{}", random).into_bytes();
                 let mut tx = db.new_transaction().await;
                 tx.insert(black_box(&key), black_box(b"select_value".to_vec()))
-                  .await
-                  .unwrap();
+                    .await
+                    .unwrap();
                 // Perform select.
-                let _ = tx.select(black_box(&key)).await.unwrap().0.unwrap_or(Vec::new());
+                let _ = tx
+                    .select(black_box(&key))
+                    .await
+                    .unwrap()
+                    .0
+                    .unwrap_or(Vec::new());
                 tx.rollback().await.unwrap();
             })
         })
@@ -52,15 +65,16 @@ fn benchmark_update(rt: &Runtime, db: &Database, group: &mut BenchmarkGroup<Wall
                 let key = format!("update_key_{}", random).into_bytes();
                 // Prepopulate key.
                 let mut pre_tx = db.new_transaction().await;
-                pre_tx.insert(black_box(&key), black_box(b"old_data".to_vec()))
-                      .await
-                      .unwrap();
+                pre_tx
+                    .insert(black_box(&key), black_box(b"old_data".to_vec()))
+                    .await
+                    .unwrap();
                 pre_tx.commit().await.unwrap();
                 // Update the key.
                 let mut tx = db.new_transaction().await;
                 tx.update(black_box(&key), black_box(b"new_data".to_vec()))
-                  .await
-                  .unwrap();
+                    .await
+                    .unwrap();
                 tx.commit().await.unwrap();
             })
         })
@@ -76,8 +90,8 @@ fn benchmark_insert(rt: &Runtime, db: &Database, group: &mut BenchmarkGroup<Wall
                 let key = format!("insert_key_{}", random).into_bytes();
                 let mut tx = db.new_transaction().await;
                 tx.insert(black_box(&key), black_box(b"inserted_data".to_vec()))
-                  .await
-                  .unwrap();
+                    .await
+                    .unwrap();
                 tx.commit().await.unwrap();
             })
         })
@@ -93,9 +107,10 @@ fn benchmark_delete(rt: &Runtime, db: &Database, group: &mut BenchmarkGroup<Wall
                 let key = format!("delete_key_{}", random).into_bytes();
                 // Prepopulate key.
                 let mut pre_tx = db.new_transaction().await;
-                pre_tx.insert(black_box(&key), black_box(b"to_delete_data".to_vec()))
-                      .await
-                      .unwrap();
+                pre_tx
+                    .insert(black_box(&key), black_box(b"to_delete_data".to_vec()))
+                    .await
+                    .unwrap();
                 pre_tx.commit().await.unwrap();
                 // Delete the key.
                 let mut tx = db.new_transaction().await;
@@ -108,9 +123,7 @@ fn benchmark_delete(rt: &Runtime, db: &Database, group: &mut BenchmarkGroup<Wall
 
 fn benchmark_transaction_cycle(rt: &Runtime, db: &Database, group: &mut BenchmarkGroup<WallTime>) {
     group.bench_function("transaction_cycle", |b| {
-        b.iter(|| {
-            rt.block_on(async { transaction_cycle(&db).await.unwrap() })
-        })
+        b.iter(|| rt.block_on(async { transaction_cycle(&db).await.unwrap() }))
     });
 }
 

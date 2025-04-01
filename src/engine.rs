@@ -1,14 +1,14 @@
 //! Tegdb Engine: A persistent key-value store with an append-only log and automatic compaction.
 //! This module implements CRUD operations and log rebuilding to maintain data integrity.
 
-use crate::wal; // Changed from crate::log
 use crate::types::KeyMap;
+use crate::wal; // Changed from crate::log
 
+use log::info;
+use std::fs::OpenOptions;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::ops::Range;
-use std::fs::OpenOptions;
-use log::info;
 
 const MAX_KEY_SIZE: usize = 1024;
 const MAX_VALUE_SIZE: usize = 256 * 1024;
@@ -16,7 +16,7 @@ const MAX_VALUE_SIZE: usize = 256 * 1024;
 /// Core storage engine that provides CRUD operations with log compaction.
 #[derive(Clone)]
 pub struct Engine {
-    wal: Arc<wal::Wal>,               // Changed field name from log to wal
+    wal: Arc<wal::Wal>, // Changed field name from log to wal
     key_map: Arc<KeyMap>,
     lock_file: Arc<std::fs::File>,
     lock_path: PathBuf,
@@ -40,16 +40,18 @@ impl Engine {
         let wal_path = path.join("wal.new"); // Updated file name
         let wal = Arc::new(wal::Wal::new(wal_path));
         let (key_map, (insert_count, remove_count)) = wal.build_key_map();
-        let mut s = Self { 
-            wal, 
+        let mut s = Self {
+            wal,
             key_map: Arc::new(key_map),
             lock_file: Arc::new(lock_file),
             lock_path,
         };
         info!("Engine initialized");
         // println!("Engine stats: {} inserts, {} removals", insert_count, remove_count);
-        if insert_count > crate::constants::COMPACTION_INSERT_THRESHOLD &&
-           ((remove_count as f64) / (insert_count as f64)) >= crate::constants::REMOVAL_RATIO_THRESHOLD {
+        if insert_count > crate::constants::COMPACTION_INSERT_THRESHOLD
+            && ((remove_count as f64) / (insert_count as f64))
+                >= crate::constants::REMOVAL_RATIO_THRESHOLD
+        {
             s.compact().expect("Failed to compact wal");
         }
         s
@@ -104,8 +106,16 @@ impl Engine {
     }
 
     // Updated: Use SkipMap's range API.
-    fn scan_internal(&self, start: Vec<u8>, end: Vec<u8>, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let range_iter = self.key_map.range(start..end).map(|entry| (entry.key().clone(), entry.value().clone()));
+    fn scan_internal(
+        &self,
+        start: Vec<u8>,
+        end: Vec<u8>,
+        reverse: bool,
+    ) -> Vec<(Vec<u8>, Vec<u8>)> {
+        let range_iter = self
+            .key_map
+            .range(start..end)
+            .map(|entry| (entry.key().clone(), entry.value().clone()));
         if reverse {
             range_iter.rev().collect()
         } else {

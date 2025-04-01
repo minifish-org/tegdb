@@ -1,16 +1,16 @@
+use crate::constants::{KEY_SEPARATOR, MAX_KEY_BYTE, MIN_KEY_BYTE}; // New import for constants
 use crate::engine::Engine;
 use crate::transaction::Transaction;
-use crossbeam_skiplist::{SkipSet, SkipMap}; // Changed from dashmap::DashMap
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::io::Error;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tokio::sync::Notify;
-use std::collections::HashSet;
 use crate::types::Snapshot;
-use crate::constants::{KEY_SEPARATOR, MAX_KEY_BYTE, MIN_KEY_BYTE}; // New import for constants
+use crate::utils::make_marker_key;
+use crossbeam_skiplist::{SkipMap, SkipSet}; // Changed from dashmap::DashMap
+use std::collections::HashSet;
+use std::io::Error;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicU64; // new import for AtomicU64
-use crate::utils::make_marker_key; // new import for make_marker_key
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use tokio::sync::Notify; // new import for make_marker_key
 
 /// Simplified Lock using an atomic owner field.
 pub struct Lock {
@@ -60,25 +60,26 @@ impl TransactionManager {
             wait_graph: SkipMap::new(),
         }
     }
-    
+
     /// Registers a transaction by inserting its snapshot.
     pub fn register_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.insert(snapshot);
     }
-    
+
     /// Unregisters a transaction.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.remove(&snapshot);
     }
-    
+
     /// Returns the oldest active transaction snapshot or `Snapshot::MAX` if none.
     pub fn get_safe_snapshot(&self) -> Snapshot {
-        self.active_transactions.iter()
+        self.active_transactions
+            .iter()
             .next()
             .map(|entry| *entry.value())
             .unwrap_or(Snapshot::MAX)
     }
-    
+
     /// Spawns the GC thread in a dedicated runtime.
     pub fn start_gc(&self, engine: Engine) {
         let tm = self.clone();
@@ -90,7 +91,9 @@ impl TransactionManager {
                 loop {
                     // Wait indefinitely until notified or check stop flag.
                     tm.gc_notify.notified().await;
-                    if tm.stop_gc.load(Ordering::Relaxed) { break; }
+                    if tm.stop_gc.load(Ordering::Relaxed) {
+                        break;
+                    }
                     // println!("GC thread awakened by notify");
                     // Persist the snapshot key once per GC cycle.
                     crate::snapshot::persist_snapshot(&engine).await;
@@ -111,17 +114,19 @@ impl TransactionManager {
             });
         });
     }
-    
+
     /// Runs garbage collection based on the oldest snapshot using a single scan.
     pub async fn garbage_collect(&self, engine: &Engine) -> Result<(), Error> {
         let safe_snapshot = self.get_safe_snapshot();
         // println!("GC: Starting cycle. Oldest read snapshot: {}", oldest_read_snapshot);
         const DELETED_MARKER: &[u8] = b"__deleted__";
-        
+
         let mut current_key: Option<Vec<u8>> = None;
-        
-        let mut iter = engine.reverse_scan(vec![MIN_KEY_BYTE]..vec![MAX_KEY_BYTE]).await?;
-        while let Some((key, value)) = iter.next() {
+
+        let iter = engine
+            .reverse_scan(vec![MIN_KEY_BYTE]..vec![MAX_KEY_BYTE])
+            .await?;
+        for (key, value) in iter {
             if let Some(pos) = key.iter().rposition(|&b| b == KEY_SEPARATOR) {
                 let logical_key = key[..pos].to_vec();
                 if let Ok(snap_str) = std::str::from_utf8(&key[pos + 1..]) {
@@ -135,13 +140,16 @@ impl TransactionManager {
                                 _ => {
                                     // First version of a new key
                                     current_key = Some(logical_key);
-                                    
+
                                     // Check transaction marker
                                     let txn_marker_key = make_marker_key(snapshot);
                                     match engine.get(txn_marker_key.as_bytes()).await {
                                         Some(marker) if marker == b"commit" => {
                                             // If committed but marked as deleted, remove it
-                                            if value.windows(DELETED_MARKER.len()).any(|w| w == DELETED_MARKER) {
+                                            if value
+                                                .windows(DELETED_MARKER.len())
+                                                .any(|w| w == DELETED_MARKER)
+                                            {
                                                 engine.del(&key).await?;
                                             }
                                         }
@@ -159,15 +167,16 @@ impl TransactionManager {
         }
         Ok(())
     }
-    
+
     /// Pushes counters and notifies the GC thread when GC thresholds are exceeded.
     pub fn push_counters(&self, new: usize, old: usize) {
         self.total_new.fetch_add(new, Ordering::Relaxed);
         self.total_old.fetch_add(old, Ordering::Relaxed);
         let tn = self.total_new.load(Ordering::Relaxed);
         let to = self.total_old.load(Ordering::Relaxed);
-        if tn > crate::constants::GC_INSERT_THRESHOLD &&
-           (to as f64) / (tn as f64) >= crate::constants::GC_REMOVAL_RATIO_THRESHOLD {
+        if tn > crate::constants::GC_INSERT_THRESHOLD
+            && (to as f64) / (tn as f64) >= crate::constants::GC_REMOVAL_RATIO_THRESHOLD
+        {
             self.gc_notify.notify_one();
         }
     }
@@ -185,10 +194,13 @@ impl TransactionManager {
             if let Some(lock_entry) = self.locks.get(&key) {
                 let lock_arc = lock_entry.value();
                 let current = lock_arc.owner.load(Ordering::Acquire);
-                if current == 0 || current == txn_id {
-                    if lock_arc.owner.compare_exchange(current, txn_id, Ordering::AcqRel, Ordering::Acquire).is_ok() {
-                        return Ok(());
-                    }
+                if (current == 0 || current == txn_id)
+                    && lock_arc
+                        .owner
+                        .compare_exchange(current, txn_id, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                {
+                    return Ok(());
                 }
                 // Replace entry API: update wait_graph for txn_id.
                 if let Some(entry) = self.wait_graph.get(&txn_id) {
@@ -204,7 +216,10 @@ impl TransactionManager {
                 let mut visited = HashSet::new();
                 if Self::has_deadlock(&self.wait_graph, txn_id, &mut visited) {
                     Self::remove_waiting_edge(&self.wait_graph, txn_id, current);
-                    return Err(Error::new(ErrorKind::Other, "Deadlock detected between transactions."));
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        "Deadlock detected between transactions.",
+                    ));
                 }
                 lock_arc.notify.notified().await;
             } else {
@@ -233,7 +248,7 @@ impl TransactionManager {
     fn has_deadlock(
         wait_graph: &SkipMap<u64, HashSet<u64>>,
         txn_id: u64,
-        visited: &mut HashSet<u64>
+        visited: &mut HashSet<u64>,
     ) -> bool {
         if !visited.insert(txn_id) {
             return true;
@@ -259,6 +274,12 @@ impl TransactionManager {
                 wait_graph.insert(waiter, set);
             }
         }
+    }
+}
+
+impl Default for TransactionManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -309,7 +330,9 @@ impl Database {
 
     /// Returns all active transaction snapshots from the TransactionManager.
     pub fn get_active_transactions(&self) -> Vec<crate::types::Snapshot> {
-        self.transaction_manager.active_transactions.iter()
+        self.transaction_manager
+            .active_transactions
+            .iter()
             .map(|entry| *entry.value())
             .collect()
     }

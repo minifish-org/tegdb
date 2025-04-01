@@ -8,7 +8,7 @@ async fn main() {
     let db = Database::new(db_path).await;
 
     // Start Transaction API.
-    let mut tx = db.new_transaction().await;  // updated
+    let mut tx = db.new_transaction().await; // updated
 
     // INSERT using Transaction API.
     tx.insert(b"key1", b"value1".to_vec()).await.unwrap();

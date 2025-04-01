@@ -1,12 +1,12 @@
 //! Benchmark tests for TegDB engine operations using Criterion.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use rand::distr::Alphanumeric;
+use rand::Rng;
 use std::fs;
 use std::path::PathBuf;
 use tegdb::Engine;
 use tokio::runtime::Runtime;
-use rand::Rng;
-use rand::distr::Alphanumeric;
 
 fn engine_benchmark(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
@@ -191,7 +191,10 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                     let value: Vec<u8> = (0..10).map(|_| rand::rng().random()).collect();
                     let engine_clone = engine.clone();
                     tasks.push(tokio::spawn(async move {
-                        engine_clone.set(key.as_bytes(), value).await.unwrap_or_default();
+                        engine_clone
+                            .set(key.as_bytes(), value)
+                            .await
+                            .unwrap_or_default();
                     }));
                 }
                 for t in tasks {

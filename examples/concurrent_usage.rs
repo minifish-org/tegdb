@@ -89,15 +89,25 @@ fn main() {
     let total_set_calls: usize = set_metrics.iter().sum();
     let total_get_calls: usize = get_metrics.iter().sum();
     let total_run_secs = RUN_DURATION.as_secs_f64();
-    let avg_set = Duration::from_secs_f64(RUN_DURATION.as_secs_f64() * (thread_count as f64) / (total_set_calls as f64));
-    let avg_get = Duration::from_secs_f64(RUN_DURATION.as_secs_f64() * (thread_count as f64) / (total_get_calls as f64));
+    let avg_set = Duration::from_secs_f64(
+        RUN_DURATION.as_secs_f64() * (thread_count as f64) / (total_set_calls as f64),
+    );
+    let avg_get = Duration::from_secs_f64(
+        RUN_DURATION.as_secs_f64() * (thread_count as f64) / (total_get_calls as f64),
+    );
     let calls_set_per_sec = total_set_calls as f64 / total_run_secs;
     let calls_get_per_sec = total_get_calls as f64 / total_run_secs;
 
     println!("Performance over 10s runtime:");
     println!(" Number of threads: {}", thread_count);
-    println!(" Average set() latency: {:?} (total calls: {}, calls/sec: {:.2})", avg_set, total_set_calls, calls_set_per_sec);
-    println!(" Average get() latency: {:?} (total calls: {}, calls/sec: {:.2})", avg_get, total_get_calls, calls_get_per_sec);
+    println!(
+        " Average set() latency: {:?} (total calls: {}, calls/sec: {:.2})",
+        avg_set, total_set_calls, calls_set_per_sec
+    );
+    println!(
+        " Average get() latency: {:?} (total calls: {}, calls/sec: {:.2})",
+        avg_get, total_get_calls, calls_get_per_sec
+    );
     drop(engine);
     fs::remove_dir_all(&path).unwrap();
 }

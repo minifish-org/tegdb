@@ -1,8 +1,8 @@
 use crate::database::Database;
 use crate::snapshot::get_atomic_snapshot;
 use crate::types::Snapshot;
-use std::io::{Error, ErrorKind};
 use crate::utils::make_marker_key;
+use std::io::{Error, ErrorKind};
 
 const TXN_MARKER_COMMIT: &[u8] = b"commit";
 const TXN_MARKER_ROLLBACK: &[u8] = b"rollback";
@@ -58,7 +58,12 @@ impl Transaction {
             return Ok(());
         }
         let key_vec = key.to_vec();
-        if let Err(e) = self.db.transaction_manager.acquire_lock(key_vec.clone(), self.snapshot).await {
+        if let Err(e) = self
+            .db
+            .transaction_manager
+            .acquire_lock(key_vec.clone(), self.snapshot)
+            .await
+        {
             self.mark_abort();
             return Err(e);
         }
@@ -69,7 +74,10 @@ impl Transaction {
     // Updated: Release all acquired locks.
     async fn release_locks(&mut self) {
         for lock in self.locks.drain(..) {
-            self.db.transaction_manager.release_lock(lock, self.snapshot).await;
+            self.db
+                .transaction_manager
+                .release_lock(lock, self.snapshot)
+                .await;
         }
     }
 
@@ -122,7 +130,10 @@ impl Transaction {
         let (existing, _) = self.check_conflict_and_get(key).await?;
         if existing.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
-            self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
+            self.db
+                .engine
+                .set(&mod_key, DELETED_MARKER.to_vec())
+                .await?;
             self.ops.push(mod_key);
             self.old_counter += 1;
         }
@@ -138,13 +149,16 @@ impl Transaction {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        
+
         // Reverse scan from snapshot 0 up to current transaction's snapshot.
         let lower = Self::make_snapshot_key(key, 0);
         let upper = Self::make_snapshot_key(key, self.snapshot + 1);
-        let mut rev_iter = self.db.engine.reverse_scan(lower..upper).await?;
-        while let Some((candidate_key, candidate_value)) = rev_iter.next() {
-            if let Some(pos) = candidate_key.iter().rposition(|&b| b == crate::constants::KEY_SEPARATOR) {
+        let rev_iter = self.db.engine.reverse_scan(lower..upper).await?;
+        for (candidate_key, candidate_value) in rev_iter {
+            if let Some(pos) = candidate_key
+                .iter()
+                .rposition(|&b| b == crate::constants::KEY_SEPARATOR)
+            {
                 let snapshot_bytes = &candidate_key[pos + 1..];
                 if let Ok(snapshot_str) = std::str::from_utf8(snapshot_bytes) {
                     if let Ok(candidate_snapshot) = snapshot_str.parse::<u64>() {
@@ -161,7 +175,9 @@ impl Transaction {
                             }
                         }
                         let txn_marker_key = make_marker_key(candidate_snapshot);
-                        if let Some(marker_value) = self.db.engine.get(txn_marker_key.as_bytes()).await {
+                        if let Some(marker_value) =
+                            self.db.engine.get(txn_marker_key.as_bytes()).await
+                        {
                             if marker_value == TXN_MARKER_COMMIT {
                                 if candidate_value == DELETED_MARKER {
                                     return Ok((None, candidate_snapshot));
@@ -189,12 +205,18 @@ impl Transaction {
         if self.should_abort {
             // Rollback first, then return error.
             self.rollback().await?;
-            return Err(Error::new(ErrorKind::Other, "Transaction aborted; commit not allowed, already rolled back"));
+            return Err(Error::new(
+                ErrorKind::Other,
+                "Transaction aborted; commit not allowed, already rolled back",
+            ));
         }
         if !self.ops.is_empty() {
             self.db.push_counters(self.new_counter, self.old_counter);
             let marker_key = make_marker_key(self.snapshot);
-            self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
+            self.db
+                .engine
+                .set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec())
+                .await?;
             // Ensure the commit marker is flushed to disk.
             self.db.engine.flush().expect("Failed to flush WAL");
         }
@@ -210,7 +232,10 @@ impl Transaction {
                 self.db.engine.del(mk).await?;
             }
             let marker_key = make_marker_key(self.snapshot);
-            self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec()).await?;
+            self.db
+                .engine
+                .set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec())
+                .await?;
         }
         self.release_locks().await;
         self.db.unregister_transaction(self.snapshot);
@@ -223,13 +248,19 @@ impl Transaction {
     }
 
     // New: Extracted function to check write conflict and return the current value and candidate snapshot.
-    async fn check_conflict_and_get(&mut self, key: &[u8]) -> Result<(Option<Vec<u8>>, u64), Error> {
+    async fn check_conflict_and_get(
+        &mut self,
+        key: &[u8],
+    ) -> Result<(Option<Vec<u8>>, u64), Error> {
         let result = self.select(key).await?;
         let (_, candidate_snap) = result;
         if candidate_snap > self.snapshot {
             self.mark_abort();
             let key_vec = key.to_vec();
-            self.db.transaction_manager.release_lock(key_vec.clone(), self.snapshot).await;
+            self.db
+                .transaction_manager
+                .release_lock(key_vec.clone(), self.snapshot)
+                .await;
             self.locks.retain(|l| l != &key_vec);
             return Err(Error::new(ErrorKind::Other, "Write conflict error"));
         }

@@ -1,9 +1,9 @@
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
-use std::fs::File;
-use std::io::{BufWriter, Write, BufReader, Read, Seek, SeekFrom};
-use std::path::PathBuf;
-use std::fs::OpenOptions;
 
 use crate::types::KeyMap;
 
@@ -121,12 +121,12 @@ impl WalWriter {
                         if let Err(e) = writer.write_all(&data) {
                             eprintln!("Failed to write wal: {}", e);
                         }
-                    },
+                    }
                     WalMessage::Flush => {
                         if let Err(e) = writer.flush() {
                             eprintln!("Failed to flush wal: {}", e);
                         }
-                    },
+                    }
                     WalMessage::Shutdown => break,
                 }
             }

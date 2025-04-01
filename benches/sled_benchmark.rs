@@ -1,9 +1,9 @@
 //! Benchmark tests for sled embedded database operations using Criterion.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use tokio::runtime::Runtime;
-use rand::Rng;
 use rand::distr::Alphanumeric;
+use rand::Rng;
+use tokio::runtime::Runtime;
 
 fn sled_benchmark(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
@@ -28,9 +28,7 @@ fn sled_benchmark(c: &mut Criterion) {
     group.bench_function("get", |b| {
         b.iter(|| {
             rt.block_on(async {
-                let _ = db.get(black_box(key))
-                    .unwrap()
-                    .map(|v| v.to_vec());
+                let _ = db.get(black_box(key)).unwrap().map(|v| v.to_vec());
             });
         })
     });
@@ -41,7 +39,8 @@ fn sled_benchmark(c: &mut Criterion) {
         let end_key = "z";
         b.iter(|| {
             rt.block_on(async {
-                let _ = db.range(black_box(start_key)..black_box(end_key))
+                let _ = db
+                    .range(black_box(start_key)..black_box(end_key))
                     .values()
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
@@ -93,9 +92,7 @@ async fn sled_seq_benchmark(c: &mut Criterion, value_size: usize) {
             let key = key_str.as_bytes();
             tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async {
-                    let _ = db.get(black_box(key))
-                        .unwrap()
-                        .map(|v| v.to_vec());
+                    let _ = db.get(black_box(key)).unwrap().map(|v| v.to_vec());
                 });
             });
             i += 1;
@@ -159,7 +156,9 @@ fn sled_concurrency_benchmark(c: &mut Criterion) {
                         db_clone.insert(key.as_bytes(), value).unwrap();
                     }));
                 }
-                for t in tasks { t.await.unwrap(); }
+                for t in tasks {
+                    t.await.unwrap();
+                }
             });
         });
     });
@@ -171,7 +170,7 @@ fn sled_concurrency_benchmark(c: &mut Criterion) {
             rt.block_on(async {
                 let mut tasks = Vec::new();
                 for _ in 0..4 {
-                    let key: String = rand::rng() 
+                    let key: String = rand::rng()
                         .sample_iter(&Alphanumeric)
                         .take(8)
                         .map(char::from)
@@ -181,7 +180,9 @@ fn sled_concurrency_benchmark(c: &mut Criterion) {
                         let _ = db_clone.get(key.as_bytes()).unwrap();
                     }));
                 }
-                for t in tasks { t.await.unwrap(); }
+                for t in tasks {
+                    t.await.unwrap();
+                }
             });
         });
     });
@@ -202,7 +203,9 @@ fn sled_concurrency_benchmark(c: &mut Criterion) {
                             .unwrap();
                     }));
                 }
-                for t in tasks { t.await.unwrap(); }
+                for t in tasks {
+                    t.await.unwrap();
+                }
             });
         });
     });
@@ -224,7 +227,9 @@ fn sled_concurrency_benchmark(c: &mut Criterion) {
                         let _ = db_clone.remove(key.as_bytes());
                     }));
                 }
-                for t in tasks { t.await.unwrap(); }
+                for t in tasks {
+                    t.await.unwrap();
+                }
             });
         });
     });

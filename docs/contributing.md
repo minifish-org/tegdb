@@ -26,16 +26,6 @@ Thank you for your interest in contributing to TegDB! This document provides gui
    git remote add upstream https://github.com/minifish-org/tegdb.git
    ```
 
-3. **Setup Development Tools**
-
-   ```bash
-   # Install development dependencies
-   cargo install cargo-fmt cargo-clippy cargo-test
-
-   # Install pre-commit hooks
-   pre-commit install
-   ```
-
 ## Development Workflow
 
 ### 1. Create a Branch
@@ -326,15 +316,11 @@ git push origin feature/your-feature-name
 
 ### 1. Recommended Tools
 
-1. **IDE Setup**
-   - VS Code
-   - rust-analyzer
-   - CodeLLDB
+#### IDE Setup
 
-2. **Development Tools**
-   - cargo-watch
-   - cargo-edit
-   - cargo-expand
+- VS Code
+- rust-analyzer
+- CodeLLDB
 
 ### 2. CI/CD Tools
 
@@ -371,7 +357,6 @@ git push origin feature/your-feature-name
 
 2. **Community**
    - GitHub Discussions
-   - Discord server
    - Stack Overflow
 
 ### 2. Support Channels
@@ -390,7 +375,7 @@ git push origin feature/your-feature-name
 
 ### 1. Code License
 
-- All code is licensed under MIT License
+- All code is licensed under AGPL-3.0-or-later
 - Include license header in new files
 - Update license year if needed
 

@@ -13,24 +13,13 @@ TegDB is designed with a two-layer architecture that separates high-level transa
    - Snapshot isolation
    - Lock management
    - MVCC implementation
+   - Garbage collection
 
 2. **Engine Layer (Low-Level)**
    - Key-value storage
    - Write-ahead logging
    - SkipList implementation
-   - Garbage collection
-
-### Component Interaction
-
-```mermaid
-graph TD
-    A[Database API] --> B[Transaction Manager]
-    B --> C[Lock Manager]
-    B --> D[MVCC]
-    A --> E[Engine API]
-    E --> F[SkipList]
-    E --> G[WAL]
-```
+   - Compaction
 
 ## Core Components
 
@@ -100,7 +89,7 @@ In-memory storage:
 
 1. Read WAL
 2. Rebuild SkipList
-3. Roll back uncommitted
+3. Roll back uncommitted asynchronously
 4. Resume operations
 
 ## Concurrency Control
@@ -144,13 +133,6 @@ In-memory storage:
 - Disk synchronization
 - Space management
 
-### File Organization
-
-- Data files
-- Log files
-- Temporary files
-- Backup files
-
 ## Performance Considerations
 
 ### Memory Usage
@@ -159,13 +141,6 @@ In-memory storage:
 - Transaction state
 - Lock tables
 - Cache size
-
-### Disk Usage
-
-- WAL size
-- Data files
-- Temporary files
-- Backup storage
 
 ### Concurrency Issues
 
@@ -180,7 +155,7 @@ In-memory storage:
 
 1. Read WAL
 2. Rebuild state
-3. Roll back incomplete
+3. Roll back incomplete transactions asynchronously
 4. Resume operations
 
 ### Transaction Recovery
@@ -189,33 +164,3 @@ In-memory storage:
 2. Roll back changes
 3. Release resources
 4. Clean up state
-
-## Future Improvements
-
-### Architecture
-
-- Distributed support
-- Replication
-- Sharding
-- Backup/restore
-
-### Performance
-
-- Better concurrency
-- Improved recovery
-- Enhanced monitoring
-- Optimized storage
-
-### Reliability
-
-- Better error handling
-- Improved recovery
-- Enhanced monitoring
-- Better testing
-
-### Maintainability
-
-- Better documentation
-- Cleaner code
-- More tests
-- Better tools
