@@ -133,34 +133,34 @@ The following rules are established to ensure the development of TegDB remains s
 
 ### Architecture Improvements
 
-- [ ] Better separation between Engine API and Database API layers
-- [ ] Clearer documentation of the two-layer architecture implementation
-- [ ] Better organization of code structure to match architectural layers
+- [x] Better separation between Engine API and Database API layers
+- [x] Clearer documentation of the two-layer architecture implementation
+- [x] Better organization of code structure to match architectural layers
 - [ ] Separation of lock manager and MVCC into dedicated modules
 
 ### Transaction Management
 
-- [ ] More robust testing for serializable isolation guarantees
-- [ ] Optimization of transaction rollback process
-- [ ] Better documentation of transaction recovery during startup
-- [ ] More efficient snapshot management during transactions
+- [x] More robust testing for serializable isolation guarantees
+- [x] Optimization of transaction rollback process
+- [x] Better documentation of transaction recovery during startup
+- [x] More efficient snapshot management during transactions
 
 ### Write-Ahead Logging (WAL)
 
-- [ ] Improved documentation of WAL's role in crash recovery
-- [ ] More efficient log compaction process
-- [ ] Better implementation of background processing for log compaction
-- [ ] Optimization of garbage collection process
+- [x] Improved documentation of WAL's role in crash recovery
+- [x] More efficient log compaction process
+- [x] Better implementation of background processing for log compaction
+- [x] Optimization of garbage collection process
 
 ### Documentation
 
-- [ ] Add comprehensive API documentation for all public types and functions
+- [x] Add comprehensive API documentation for all public types and functions
   - Document all public methods in `Database`, `Transaction`, and `Engine` structs
   - Add examples for common use cases and edge cases
   - Include performance characteristics and memory usage considerations
   - Document error conditions and recovery strategies
 
-- [ ] Create detailed architecture documentation
+- [x] Create detailed architecture documentation
   - Document the two-layer architecture (Engine API and Database API)
   - Explain the interaction between components (SkipList, WAL, Transaction Manager)
   - Detail the transaction isolation and concurrency control mechanisms
@@ -184,7 +184,7 @@ The following rules are established to ensure the development of TegDB remains s
   - Add examples for error handling and recovery
   - Include examples for performance optimization
 
-- [ ] Add design rationale documentation
+- [x] Add design rationale documentation
   - Explain key design decisions and their trade-offs
   - Document the reasoning behind architectural choices
   - Compare with alternative approaches
