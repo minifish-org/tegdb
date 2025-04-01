@@ -127,7 +127,7 @@ git push origin feature/your-feature-name
 
 1. **Module Organization**
 
-   ```
+   ```text
    src/
    ├── lib.rs
    ├── engine/
