@@ -154,10 +154,53 @@ The following rules are established to ensure the development of TegDB remains s
 
 ### Documentation
 
-- [ ] Comprehensive documentation of implementation details
-- [ ] Better documentation of component relationships
-- [ ] More detailed API documentation
-- [ ] Documentation of configuration options
+- [ ] Add comprehensive API documentation for all public types and functions
+  - Document all public methods in `Database`, `Transaction`, and `Engine` structs
+  - Add examples for common use cases and edge cases
+  - Include performance characteristics and memory usage considerations
+  - Document error conditions and recovery strategies
+
+- [ ] Create detailed architecture documentation
+  - Document the two-layer architecture (Engine API and Database API)
+  - Explain the interaction between components (SkipList, WAL, Transaction Manager)
+  - Detail the transaction isolation and concurrency control mechanisms
+  - Document the garbage collection and log compaction processes
+
+- [ ] Add configuration documentation
+  - Document all configurable parameters in `constants.rs`
+  - Explain the impact of different configuration values
+  - Provide recommendations for different use cases
+  - Include performance tuning guidelines
+
+- [ ] Create troubleshooting guide
+  - Document common issues and their solutions
+  - Add debugging tips for transaction conflicts
+  - Include performance optimization guidelines
+  - Document recovery procedures for different failure scenarios
+
+- [ ] Improve code examples
+  - Add more comprehensive examples for different use cases
+  - Create examples demonstrating transaction isolation
+  - Add examples for error handling and recovery
+  - Include examples for performance optimization
+
+- [ ] Add design rationale documentation
+  - Explain key design decisions and their trade-offs
+  - Document the reasoning behind architectural choices
+  - Compare with alternative approaches
+  - Explain performance considerations
+
+- [ ] Create deployment guide
+  - Document system requirements
+  - Provide installation instructions
+  - Include configuration recommendations
+  - Add monitoring and maintenance guidelines
+
+- [ ] Add contribution guidelines
+  - Document coding standards
+  - Explain the testing requirements
+  - Provide guidelines for documentation updates
+  - Include pull request process
 
 ### Error Handling
 
