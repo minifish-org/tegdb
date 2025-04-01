@@ -182,19 +182,18 @@ This document explains the key design decisions and architectural choices made i
 
 ### 2. Full Serializability vs Snapshot Isolation
 
-**Why Snapshot Isolation was chosen**:
+**Why Serializable Isolation was chosen**:
 
-- Better performance
-- Sufficient for most use cases
-- Simpler to implement
-- Well-understood trade-offs
+- Provides strongest consistency guarantees
+- Prevents all types of anomalies (dirty reads, non-repeatable reads, phantom reads)
+- Well-suited for a wide range of use cases
+- MVCC implementation helps mitigate performance impact
 
-**Why Full Serializability was not chosen**:
+**Why Other Isolation Levels were not chosen**:
 
-- Higher overhead
-- More complex implementation
-- Potentially lower performance
-- May be overkill for many applications
+- Read Committed: Too weak, allows non-repeatable reads and phantom reads
+- Snapshot Isolation: Allows write-write conflicts, not sufficient for all use cases
+- Repeatable Read: Still allows phantom reads, not sufficient for all use cases
 
 ### 3. Simple Locking vs MVCC
 
