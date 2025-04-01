@@ -1,8 +1,8 @@
-//! Tegdb Engine: A persistent key-value store with an append-only log and automatic compaction.
-//! This module implements CRUD operations and log rebuilding to maintain data integrity.
+//! Tegdb Engine: A persistent key-value store implementing the Engine layer of the two-layer architecture.
+//! Features Write-Ahead Logging (WAL) for durability and MVCC for transaction isolation.
 
 use crate::types::KeyMap;
-use crate::wal; // Changed from crate::log
+use crate::wal;
 
 use log::info;
 use std::fs::OpenOptions;
@@ -13,19 +13,24 @@ use std::sync::Arc;
 const MAX_KEY_SIZE: usize = 1024;
 const MAX_VALUE_SIZE: usize = 256 * 1024;
 
-/// Core storage engine that provides CRUD operations with log compaction.
+/// Core storage engine implementing the Engine layer with WAL and MVCC support.
+/// Provides CRUD operations with log compaction and transaction isolation.
 #[derive(Clone)]
 pub struct Engine {
-    wal: Arc<wal::Wal>, // Changed field name from log to wal
+    // Write-Ahead Log for durability and crash recovery
+    wal: Arc<wal::Wal>,
+    // In-memory key map using SkipList for efficient concurrent access
     key_map: Arc<KeyMap>,
+    // Lock file for exclusive access to the database directory
     lock_file: Arc<std::fs::File>,
     lock_path: PathBuf,
 }
 
 impl Engine {
     /// Creates a new Engine instance.
-    /// Initializes the underlying log, reconstructs the in-memory key map from the log,
+    /// Initializes the WAL, reconstructs the in-memory key map from the log,
     /// and performs compaction if the removal/insertion ratio is at least 0.3.
+    /// The WAL ensures durability while the key map provides efficient access for MVCC.
     pub fn new(path: PathBuf) -> Self {
         // Create the directory if it doesn't exist.
         std::fs::create_dir_all(&path).expect("Failed to create directory");

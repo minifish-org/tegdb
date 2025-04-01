@@ -10,17 +10,18 @@ const DELETED_MARKER: &[u8] = b"__deleted__";
 
 pub struct Transaction {
     db: Database,
-    // Snapshot timestamp used for MVCC.
+    // Snapshot timestamp used for MVCC with Serializable isolation.
+    // Serializable isolation ensures no dirty reads, non-repeatable reads, or phantom reads.
     snapshot: Snapshot,
-    // New: All active transaction snapshots.
+    // All active transaction snapshots for conflict detection
     pub active_transactions: Vec<Snapshot>,
     ops: Vec<Vec<u8>>,
-    // New: Combined counters for GC change tracking.
-    pub new_counter: usize, // counts insertions and new version updates.
-    pub old_counter: usize, // counts old version updates and deletes.
-    // New: List of acquired locks.
+    // Combined counters for GC change tracking
+    pub new_counter: usize, // counts insertions and new version updates
+    pub old_counter: usize, // counts old version updates and deletes
+    // List of acquired locks for Serializable isolation
     locks: Vec<Vec<u8>>,
-    // New: Transaction status flag to mark if it should be aborted.
+    // Transaction status flag to mark if it should be aborted
     pub should_abort: bool,
 }
 

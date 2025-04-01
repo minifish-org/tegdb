@@ -3,7 +3,8 @@ use crate::engine::Engine;
 use crate::transaction::Transaction;
 use crate::types::Snapshot;
 use crate::utils::make_marker_key;
-use crossbeam_skiplist::{SkipMap, SkipSet}; // Changed from dashmap::DashMap
+// SkipList chosen for efficient concurrent operations and natural sorted order
+use crossbeam_skiplist::{SkipMap, SkipSet};
 use std::collections::HashSet;
 use std::io::Error;
 use std::path::PathBuf;
@@ -12,23 +13,25 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Notify; // new import for make_marker_key
 
-/// Simplified Lock using an atomic owner field.
+/// Lock implementation using atomic owner field for fine-grained concurrency control
 pub struct Lock {
     pub owner: AtomicU64, // 0 means unlocked
     pub notify: Notify,
 }
 
-/// Manages active transactions, locks and garbage collection.
+/// TransactionManager implements the Database layer of the two-layer architecture.
+/// Manages active transactions, locks, and garbage collection using SkipList for concurrent access.
 pub struct TransactionManager {
+    // SkipList for efficient concurrent access to active transactions
     pub active_transactions: Arc<SkipSet<Snapshot>>,
     pub stop_gc: Arc<AtomicBool>,
-    // Global counters for committed modifications.
+    // Global counters for committed modifications
     pub total_new: AtomicUsize,
     pub total_old: AtomicUsize,
-    // Notify GC thread when thresholds are met.
+    // Notify GC thread when thresholds are met
     pub gc_notify: Arc<Notify>,
 
-    // New: Lock and wait graph now use SkipMap.
+    // SkipMap for efficient concurrent access to locks and wait graph
     pub locks: SkipMap<Vec<u8>, Arc<Lock>>,
     pub wait_graph: SkipMap<u64, HashSet<Snapshot>>,
 }
