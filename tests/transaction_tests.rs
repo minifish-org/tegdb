@@ -1,9 +1,7 @@
 use std::fs;
 use std::io::Error;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio;
-use tokio::sync::Mutex;
 
 use tegdb::Database;
 

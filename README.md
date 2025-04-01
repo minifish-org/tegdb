@@ -60,7 +60,7 @@ If a transaction encounters an abort error, subsequent operations report an erro
 
 To roll back a transaction, the raw KV Engine API is used to reverse its changes, with markers to identify delete, update, and insert operations.
 
-Real-time log compaction and garbage collection remove outdated data and reduce storage overhead. 
+Real-time log compaction and garbage collection remove outdated data and reduce storage overhead.
 
 - **Log Compaction**: Shifts new writes to a fresh log file.
 - **Background Processing**: Processes the old log file in the background to reduce overall database size.
