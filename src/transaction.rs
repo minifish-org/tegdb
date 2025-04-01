@@ -10,18 +10,18 @@ const DELETED_MARKER: &[u8] = b"__deleted__";
 
 pub struct Transaction {
     db: Database,
-    // Snapshot timestamp used for MVCC with Serializable isolation.
-    // Serializable isolation ensures no dirty reads, non-repeatable reads, or phantom reads.
+    // Snapshot timestamp used for MVCC with Serializable isolation
     snapshot: Snapshot,
     // All active transaction snapshots for conflict detection
     pub active_transactions: Vec<Snapshot>,
+    // List of operations performed in this transaction
     ops: Vec<Vec<u8>>,
     // Combined counters for GC change tracking
-    pub new_counter: usize, // counts insertions and new version updates
-    pub old_counter: usize, // counts old version updates and deletes
-    // List of acquired locks for Serializable isolation
-    locks: Vec<Vec<u8>>,
-    // Transaction status flag to mark if it should be aborted
+    pub new_counter: usize,
+    pub old_counter: usize,
+    // List of keys with write intents
+    intent_keys: Vec<Vec<u8>>,
+    // Transaction status flag
     pub should_abort: bool,
 }
 
@@ -37,7 +37,6 @@ impl Transaction {
     /// Begins a new transaction from the given Database.
     pub async fn begin(db: crate::database::Database) -> Self {
         let snapshot = get_atomic_snapshot();
-        // New: Retrieve all active transactions from the DB.
         let active_transactions = db.get_active_transactions();
         db.register_transaction(snapshot);
         Self {
@@ -47,47 +46,38 @@ impl Transaction {
             ops: Vec::new(),
             new_counter: 0,
             old_counter: 0,
-            locks: Vec::new(),
-            should_abort: false, // Initialize the abort status
+            intent_keys: Vec::new(),
+            should_abort: false,
         }
     }
 
-    // Updated: Acquire a lock via the TransactionManager.
-    pub async fn acquire_lock(&mut self, key: &[u8]) -> Result<(), Error> {
-        // Skip reacquisition if already held.
-        if self.locks.iter().any(|l| l == key) {
-            return Ok(());
+    /// Places a write intent on a key
+    async fn place_intent(&mut self, key: &[u8]) -> Result<(), Error> {
+        if self.should_abort {
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
         let key_vec = key.to_vec();
-        if let Err(e) = self
-            .db
-            .transaction_manager
-            .acquire_lock(key_vec.clone(), self.snapshot)
-            .await
-        {
+        if let Err(e) = self.db.transaction_manager.place_intent(key_vec.clone(), self.snapshot).await {
             self.mark_abort();
             return Err(e);
         }
-        self.locks.push(key_vec);
+        self.intent_keys.push(key_vec);
         Ok(())
     }
 
-    // Updated: Release all acquired locks.
-    async fn release_locks(&mut self) {
-        for lock in self.locks.drain(..) {
-            self.db
-                .transaction_manager
-                .release_lock(lock, self.snapshot)
-                .await;
+    /// Resolves all write intents for this transaction
+    async fn resolve_intents(&mut self, commit: bool) {
+        for key in self.intent_keys.drain(..) {
+            self.db.transaction_manager.resolve_intent(&key, self.snapshot, commit);
         }
     }
 
-    /// Updated: Merged write conflict check into a single select call in insert.
+    /// Inserts a key-value pair with write intent
     pub async fn insert(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        self.acquire_lock(key).await?;
+        self.place_intent(key).await?;
         let (existing, _) = self.check_conflict_and_get(key).await?;
         if let Some(existing) = existing {
             if existing == value {
@@ -101,18 +91,17 @@ impl Transaction {
         Ok(())
     }
 
-    /// Updated: Merged write conflict check into a single select call in update.
+    /// Updates a key-value pair with write intent
     pub async fn update(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        self.acquire_lock(key).await?;
+        self.place_intent(key).await?;
         let (existing, _) = self.check_conflict_and_get(key).await?;
         if let Some(existing_value) = existing {
             if existing_value == value {
-                return Ok(()); // Existing value equals input; do nothing.
+                return Ok(());
             }
-            // Values differ; perform update.
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, value).await?;
             self.ops.push(mod_key);
@@ -122,19 +111,16 @@ impl Transaction {
         Ok(())
     }
 
-    /// Updated: Merged write conflict check into a single select call in delete.
+    /// Deletes a key with write intent
     pub async fn delete(&mut self, key: &[u8]) -> Result<(), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
-        self.acquire_lock(key).await?;
+        self.place_intent(key).await?;
         let (existing, _) = self.check_conflict_and_get(key).await?;
         if existing.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
-            self.db
-                .engine
-                .set(&mod_key, DELETED_MARKER.to_vec())
-                .await?;
+            self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
             self.ops.push(mod_key);
             self.old_counter += 1;
         }
@@ -201,44 +187,33 @@ impl Transaction {
         Ok((None, 0))
     }
 
-    /// Commits the buffered operations and, if any ops are present, writes a commit marker.
+    /// Commits the transaction and resolves all write intents
     pub async fn commit(mut self) -> Result<(), Error> {
         if self.should_abort {
-            // Rollback first, then return error.
             self.rollback().await?;
-            return Err(Error::new(
-                ErrorKind::Other,
-                "Transaction aborted; commit not allowed, already rolled back",
-            ));
+            return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
         if !self.ops.is_empty() {
             self.db.push_counters(self.new_counter, self.old_counter);
             let marker_key = make_marker_key(self.snapshot);
-            self.db
-                .engine
-                .set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec())
-                .await?;
-            // Ensure the commit marker is flushed to disk.
+            self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_COMMIT.to_vec()).await?;
             self.db.engine.flush().expect("Failed to flush WAL");
         }
-        self.release_locks().await;
+        self.resolve_intents(true).await;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
 
-    /// Rolls back the transaction. If ops exist, deletes them and writes a rollback marker.
+    /// Rolls back the transaction and resolves all write intents
     pub async fn rollback(&mut self) -> Result<(), Error> {
         if !self.ops.is_empty() {
             for mk in &self.ops {
                 self.db.engine.del(mk).await?;
             }
             let marker_key = make_marker_key(self.snapshot);
-            self.db
-                .engine
-                .set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec())
-                .await?;
+            self.db.engine.set(marker_key.as_bytes(), TXN_MARKER_ROLLBACK.to_vec()).await?;
         }
-        self.release_locks().await;
+        self.resolve_intents(false).await;
         self.db.unregister_transaction(self.snapshot);
         Ok(())
     }
@@ -258,11 +233,8 @@ impl Transaction {
         if candidate_snap > self.snapshot {
             self.mark_abort();
             let key_vec = key.to_vec();
-            self.db
-                .transaction_manager
-                .release_lock(key_vec.clone(), self.snapshot)
-                .await;
-            self.locks.retain(|l| l != &key_vec);
+            self.db.transaction_manager.resolve_intent(&key_vec, self.snapshot, false);
+            self.intent_keys.retain(|k| k != &key_vec);
             return Err(Error::new(ErrorKind::Other, "Write conflict error"));
         }
         Ok(result)

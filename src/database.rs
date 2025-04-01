@@ -3,24 +3,18 @@ use crate::engine::Engine;
 use crate::transaction::Transaction;
 use crate::types::Snapshot;
 use crate::utils::make_marker_key;
+use crate::intent::IntentManager;
 // SkipList chosen for efficient concurrent operations and natural sorted order
 use crossbeam_skiplist::{SkipMap, SkipSet};
 use std::collections::HashSet;
 use std::io::Error;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64; // new import for AtomicU64
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Notify; // new import for make_marker_key
 
-/// Lock implementation using atomic owner field for fine-grained concurrency control
-pub struct Lock {
-    pub owner: AtomicU64, // 0 means unlocked
-    pub notify: Notify,
-}
-
 /// TransactionManager implements the Database layer of the two-layer architecture.
-/// Manages active transactions, locks, and garbage collection using SkipList for concurrent access.
+/// Manages active transactions, intents, and garbage collection using SkipList for concurrent access.
 pub struct TransactionManager {
     // SkipList for efficient concurrent access to active transactions
     pub active_transactions: Arc<SkipSet<Snapshot>>,
@@ -30,10 +24,10 @@ pub struct TransactionManager {
     pub total_old: AtomicUsize,
     // Notify GC thread when thresholds are met
     pub gc_notify: Arc<Notify>,
-
-    // SkipMap for efficient concurrent access to locks and wait graph
-    pub locks: SkipMap<Vec<u8>, Arc<Lock>>,
-    pub wait_graph: SkipMap<u64, HashSet<Snapshot>>,
+    // Intent manager for serializable isolation
+    pub intent_manager: Arc<IntentManager>,
+    // SkipMap for wait graph
+    pub wait_graph: SkipMap<Snapshot, HashSet<Snapshot>>,
 }
 
 impl Clone for TransactionManager {
@@ -44,7 +38,7 @@ impl Clone for TransactionManager {
             total_new: AtomicUsize::new(self.total_new.load(Ordering::Relaxed)),
             total_old: AtomicUsize::new(self.total_old.load(Ordering::Relaxed)),
             gc_notify: self.gc_notify.clone(),
-            locks: SkipMap::new(),
+            intent_manager: self.intent_manager.clone(),
             wait_graph: SkipMap::new(),
         }
     }
@@ -59,7 +53,7 @@ impl TransactionManager {
             total_new: AtomicUsize::new(0),
             total_old: AtomicUsize::new(0),
             gc_notify: Arc::new(Notify::new()),
-            locks: SkipMap::new(),
+            intent_manager: Arc::new(IntentManager::new()),
             wait_graph: SkipMap::new(),
         }
     }
@@ -69,9 +63,10 @@ impl TransactionManager {
         self.active_transactions.insert(snapshot);
     }
 
-    /// Unregisters a transaction.
+    /// Unregisters a transaction and cleans up its intents.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.remove(&snapshot);
+        self.intent_manager.cleanup_txn_intents(snapshot);
     }
 
     /// Returns the oldest active transaction snapshot or `Snapshot::MAX` if none.
@@ -81,6 +76,26 @@ impl TransactionManager {
             .next()
             .map(|entry| *entry.value())
             .unwrap_or(Snapshot::MAX)
+    }
+
+    /// Places a write intent for a transaction
+    pub async fn place_intent(&self, key: Vec<u8>, snapshot: Snapshot) -> Result<(), std::io::Error> {
+        self.intent_manager.place_intent(key, snapshot).await
+    }
+
+    /// Resolves a write intent
+    pub fn resolve_intent(&self, key: &[u8], snapshot: Snapshot, commit: bool) {
+        self.intent_manager.resolve_intent(key, snapshot, commit);
+    }
+
+    /// Checks if a key has an unresolved intent
+    pub fn has_intent(&self, key: &[u8]) -> bool {
+        self.intent_manager.has_intent(key)
+    }
+
+    /// Gets the intent for a key if it exists
+    pub fn get_intent(&self, key: &[u8]) -> Option<Arc<crate::intent::Intent>> {
+        self.intent_manager.get_intent(key)
     }
 
     /// Spawns the GC thread in a dedicated runtime.
@@ -188,95 +203,6 @@ impl TransactionManager {
     pub fn stop_gc(&self) {
         self.stop_gc.store(true, Ordering::Relaxed);
         self.gc_notify.notify_one(); // notify GC thread to wake and exit
-    }
-
-    /// Asynchronously acquires a lock for the given key and transaction.
-    pub async fn acquire_lock(&self, key: Vec<u8>, txn_id: u64) -> Result<(), std::io::Error> {
-        use std::io::{Error, ErrorKind};
-        loop {
-            if let Some(lock_entry) = self.locks.get(&key) {
-                let lock_arc = lock_entry.value();
-                let current = lock_arc.owner.load(Ordering::Acquire);
-                if (current == 0 || current == txn_id)
-                    && lock_arc
-                        .owner
-                        .compare_exchange(current, txn_id, Ordering::AcqRel, Ordering::Acquire)
-                        .is_ok()
-                {
-                    return Ok(());
-                }
-                // Replace entry API: update wait_graph for txn_id.
-                if let Some(entry) = self.wait_graph.get(&txn_id) {
-                    let mut set = entry.value().clone();
-                    set.insert(current);
-                    self.wait_graph.remove(&txn_id);
-                    self.wait_graph.insert(txn_id, set);
-                } else {
-                    let mut set = HashSet::new();
-                    set.insert(current);
-                    self.wait_graph.insert(txn_id, set);
-                }
-                let mut visited = HashSet::new();
-                if Self::has_deadlock(&self.wait_graph, txn_id, &mut visited) {
-                    Self::remove_waiting_edge(&self.wait_graph, txn_id, current);
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        "Deadlock detected between transactions.",
-                    ));
-                }
-                lock_arc.notify.notified().await;
-            } else {
-                let new_lock = Arc::new(Lock {
-                    owner: AtomicU64::new(txn_id),
-                    notify: Notify::new(),
-                });
-                self.locks.insert(key.clone(), new_lock);
-                return Ok(());
-            }
-        }
-    }
-
-    /// Releases the lock for the given key held by the transaction.
-    pub async fn release_lock(&self, key: Vec<u8>, txn_id: u64) {
-        if let Some(entry) = self.locks.get(&key) {
-            let lock_arc = entry.value();
-            if lock_arc.owner.load(Ordering::Acquire) == txn_id {
-                lock_arc.owner.store(0, Ordering::Release);
-                lock_arc.notify.notify_waiters();
-            }
-        }
-    }
-
-    /// Checks for deadlock cycles asynchronously.
-    fn has_deadlock(
-        wait_graph: &SkipMap<u64, HashSet<u64>>,
-        txn_id: u64,
-        visited: &mut HashSet<u64>,
-    ) -> bool {
-        if !visited.insert(txn_id) {
-            return true;
-        }
-        if let Some(entry) = wait_graph.get(&txn_id) {
-            for &other in entry.value().iter() {
-                if Self::has_deadlock(wait_graph, other, visited) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Removes a waiting edge from the transaction dependency graph.
-    fn remove_waiting_edge(wait_graph: &SkipMap<u64, HashSet<u64>>, waiter: u64, owner: u64) {
-        if let Some(entry) = wait_graph.get(&waiter) {
-            let mut set = entry.value().clone();
-            set.remove(&owner);
-            drop(entry);
-            wait_graph.remove(&waiter);
-            if !set.is_empty() {
-                wait_graph.insert(waiter, set);
-            }
-        }
     }
 }
 

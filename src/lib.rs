@@ -6,6 +6,7 @@
 pub mod constants; // Changed from mod constants to pub mod constants
 mod database;
 mod engine;
+mod intent;
 mod snapshot;
 mod transaction;
 mod types;
@@ -15,3 +16,4 @@ pub mod wal; // Changed from mod wal to pub mod wal // Changed from mod utils to
 pub use database::Database;
 pub use engine::Engine;
 pub use transaction::Transaction;
+pub use types::Snapshot;
