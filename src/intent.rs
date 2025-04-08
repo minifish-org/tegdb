@@ -11,8 +11,8 @@ pub struct Intent {
     pub snapshot: Snapshot,
     /// Notify channel for waiting transactions
     pub notify: Notify,
-    /// Whether this intent has been resolved
-    pub resolved: AtomicU64,
+    /// Whether this intent has been aborted 
+    pub aborted: AtomicU64,
 }
 
 /// Manages write intents for serializable isolation
@@ -33,7 +33,7 @@ impl IntentManager {
         let intent = Arc::new(Intent {
             snapshot,
             notify: Notify::new(),
-            resolved: AtomicU64::new(0),
+            aborted: AtomicU64::new(0),
         });
 
         // Check for existing intent queue
@@ -57,6 +57,14 @@ impl IntentManager {
                 if queue.len() > 1 && !Arc::ptr_eq(queue.front().unwrap(), &intent) {
                     // Wait until our intent becomes the front or gets resolved
                     intent.notify.notified().await;
+                    
+                    // After waking up, check if we were aborted while waiting
+                    if intent.aborted.load(Ordering::Acquire) == 1 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::Other, 
+                            "Transaction aborted due to serializability conflict"
+                        ));
+                    }
                 }
             }
         } else {
@@ -78,7 +86,6 @@ impl IntentManager {
             if let Some(intent) = intents.front() {
                 if intent.snapshot == snapshot {
                     // Mark as resolved and notify waiters
-                    intent.resolved.store(if commit { 1 } else { 0 }, Ordering::Release);
                     intent.notify.notify_waiters();
                     
                     // Remove the front intent
@@ -91,10 +98,8 @@ impl IntentManager {
                             // as it would break serializability guarantees
                             if next_intent.snapshot < snapshot {
                                 // Mark the next transaction as aborted (0 = aborted)
-                                next_intent.resolved.store(0, Ordering::Release);
+                                next_intent.aborted.store(1, Ordering::Release);
                                 next_intent.notify.notify_waiters();
-                                // Remove the aborted intent
-                                intents.pop_front();
                             }
                         }
                     } else if !commit && !intents.is_empty() {

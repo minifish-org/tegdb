@@ -78,7 +78,7 @@ impl Transaction {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
         self.place_intent(key).await?;
-        let (existing, _) = self.check_conflict_and_get(key).await?;
+        let (existing, _) = self.select(key).await?;
         if let Some(existing) = existing {
             if existing == value {
                 return Ok(());
@@ -97,7 +97,7 @@ impl Transaction {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
         self.place_intent(key).await?;
-        let (existing, _) = self.check_conflict_and_get(key).await?;
+        let (existing, _) = self.select(key).await?;
         if let Some(existing_value) = existing {
             if existing_value == value {
                 return Ok(());
@@ -117,7 +117,7 @@ impl Transaction {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
         self.place_intent(key).await?;
-        let (existing, _) = self.check_conflict_and_get(key).await?;
+        let (existing, _) = self.select(key).await?;
         if existing.is_some() {
             let mod_key = Self::make_snapshot_key(key, self.snapshot);
             self.db.engine.set(&mod_key, DELETED_MARKER.to_vec()).await?;
@@ -132,10 +132,13 @@ impl Transaction {
     /// - If a deleted record is found, returns (None, snapshot) using its snapshot.
     /// - Otherwise, if a value is found, returns (Some(value), 0).
     /// - If no valid candidate is found (line 180), returns (None, 0).
-    pub async fn select(&self, key: &[u8]) -> Result<(Option<Vec<u8>>, u64), Error> {
+    pub async fn select(&mut self, key: &[u8]) -> Result<(Option<Vec<u8>>, u64), Error> {
         if self.should_abort {
             return Err(Error::new(ErrorKind::Other, "Transaction aborted"));
         }
+
+        // Place an intent for read operation to ensure proper isolation
+        self.place_intent(key).await?;
 
         // Reverse scan from snapshot 0 up to current transaction's snapshot.
         let lower = Self::make_snapshot_key(key, 0);
@@ -223,20 +226,4 @@ impl Transaction {
         self.should_abort = true;
     }
 
-    // New: Extracted function to check write conflict and return the current value and candidate snapshot.
-    async fn check_conflict_and_get(
-        &mut self,
-        key: &[u8],
-    ) -> Result<(Option<Vec<u8>>, u64), Error> {
-        let result = self.select(key).await?;
-        let (_, candidate_snap) = result;
-        if candidate_snap > self.snapshot {
-            self.mark_abort();
-            let key_vec = key.to_vec();
-            self.db.transaction_manager.resolve_intent(&key_vec, self.snapshot, false);
-            self.intent_keys.retain(|k| k != &key_vec);
-            return Err(Error::new(ErrorKind::Other, "Write conflict error"));
-        }
-        Ok(result)
-    }
 }
