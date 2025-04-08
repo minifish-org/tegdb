@@ -117,14 +117,4 @@ impl IntentManager {
             }
         }
     }
-
-    /// Checks if a key has an unresolved intent
-    pub fn has_intent(&self, key: &[u8]) -> bool {
-        self.intents.get(key).map_or(false, |entry| !entry.value().is_empty())
-    }
-
-    /// Gets the intent for a key if it exists
-    pub fn get_intent(&self, key: &[u8]) -> Option<Arc<Intent>> {
-        self.intents.get(key).and_then(|intents| intents.front().cloned())
-    }
 }

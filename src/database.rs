@@ -88,16 +88,6 @@ impl TransactionManager {
         self.intent_manager.resolve_intent(key, snapshot, commit);
     }
 
-    /// Checks if a key has an unresolved intent
-    pub fn has_intent(&self, key: &[u8]) -> bool {
-        self.intent_manager.has_intent(key)
-    }
-
-    /// Gets the intent for a key if it exists
-    pub fn get_intent(&self, key: &[u8]) -> Option<Arc<crate::intent::Intent>> {
-        self.intent_manager.get_intent(key)
-    }
-
     /// Spawns the GC thread in a dedicated runtime.
     pub fn start_gc(&self, engine: Engine) {
         let tm = self.clone();
