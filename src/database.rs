@@ -66,7 +66,7 @@ impl TransactionManager {
     /// Unregisters a transaction and cleans up its intents.
     pub fn unregister_transaction(&self, snapshot: Snapshot) {
         self.active_transactions.remove(&snapshot);
-        self.intent_manager.cleanup_txn_intents(snapshot);
+        // No need to clean up txn_intents as it has been removed
     }
 
     /// Returns the oldest active transaction snapshot or `Snapshot::MAX` if none.

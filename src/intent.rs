@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::VecDeque;
 use tokio::sync::Notify;
 use crossbeam_skiplist::SkipMap;
 use crate::types::Snapshot;
@@ -16,17 +17,14 @@ pub struct Intent {
 
 /// Manages write intents for serializable isolation
 pub struct IntentManager {
-    /// Map of key to intent
-    pub intents: SkipMap<Vec<u8>, Arc<Intent>>,
-    /// Map of transaction snapshot to set of keys it has intents on
-    pub txn_intents: SkipMap<Snapshot, Vec<Vec<u8>>>,
+    /// Map of key to queue of intents
+    pub intents: SkipMap<Vec<u8>, VecDeque<Arc<Intent>>>,
 }
 
 impl IntentManager {
     pub fn new() -> Self {
         Self {
             intents: SkipMap::new(),
-            txn_intents: SkipMap::new(),
         }
     }
 
@@ -38,63 +36,90 @@ impl IntentManager {
             resolved: AtomicU64::new(0),
         });
 
-        // Check for existing intent
-        if let Some(existing) = self.intents.get(&key) {
-            let existing_intent = existing.value();
-            let existing_snapshot = existing_intent.snapshot;
+        // Check for existing intent queue
+        if let Some(entry) = self.intents.get(&key) {
+            let mut intents = entry.value().clone();
             
-            if existing_snapshot != snapshot {
-                // Wait for existing intent to be resolved
-                existing_intent.notify.notified().await;
+            // If there's an intent at the front with the same snapshot, do nothing
+            if let Some(front_intent) = intents.front() {
+                if front_intent.snapshot == snapshot {
+                    return Ok(());
+                }
             }
-        }
-
-        // Place new intent
-        self.intents.insert(key.clone(), intent);
-        
-        // Record intent for transaction
-        if let Some(entry) = self.txn_intents.get(&snapshot) {
-            let mut keys = entry.value().clone();
-            keys.push(key);
-            self.txn_intents.remove(&snapshot);
-            self.txn_intents.insert(snapshot, keys);
+            
+            // Add new intent to the back of the queue
+            intents.push_back(intent.clone());
+            self.intents.insert(key.clone(), intents);
+            
+            // Check if we're not at the front of the queue
+            if let Some(entry) = self.intents.get(&key) {
+                let queue = entry.value();
+                if queue.len() > 1 && !Arc::ptr_eq(queue.front().unwrap(), &intent) {
+                    // Wait until our intent becomes the front or gets resolved
+                    intent.notify.notified().await;
+                }
+            }
         } else {
-            self.txn_intents.insert(snapshot, vec![key]);
+            // No existing intents for this key, create new queue with this intent
+            let mut intents = VecDeque::new();
+            intents.push_back(intent);
+            self.intents.insert(key, intents);
         }
-
+        
         Ok(())
     }
 
     /// Resolves an intent (commits or aborts)
     pub fn resolve_intent(&self, key: &[u8], snapshot: Snapshot, commit: bool) {
         if let Some(entry) = self.intents.get(key) {
-            let intent = entry.value();
-            if intent.snapshot == snapshot {
-                intent.resolved.store(if commit { 1 } else { 0 }, Ordering::Release);
-                intent.notify.notify_waiters();
-                self.intents.remove(key);
+            let mut intents = entry.value().clone();
+            
+            // Check if the front intent matches our snapshot
+            if let Some(intent) = intents.front() {
+                if intent.snapshot == snapshot {
+                    // Mark as resolved and notify waiters
+                    intent.resolved.store(if commit { 1 } else { 0 }, Ordering::Release);
+                    intent.notify.notify_waiters();
+                    
+                    // Remove the front intent
+                    intents.pop_front();
+                    
+                    if commit && !intents.is_empty() {
+                        // If committing, check all remaining intents for serializability violations
+                        if let Some(next_intent) = intents.front() {
+                            // If the next intent's snapshot is smaller, abort it
+                            // as it would break serializability guarantees
+                            if next_intent.snapshot < snapshot {
+                                // Mark the next transaction as aborted (0 = aborted)
+                                next_intent.resolved.store(0, Ordering::Release);
+                                next_intent.notify.notify_waiters();
+                                // Remove the aborted intent
+                                intents.pop_front();
+                            }
+                        }
+                    } else if !commit && !intents.is_empty() {
+                        // If rolling back (aborting), simply notify the next intent to continue
+                        if let Some(next_intent) = intents.front() {
+                            next_intent.notify.notify_waiters();
+                        }
+                    }
+                    
+                    if intents.is_empty() {
+                        // No more intents, remove the entire key entry
+                        self.intents.remove(key);
+                    }
+                }
             }
-        }
-    }
-
-    /// Cleans up all intents for a transaction
-    pub fn cleanup_txn_intents(&self, snapshot: Snapshot) {
-        if let Some(entry) = self.txn_intents.get(&snapshot) {
-            let keys = entry.value();
-            for key in keys {
-                self.resolve_intent(key, snapshot, false);
-            }
-            self.txn_intents.remove(&snapshot);
         }
     }
 
     /// Checks if a key has an unresolved intent
     pub fn has_intent(&self, key: &[u8]) -> bool {
-        self.intents.get(key).is_some()
+        self.intents.get(key).map_or(false, |entry| !entry.value().is_empty())
     }
 
     /// Gets the intent for a key if it exists
     pub fn get_intent(&self, key: &[u8]) -> Option<Arc<Intent>> {
-        self.intents.get(key).map(|entry| entry.value().clone())
+        self.intents.get(key).and_then(|intents| intents.front().cloned())
     }
-} 
+}
