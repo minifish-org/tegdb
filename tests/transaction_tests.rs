@@ -242,7 +242,7 @@ async fn test_durability() -> Result<(), Error> {
     Ok(())
 }
 
-// Concurrency Tests
+// Legacy Concurrency Tests (will be replaced by concurrent_tests.rs)
 #[tokio::test]
 async fn test_deadlock_detection() -> Result<(), Error> {
     let path = PathBuf::from("test_deadlock.db");
