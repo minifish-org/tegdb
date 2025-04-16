@@ -34,8 +34,7 @@ async fn test_engine() {
     let result = engine
         .scan(start_key.to_vec()..end_key_extended)
         .await
-        .unwrap()
-        .collect::<Vec<_>>();
+        .unwrap();
     let expected = vec![
         (start_key.to_vec(), b"start_value".to_vec()),
         (end_key.to_vec(), b"end_value".to_vec()),

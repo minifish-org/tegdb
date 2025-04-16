@@ -128,22 +128,20 @@ impl Engine {
         }
     }
 
-    /// Returns an iterator over key-value pairs within the specified range.
-    pub async fn scan<'a>(
-        &'a self,
+    /// Returns a Vec of key-value pairs within the specified range.
+    pub async fn scan(
+        &self,
         range: Range<Vec<u8>>,
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
-        let results = self.scan_internal(range.start, range.end, false);
-        Ok(Box::new(results.into_iter()))
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, std::io::Error> {
+        Ok(self.scan_internal(range.start, range.end, false))
     }
 
-    /// Returns an iterator over key-value pairs within the specified range in reverse order.
+    /// Returns a Vec of key-value pairs within the specified range in reverse order.
     pub async fn reverse_scan(
         &self,
         range: Range<Vec<u8>>,
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)>>, std::io::Error> {
-        let results = self.scan_internal(range.start, range.end, true);
-        Ok(Box::new(results.into_iter()))
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, std::io::Error> {
+        Ok(self.scan_internal(range.start, range.end, true))
     }
 
     /// Flushes the current log and shuts down the log writer to ensure data persistence.

@@ -25,6 +25,14 @@ pub struct Transaction {
     pub should_abort: bool,
 }
 
+// This static assertion will fail to compile if Transaction doesn't implement Send
+const _: () = {
+    fn assert_send<T: Send>() {}
+    fn check() {
+        assert_send::<Transaction>();
+    }
+};
+
 impl Transaction {
     /// Creates a snapshot key by appending the separator and the snapshot value to the given key.
     fn make_snapshot_key(key: &[u8], snapshot: Snapshot) -> Vec<u8> {
@@ -143,8 +151,9 @@ impl Transaction {
         // Reverse scan from snapshot 0 up to current transaction's snapshot.
         let lower = Self::make_snapshot_key(key, 0);
         let upper = Self::make_snapshot_key(key, self.snapshot + 1);
-        let rev_iter = self.db.engine.reverse_scan(lower..upper).await?;
-        for (candidate_key, candidate_value) in rev_iter {
+        // reverse_scan now returns a Vec
+        let results = self.db.engine.reverse_scan(lower..upper).await?;
+        for (candidate_key, candidate_value) in results { // Iterate over the Vec
             if let Some(pos) = candidate_key
                 .iter()
                 .rposition(|&b| b == crate::constants::KEY_SEPARATOR)
