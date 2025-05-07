@@ -38,11 +38,6 @@ impl ConcurrentTxnTest {
     }
 }
 
-// Define a helper function to clone errors since std::io::Error doesn't implement Clone
-fn clone_err(e: &Error) -> Error {
-    Error::new(e.kind(), e.to_string())
-}
-
 // Concurrent Isolation Test
 #[tokio::test]
 async fn test_isolation_concurrent() -> Result<(), Error> {

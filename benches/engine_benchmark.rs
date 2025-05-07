@@ -50,8 +50,7 @@ fn engine_benchmark(c: &mut Criterion) {
                 let _ = engine
                     .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
                     .await
-                    .unwrap()
-                    .collect::<Vec<_>>();
+                    .unwrap();
             });
         })
     });
@@ -65,8 +64,7 @@ fn engine_benchmark(c: &mut Criterion) {
                 let _ = engine
                     .reverse_scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
                     .await
-                    .unwrap()
-                    .collect::<Vec<_>>();
+                    .unwrap();
             });
         })
     });
@@ -244,8 +242,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                         let _ = engine_clone
                             .scan(b"a".to_vec()..b"z".to_vec())
                             .await
-                            .unwrap()
-                            .collect::<Vec<_>>();
+                            .unwrap();
                     }));
                 }
                 for t in tasks {
@@ -269,8 +266,7 @@ fn engine_concurrency_benchmark(c: &mut Criterion) {
                         let _ = engine_clone
                             .reverse_scan(b"a".to_vec()..b"z".to_vec())
                             .await
-                            .unwrap()
-                            .collect::<Vec<_>>();
+                            .unwrap();
                     }));
                 }
                 for t in tasks {
