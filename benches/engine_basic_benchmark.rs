@@ -4,27 +4,21 @@ use rusqlite::{params, Connection};
 use tempfile::NamedTempFile;
 use std::path::PathBuf;
 use tegdb::Engine;
-use tokio::runtime::Runtime;
 
 fn engine_benchmark(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
     let mut engine = Engine::new(PathBuf::from("test.db"));
     let key = b"key";
     let value = b"value";
 
     c.bench_function("engine set", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                engine.set(black_box(key), black_box(value.to_vec())).await.unwrap();
-            });
+            engine.set(black_box(key), black_box(value.to_vec())).unwrap();
         })
     });
 
     c.bench_function("engine get", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                engine.get(black_box(key)).await.unwrap();
-            });
+            engine.get(black_box(key)).unwrap();
         })
     });
 
@@ -32,27 +26,23 @@ fn engine_benchmark(c: &mut Criterion) {
         let start_key = b"a";
         let end_key = b"z";
         b.iter(|| {
-            rt.block_on(async {
-                let _ = engine
+            black_box(
+                engine
                     .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
-                    .await
                     .unwrap()
-                    .collect::<Vec<_>>();
-            });
+                    .collect::<Vec<_>>()
+            );
         })
     });
 
     c.bench_function("engine del", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                engine.del(black_box(key)).await.unwrap();
-            });
+            engine.del(black_box(key)).unwrap();
         })
     });
 }
 
 fn sled_benchmark(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
     let path = "sled";
     let db = sled::open(path).unwrap();
     let key = b"key";
@@ -60,165 +50,147 @@ fn sled_benchmark(c: &mut Criterion) {
 
     c.bench_function("sled insert", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                db.insert(black_box(key), black_box(value)).unwrap();
-            });
+            db.insert(black_box(key), black_box(value)).unwrap();
         })
     });
 
     c.bench_function("sled get", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                let _ = db.get(black_box(key)).unwrap().map(|v| v.to_vec());
-            });
+            db.get(black_box(key)).unwrap();
         })
     });
 
     c.bench_function("sled scan", |b| {
-        let start_key = "a";
-        let end_key = "z";
         b.iter(|| {
-            rt.block_on(async {
-                let _ = db
-                    .range(black_box(start_key)..black_box(end_key))
-                    .values()
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
-            });
+            black_box(
+                db.range::<&[u8], _>(black_box(b"a".as_ref())..black_box(b"z".as_ref()))
+                    .map(|x| x.unwrap())
+                    .collect::<Vec<_>>()
+            );
         })
     });
 
     c.bench_function("sled remove", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                db.remove(black_box(key)).unwrap();
-            });
+            db.remove(black_box(key)).unwrap();
         })
     });
+
+    // Clean up
+    std::fs::remove_dir_all(path).unwrap();
 }
 
 fn redb_benchmark(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-    let path = PathBuf::from("redb");
-    let db = Database::create(path).unwrap();
-    let table_def: TableDefinition<&str, &str> = TableDefinition::new("my_table");
-
-    let key = "key";
-    let value = "value";
+    let db_file = NamedTempFile::new().unwrap();
+    let db = Database::create(db_file.path()).unwrap();
+    let table_def: TableDefinition<&[u8], &[u8]> = TableDefinition::new("my_table");
+    let key = b"key";
+    let value = b"value";
 
     c.bench_function("redb put", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                let tx = db.begin_write().unwrap();
-                {
-                    let mut table = tx.open_table(table_def).unwrap();
-                    table.insert(black_box(key), black_box(value)).unwrap();
-                }
-                tx.commit().unwrap();
-            });
+            let write_txn = db.begin_write().unwrap();
+            {
+                let mut table = write_txn.open_table(table_def).unwrap();
+                table.insert(black_box(key), black_box(value)).unwrap();
+            }
+            write_txn.commit().unwrap();
         })
     });
 
     c.bench_function("redb get", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                let tx = db.begin_read().unwrap();
-                let table = tx.open_table(table_def).unwrap();
-                table.get(black_box(key)).unwrap();
-            });
+            let read_txn = db.begin_read().unwrap();
+            let table = read_txn.open_table(table_def).unwrap();
+            table.get(black_box(key)).unwrap();
         })
     });
 
     c.bench_function("redb scan", |b| {
-        let start_key = "a";
-        let end_key = "z";
         b.iter(|| {
-            rt.block_on(async {
-                let tx = db.begin_read().unwrap();
-                let table = tx.open_table(table_def).unwrap();
-                let _ = table
-                    .range(black_box(start_key)..black_box(end_key))
+            let read_txn = db.begin_read().unwrap();
+            let table = read_txn.open_table(table_def).unwrap();
+            black_box(
+                table
+                    .range(black_box(b"a".as_slice())..black_box(b"z".as_slice()))
                     .unwrap()
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
-            });
+                    .map(|x| x.unwrap())
+                    .collect::<Vec<_>>()
+            );
         })
     });
 
     c.bench_function("redb del", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                let tx = db.begin_write().unwrap();
-                {
-                    let mut table = tx.open_table(table_def).unwrap();
-                    table.remove(black_box(key)).unwrap();
-                }
-                tx.commit().unwrap();
-            });
+            let write_txn = db.begin_write().unwrap();
+            {
+                let mut table = write_txn.open_table(table_def).unwrap();
+                table.remove(black_box(key)).unwrap();
+            }
+            write_txn.commit().unwrap();
         })
     });
 }
 
 fn sqlite_benchmark(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-    let temp_file = NamedTempFile::new().unwrap();
-    let conn = Connection::open(temp_file.path()).unwrap();
-
+    let conn = Connection::open_in_memory().unwrap();
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS test (key TEXT, value TEXT NOT NULL)",
+        "CREATE TABLE test (key BLOB PRIMARY KEY, value BLOB)",
         [],
     )
     .unwrap();
-
-    let key = "key";
-    let value = "value";
+    let key = b"key";
+    let value = b"value";
 
     c.bench_function("sqlite insert", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                conn.execute("INSERT INTO test (key, value) VALUES (?1, ?2)", params![key, value])
-                    .unwrap();
-            });
+            conn.execute(
+                "INSERT OR REPLACE INTO test VALUES (?, ?)",
+                params![black_box(key), black_box(value)],
+            )
+            .unwrap();
         })
     });
 
     c.bench_function("sqlite get", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                let _: String = conn
-                    .query_row("SELECT value FROM test WHERE key = ?1", params![key], |row| row.get(0))
-                    .unwrap();
-            });
+            let mut stmt = conn
+                .prepare("SELECT value FROM test WHERE key = ?")
+                .unwrap();
+            let mut rows = stmt.query([black_box(key)]).unwrap();
+            rows.next().unwrap();
         })
     });
 
     c.bench_function("sqlite scan", |b| {
-        let start_key = "a";
-        let end_key = "z";
         b.iter(|| {
-            rt.block_on(async {
-                let mut stmt = conn
-                    .prepare("SELECT key, value FROM test WHERE key >= ?1 AND key <= ?2")
-                    .unwrap();
-                let _ = stmt
-                    .query_map(params![start_key, end_key], |row| {
-                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                    })
-                    .unwrap()
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
-            });
+            let mut stmt = conn
+                .prepare("SELECT key, value FROM test WHERE key >= ? AND key <= ? ORDER BY key")
+                .unwrap();
+            let rows = stmt
+                .query_map([black_box(b"a".as_slice()), black_box(b"z".as_slice())], |row| {
+                    Ok((row.get::<_, Vec<u8>>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap()))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            black_box(rows);
         })
     });
 
     c.bench_function("sqlite delete", |b| {
         b.iter(|| {
-            rt.block_on(async {
-                conn.execute("DELETE FROM test WHERE key = ?1", params![key]).unwrap();
-            });
+            conn.execute("DELETE FROM test WHERE key = ?", params![black_box(key)])
+                .unwrap();
         })
     });
 }
 
-criterion_group!(benches, engine_benchmark, sled_benchmark, redb_benchmark, sqlite_benchmark);
+criterion_group!(
+    benches,
+    engine_benchmark,
+    sled_benchmark,
+    redb_benchmark,
+    sqlite_benchmark
+);
 criterion_main!(benches);

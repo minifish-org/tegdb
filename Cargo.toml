@@ -15,7 +15,7 @@ license = "AGPL-3.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.43.0", features = ["full"] }
+fs2 = "0.4.3"  # Required for file locking in production code
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

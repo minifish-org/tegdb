@@ -1,10 +1,15 @@
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
+use std::marker::PhantomData;
+use std::rc::Rc;
+use fs2::FileExt;  // Add fs2 for file locking
 
 pub struct Engine {
     log: Log,
     key_map: KeyMap,
+    // This field makes Engine neither Send nor Sync
+    _not_send_sync: PhantomData<Rc<()>>, 
 }
 
 // KeyMap is a BTreeMap that maps keys to a tuple of (position, value length, value).
@@ -17,12 +22,13 @@ impl Engine {
         let mut s = Self {
             log,
             key_map,
+            _not_send_sync: PhantomData,
         };
         s.compact().expect("Failed to compact log");
         s
     }
 
-    pub async fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
+    pub fn get(&mut self, key: &[u8]) -> Option<Vec<u8>> {
         if let Some(value) = self.key_map.get(key) {
             Some(value.clone())
         } else {
@@ -30,7 +36,7 @@ impl Engine {
         }
     }
 
-    pub async fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), std::io::Error> {
+    pub fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<(), std::io::Error> {
         if key.len() > 1024 {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Key length exceeds 1k"));
         }
@@ -39,7 +45,7 @@ impl Engine {
         }
 
         if value.len() == 0 {
-            return self.del(key).await;
+            return self.del(key);
         }
 
         if let Some(existing_value) = self.key_map.get(key) {
@@ -56,7 +62,7 @@ impl Engine {
         Ok(())
     }
 
-    pub async fn del(&mut self, key: &[u8]) -> Result<(), std::io::Error> {
+    pub fn del(&mut self, key: &[u8]) -> Result<(), std::io::Error> {
         if self.key_map.get(key).is_none() {
             return Ok(());
         }
@@ -66,7 +72,7 @@ impl Engine {
         Ok(())
     }
 
-    pub async fn scan<'a>(
+    pub fn scan<'a>(
         &'a mut self,
         range: Range<Vec<u8>>,
     ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>, std::io::Error> {
@@ -134,6 +140,12 @@ impl Log {
             .create(true)
             .open(&path)
             .unwrap();
+        
+        // Try to obtain an exclusive lock when opening the log file
+        // This ensures only one process can access the file at a time
+        file.try_lock_exclusive()
+            .unwrap_or_else(|e| panic!("Could not obtain exclusive lock on database file: {}", e));
+        
         Self { path, file }
     }
 
