@@ -1,10 +1,30 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::path::PathBuf;
+use std::env;
+use std::fs;
 use tegdb::Engine;
 
+/// Creates a unique temporary file path for benchmarks
+fn temp_db_path(prefix: &str) -> PathBuf {
+    let mut path = env::temp_dir();
+    path.push(format!("tegdb_bench_{}_{}", prefix, std::process::id()));
+    path
+}
+
 fn engine_benchmark(c: &mut Criterion, value_size: usize) {
-    let mut engine = Engine::new(PathBuf::from("test.db")).expect("Failed to create engine");
+    let path = temp_db_path(&format!("seq_{}", value_size));
+    if path.exists() {
+        fs::remove_file(&path).expect("Failed to remove existing test file");
+    }
+    let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
     let value = vec![0; value_size];
+    
+    // Insert some test data before running get benchmarks
+    for i in 0..1000 {
+        let key_str = format!("key{}", i);
+        let key = key_str.as_bytes();
+        engine.set(key, value.to_vec()).unwrap();
+    }
 
     c.bench_function(&format!("engine seq set {}", value_size), |b| {
         let mut i = 0;
@@ -19,9 +39,9 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("engine seq get {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            let key_str = format!("key{}", i);
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
             let key = key_str.as_bytes();
-            engine.get(black_box(key)).unwrap();
+            let _ = black_box(engine.get(black_box(key)));
             i += 1;
         })
     });
@@ -29,19 +49,35 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("engine seq del {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            let key_str = format!("key{}", i);
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
             let key = key_str.as_bytes();
-            engine.del(black_box(key)).unwrap();
+            let _ = engine.del(black_box(key)); // Just benchmark the operation, don't unwrap
             i += 1;
         })
     });
+    
+    // Clean up the test file after benchmarks
+    drop(engine); // Ensure the file is closed
+    let _ = fs::remove_file(&path);
 }
 
 
 
 fn sled_benchmark(c: &mut Criterion, value_size: usize) {
-    let db = sled::open("sled").unwrap();
+    let path = temp_db_path(&format!("sled_seq_{}", value_size));
+    let path_str = path.to_str().expect("Invalid path");
+    if path.exists() {
+        std::fs::remove_dir_all(path_str).unwrap_or_default();
+    }
+    let db = sled::open(path_str).unwrap();
     let value = vec![0; value_size];
+    
+    // Insert some test data before running get benchmarks
+    for i in 0..1000 {
+        let key_str = format!("key{}", i);
+        let key = key_str.as_bytes();
+        db.insert(key, value.as_slice()).unwrap();
+    }
 
     c.bench_function(&format!("sled seq insert {}", value_size), |b| {
         let mut i = 0;
@@ -56,9 +92,9 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("sled seq get {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            let key_str = format!("key{}", i);
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
             let key = key_str.as_bytes();
-            db.get(black_box(key)).unwrap();
+            let _ = black_box(db.get(black_box(key)));
             i += 1;
         })
     });
@@ -66,14 +102,15 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
     c.bench_function(&format!("sled seq remove {}", value_size), |b| {
         let mut i = 0;
         b.iter(|| {
-            let key_str = format!("key{}", i);
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
             let key = key_str.as_bytes();
-            db.remove(black_box(key)).unwrap();
+            let _ = db.remove(black_box(key));
             i += 1;
         })
     });
 
-    std::fs::remove_dir_all("sled").unwrap_or_default();
+    drop(db); // Ensure the database is closed
+    std::fs::remove_dir_all(path_str).unwrap_or_default();
 }
 
 fn benchmark_small(c: &mut Criterion) {

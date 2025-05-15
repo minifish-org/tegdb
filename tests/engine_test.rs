@@ -1,11 +1,18 @@
-// filepath: /Users/yusp/work/tegdb/tests/engine_test.rs
 use std::path::PathBuf;
 use std::fs;
+use std::env;
 use tegdb::{Engine, Result, Entry};
+
+/// Creates a unique temporary file path for tests
+fn temp_db_path(prefix: &str) -> PathBuf {
+    let mut path = env::temp_dir();
+    path.push(format!("tegdb_test_{}_{}", prefix, std::process::id()));
+    path
+}
 
 #[test]
 fn test_engine() -> Result<()> {
-    let path = PathBuf::from("test.db");
+    let path = temp_db_path("basic");
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -58,7 +65,7 @@ fn test_engine() -> Result<()> {
 
 #[test]
 fn test_persistence() -> Result<()> {
-    let path = PathBuf::from("test_persistence.db");
+    let path = temp_db_path("persistence");
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -150,7 +157,7 @@ fn test_persistence() -> Result<()> {
 
 #[test]
 fn test_basic_operations() -> Result<()> {
-    let path = PathBuf::from("test_basic_ops.db");
+    let path = temp_db_path("basic_ops");
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -168,7 +175,7 @@ fn test_basic_operations() -> Result<()> {
 
 #[test]
 fn test_concurrent_access() -> Result<()> {
-    let path = PathBuf::from("test_concurrent.db");
+    let path = temp_db_path("concurrent");
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -193,7 +200,7 @@ fn test_concurrent_access() -> Result<()> {
 
 #[test]
 fn test_batch_operations() -> Result<()> {
-    let path = PathBuf::from("test_batch.db");
+    let path = temp_db_path("batch");
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -232,7 +239,7 @@ fn test_batch_operations() -> Result<()> {
 
 #[test]
 fn test_empty_string_values() -> Result<()> {
-    let path = PathBuf::from("test_empty.db");
+    let path = temp_db_path("empty");
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -259,7 +266,7 @@ fn test_empty_string_values() -> Result<()> {
 
 #[test]
 fn test_len_and_empty() -> Result<()> {
-    let path = PathBuf::from("test_len.db");
+    let path = temp_db_path("len");
     if path.exists() {
         fs::remove_file(&path)?;
     }

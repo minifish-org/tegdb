@@ -1,10 +1,23 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
+use std::env;
+use std::fs;
 use tegdb::Engine;
 
+/// Creates a unique temporary file path for benchmarks
+fn temp_db_path(prefix: &str) -> PathBuf {
+    let mut path = env::temp_dir();
+    path.push(format!("tegdb_bench_{}_{}", prefix, std::process::id()));
+    path
+}
+
 fn engine_benchmark(c: &mut Criterion) {
-    let mut engine = Engine::new(PathBuf::from("test.db")).expect("Failed to create engine");
+    let path = temp_db_path("engine");
+    if path.exists() {
+        fs::remove_file(&path).expect("Failed to remove existing test file");
+    }
+    let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
     let key = b"key";
     let value = b"value";
 
@@ -38,11 +51,19 @@ fn engine_benchmark(c: &mut Criterion) {
             engine.del(black_box(key)).unwrap();
         })
     });
+    
+    // Clean up test file at the end
+    drop(engine); // Ensure the file is closed
+    let _ = fs::remove_file(&path);
 }
 
 fn sled_benchmark(c: &mut Criterion) {
-    let path = "sled";
-    let db = sled::open(path).unwrap();
+    let path = temp_db_path("sled_basic");
+    let path_str = path.to_str().expect("Invalid path");
+    if path.exists() {
+        std::fs::remove_dir_all(path_str).unwrap_or_default();
+    }
+    let db = sled::open(path_str).unwrap();
     let key = b"key";
     let value = b"value";
 
@@ -75,7 +96,8 @@ fn sled_benchmark(c: &mut Criterion) {
     });
 
     // Clean up
-    std::fs::remove_dir_all(path).unwrap();
+    drop(db); // Ensure the database is closed
+    std::fs::remove_dir_all(path_str).unwrap_or_default();
 }
 
 
