@@ -20,7 +20,6 @@ fs2 = "0.4.3"  # Required for file locking in production code
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
 sled = "0.34.7" # for performance comparison
-redb = "1.5.0"
 rusqlite = "0.31.0"
 tempfile = "3.10.1"
 
