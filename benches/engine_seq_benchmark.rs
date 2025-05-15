@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tegdb::Engine;
 
 fn engine_benchmark(c: &mut Criterion, value_size: usize) {
-    let mut engine = Engine::new(PathBuf::from("test.db"));
+    let mut engine = Engine::new(PathBuf::from("test.db")).expect("Failed to create engine");
     let value = vec![0; value_size];
 
     c.bench_function(&format!("engine seq set {}", value_size), |b| {

@@ -53,9 +53,6 @@ pub struct Engine {
 // KeyMap is a BTreeMap that maps keys to values
 type KeyMap = BTreeMap<Vec<u8>, Vec<u8>>;
 
-// Type alias for scan result
-type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>;
-
 impl Engine {
     /// Creates a new database engine with default configuration
     pub fn new(path: PathBuf) -> Result<Self> {
@@ -113,7 +110,7 @@ impl Engine {
 
     /// Deletes a key-value pair
     pub fn del(&mut self, key: &[u8]) -> Result<()> {
-        if !self.key_map.contains_key(key) {
+        if self.key_map.get(key).is_none() {
             return Ok(());
         }
 
@@ -124,10 +121,10 @@ impl Engine {
     }
 
     /// Scans a range of key-value pairs
-    pub fn scan(
-        &self,
+    pub fn scan<'a>(
+        &'a self,
         range: Range<Vec<u8>>,
-    ) -> Result<ScanResult<'_>> {
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>> {
         let iter = self.key_map.range(range)
             .map(|(key, value)| (key.clone(), value.clone()));
         
@@ -222,7 +219,6 @@ impl Log {
             .read(true)
             .write(true)
             .create(true)
-            .truncate(false) // Don't truncate existing database files
             .open(&path)
             .map_err(Error::from)?;
         
@@ -327,11 +323,9 @@ impl Log {
         
         // Write to file
         self.file.seek(SeekFrom::End(0))?;
-        {
-            let mut writer = BufWriter::with_capacity(len as usize, &mut self.file);
-            writer.write_all(&buffer)?;
-            writer.flush()?;
-        }
+        let mut writer = BufWriter::with_capacity(len as usize, &mut self.file);
+        writer.write_all(&buffer)?;
+        writer.flush()?;
         
         // Sync to disk if requested
         if sync {
@@ -339,15 +333,6 @@ impl Log {
         }
         
         Ok(())
-    }
-}
-
-// Add a Drop implementation for Log to unlock the file
-impl Drop for Log {
-    fn drop(&mut self) {
-        // Ignore errors during drop, but try to unlock
-        // Use fully qualified syntax to avoid name collisions
-        let _ = FileExt::unlock(&self.file);
     }
 }
 

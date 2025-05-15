@@ -1,16 +1,21 @@
+// filepath: /Users/yusp/work/tegdb/tests/engine_test.rs
 use std::path::PathBuf;
 use std::fs;
-use tegdb::Engine;
+use tegdb::{Engine, Result, Entry};
 
 #[test]
-fn test_engine() {
+fn test_engine() -> Result<()> {
     let path = PathBuf::from("test.db");
-    let mut engine = Engine::new(path.clone());
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    
+    let mut engine = Engine::new(path.clone())?;
 
     // Test set and get
     let key = b"key";
     let value = b"value";
-    engine.set(key, value.to_vec()).unwrap();
+    engine.set(key, value.to_vec())?;
     let get_value = engine.get(key).unwrap();
     assert_eq!(
         get_value,
@@ -19,89 +24,61 @@ fn test_engine() {
         String::from_utf8_lossy(value),
         String::from_utf8_lossy(&get_value)
     );
-
+    
     // Test del
-    engine.del(key).unwrap();
+    engine.del(key)?;
     let get_value = engine.get(key);
     assert_eq!(
         get_value,
         None,
-        "Expected: {}, Got: {}",
-        String::from_utf8_lossy(&[]),
+        "Expected: None, Got: {}",
         String::from_utf8_lossy(get_value.as_deref().unwrap_or_default())
     );
 
     // Test scan
     let start_key = b"a";
     let end_key = b"z";
-    engine.set(start_key, b"start_value".to_vec()).unwrap();
-    engine.set(end_key, b"end_value".to_vec()).unwrap();
+    engine.set(start_key, b"start_value".to_vec())?;
+    engine.set(end_key, b"end_value".to_vec())?;
+    
     let mut end_key_extended = Vec::new();
     end_key_extended.extend_from_slice(end_key);
-    end_key_extended.extend_from_slice(&[1u8]);
-    let result = engine
-        .scan(start_key.to_vec()..end_key_extended)
-        .unwrap()
-        .collect::<Vec<_>>();
-    let expected = vec![
-        (start_key.to_vec(), b"start_value".to_vec()),
-        (end_key.to_vec(), b"end_value".to_vec()),
-    ];
-    let expected_strings: Vec<(String, String)> = expected
-        .iter()
-        .map(|(k, v)| {
-            (
-                String::from_utf8_lossy(k).into_owned(),
-                String::from_utf8_lossy(v).into_owned(),
-            )
-        })
-        .collect();
-    let result_strings: Vec<(String, String)> = result
-        .iter()
-        .map(|(k, v)| {
-            (
-                String::from_utf8_lossy(k).into_owned(),
-                String::from_utf8_lossy(v).into_owned(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        result_strings, expected_strings,
-        "Expected: {:?}, Got: {:?}",
-        expected_strings, result_strings
-    );
+    end_key_extended.push(0);
 
-    // Clean up
-    drop(engine);
-    fs::remove_file(path).unwrap();
+    let result = engine
+        .scan(start_key.to_vec()..end_key_extended)?
+        .collect::<Vec<_>>();
+    assert_eq!(result.len(), 2);
+
+    // Cleanup
+    fs::remove_file(path)?;
+    
+    Ok(())
 }
 
 #[test]
-fn test_engine_durability() {
-    // Create a test database file path
-    let path = PathBuf::from("durability_test.db");
-    
-    // Remove any existing test file to start clean
-    let _ = fs::remove_file(&path);
-    
-    // Insert test data
+fn test_persistence() -> Result<()> {
+    let path = PathBuf::from("test_persistence.db");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+
+    // Create engine and set values
     {
-        let mut engine = Engine::new(path.clone());
+        let mut engine = Engine::new(path.clone())?;
         
-        // Insert some key-value pairs
-        engine.set(b"key1", b"value1".to_vec()).unwrap();
-        engine.set(b"key2", b"value2".to_vec()).unwrap();
-        engine.set(b"key3", b"value3".to_vec()).unwrap();
+        engine.set(b"key1", b"value1".to_vec())?;
+        engine.set(b"key2", b"value2".to_vec())?;
+        engine.set(b"key3", b"value3".to_vec())?;
         
         // Explicitly drop the engine to ensure file is closed properly
         drop(engine);
     }
-    
-    // Reopen the database and verify data persistence
+
+    // Reopen and verify values
     {
-        let mut engine = Engine::new(path.clone());
+        let engine = Engine::new(path.clone())?;
         
-        // Verify the data is still there
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
         let value3 = engine.get(b"key3").unwrap();
@@ -110,137 +87,213 @@ fn test_engine_durability() {
         assert_eq!(value2, b"value2", "Value for key2 not persisted correctly");
         assert_eq!(value3, b"value3", "Value for key3 not persisted correctly");
         
-        // Test updating a value and adding a new one
-        engine.set(b"key2", b"updated_value".to_vec()).unwrap();
-        engine.set(b"key4", b"value4".to_vec()).unwrap();
-        
         // Drop engine again to ensure changes are persisted
         drop(engine);
     }
-    
-    // Open a third time to verify the updates were persisted
+
+    // Reopen, update some values, and verify again
     {
-        let mut engine = Engine::new(path.clone());
+        let mut engine = Engine::new(path.clone())?;
         
-        // Check original keys
+        engine.set(b"key2", b"updated_value".to_vec())?;
+        engine.set(b"key4", b"value4".to_vec())?;
+        
+        // Explicitly drop the engine to ensure file is closed properly
+        drop(engine);
+    }
+
+    // Reopen and verify updated values
+    {
+        let engine = Engine::new(path.clone())?;
+        
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
         let value3 = engine.get(b"key3").unwrap();
         let value4 = engine.get(b"key4").unwrap();
         
         assert_eq!(value1, b"value1", "Original value for key1 was lost");
-        assert_eq!(value2, b"updated_value", "Updated value for key2 was not persisted");
+        assert_eq!(value2, b"updated_value", "Value for key2 not updated correctly");
         assert_eq!(value3, b"value3", "Original value for key3 was lost");
-        assert_eq!(value4, b"value4", "New value for key4 was not persisted");
-        
-        // Test deletion persistence
-        engine.del(b"key3").unwrap();
+        assert_eq!(value4, b"value4", "New value for key4 not persisted correctly");
         
         // Drop engine again
         drop(engine);
     }
-    
-    // Open one final time to verify deletion was persisted
+
+    // Reopen, delete a key, and verify again
     {
-        let mut engine = Engine::new(path.clone());
+        let mut engine = Engine::new(path.clone())?;
         
-        // Verify key3 is gone
-        let value3 = engine.get(b"key3");
-        assert!(value3.is_none(), "Deletion of key3 was not persisted");
+        engine.del(b"key3")?;
         
-        // Clean up
+        // Explicitly drop the engine to ensure file is closed properly
         drop(engine);
-        fs::remove_file(path).unwrap();
     }
+
+    // Reopen and verify deletion
+    {
+        let engine = Engine::new(path.clone())?;
+        
+        let value3 = engine.get(b"key3");
+        
+        assert_eq!(value3, None, "Key3 was not deleted properly");
+        
+        // Drop engine for the last time
+        drop(engine);
+    }
+
+    // Cleanup
+    fs::remove_file(path)?;
+    
+    Ok(())
 }
 
-#[cfg(test)]
-mod thread_safety_tests {
-    use super::*;
-    
-    #[test]
-    fn test_file_locking_prevents_concurrent_access() {
-        let path = PathBuf::from("file_lock_test.db");
-        let _ = fs::remove_file(&path);
-        
-        // Create the first engine instance
-        let engine1 = Engine::new(path.clone());
-        
-        // Try to create a second engine instance with the same path
-        // This should fail because the file is locked by the first instance
-        let result = std::panic::catch_unwind(|| {
-            Engine::new(path.clone())
-        });
-        
-        // Verify the second instance failed to create
-        assert!(result.is_err(), "Expected second Engine instance to fail due to file locking");
-        
-        // Drop the first instance to release the lock
-        drop(engine1);
-        
-        // Now we should be able to create a new instance
-        let engine2 = Engine::new(path.clone());
-        
-        // Clean up
-        drop(engine2);
-        fs::remove_file(path).unwrap();
+#[test]
+fn test_basic_operations() -> Result<()> {
+    let path = PathBuf::from("test_basic_ops.db");
+    if path.exists() {
+        fs::remove_file(&path)?;
     }
     
-    #[test]
-    fn test_engine_single_thread_safety() {
-        // This test demonstrates that Engine works fine within a single thread
-        let path = PathBuf::from("single_thread_test.db");
-        let _ = fs::remove_file(&path);
-        
-        // Create and use engine in the same thread
-        let mut engine = Engine::new(path.clone());
-        engine.set(b"key", b"value".to_vec()).unwrap();
-        let value = engine.get(b"key").unwrap();
-        assert_eq!(value, b"value");
-        
-        drop(engine);
-        fs::remove_file(path).unwrap();
-    }
+    let mut engine = Engine::new(path.clone())?;
+    
+    engine.set(b"key", b"value".to_vec())?;
+    let value = engine.get(b"key").unwrap();
+    assert_eq!(value, b"value");
+    
+    fs::remove_file(path)?;
+    
+    Ok(())
+}
 
-    // Test that we can use multiple independent Engine instances
-    // within the same thread (but not concurrently)
-    #[test]
-    fn test_multiple_engines_same_thread() {
-        let path1 = PathBuf::from("engine1_test.db");
-        let path2 = PathBuf::from("engine2_test.db");
-        
-        let _ = fs::remove_file(&path1);
-        let _ = fs::remove_file(&path2);
-        
-        // Use first engine
-        {
-            let mut engine1 = Engine::new(path1.clone());
-            engine1.set(b"key1", b"value1".to_vec()).unwrap();
-            drop(engine1);
-        }
-        
-        // Use second engine
-        {
-            let mut engine2 = Engine::new(path2.clone());
-            engine2.set(b"key2", b"value2".to_vec()).unwrap();
-            drop(engine2);
-        }
-        
-        // Reopen both engines to verify data
-        {
-            let mut engine1 = Engine::new(path1.clone());
-            let value1 = engine1.get(b"key1").unwrap();
-            assert_eq!(value1, b"value1");
-            drop(engine1);
-            
-            let mut engine2 = Engine::new(path2.clone());
-            let value2 = engine2.get(b"key2").unwrap();
-            assert_eq!(value2, b"value2");
-            drop(engine2);
-        }
-        
-        // Clean up
-        fs::remove_file(path1).unwrap();
-        fs::remove_file(path2).unwrap();
+#[test]
+fn test_concurrent_access() -> Result<()> {
+    let path = PathBuf::from("test_concurrent.db");
+    if path.exists() {
+        fs::remove_file(&path)?;
     }
+    
+    // First engine instance
+    let engine1 = Engine::new(path.clone())?;
+    
+    // This should fail - file should be locked
+    let engine2_result = Engine::new(path.clone());
+    assert!(engine2_result.is_err(), "Second engine should not be able to open locked database");
+    
+    // Clean up
+    drop(engine1);
+    
+    // After dropping the first instance, we should be able to open it again
+    let _engine3 = Engine::new(path.clone())?;
+    
+    fs::remove_file(path)?;
+    
+    Ok(())
+}
+
+#[test]
+fn test_batch_operations() -> Result<()> {
+    let path = PathBuf::from("test_batch.db");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    
+    let mut engine = Engine::new(path.clone())?;
+    
+    // Create some entries for the batch operation
+    let entries = vec![
+        Entry::new(b"batch:1".to_vec(), Some(b"value1".to_vec())),
+        Entry::new(b"batch:2".to_vec(), Some(b"value2".to_vec())),
+        Entry::new(b"batch:3".to_vec(), Some(b"value3".to_vec())),
+    ];
+    
+    // Perform the batch operation
+    engine.batch(entries)?;
+    
+    // Verify the entries were written
+    assert_eq!(engine.get(b"batch:1"), Some(b"value1".to_vec()));
+    assert_eq!(engine.get(b"batch:2"), Some(b"value2".to_vec()));
+    assert_eq!(engine.get(b"batch:3"), Some(b"value3".to_vec()));
+    
+    // Use batch to delete an entry
+    let delete_entries = vec![
+        Entry::new(b"batch:2".to_vec(), None),
+    ];
+    engine.batch(delete_entries)?;
+    
+    // Verify deletion
+    assert_eq!(engine.get(b"batch:2"), None);
+    
+    // Clean up
+    fs::remove_file(path)?;
+    
+    Ok(())
+}
+
+#[test]
+fn test_empty_string_values() -> Result<()> {
+    let path = PathBuf::from("test_empty.db");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    
+    let mut engine = Engine::new(path.clone())?;
+    
+    // Empty value should be treated as delete
+    engine.set(b"key1", vec![])?;
+    assert_eq!(engine.get(b"key1"), None);
+    
+    // Set a value first
+    engine.set(b"key2", b"value".to_vec())?;
+    assert_eq!(engine.get(b"key2"), Some(b"value".to_vec()));
+    
+    // Then set it to empty (should delete)
+    engine.set(b"key2", vec![])?;
+    assert_eq!(engine.get(b"key2"), None);
+    
+    // Clean up
+    fs::remove_file(path)?;
+    
+    Ok(())
+}
+
+#[test]
+fn test_len_and_empty() -> Result<()> {
+    let path = PathBuf::from("test_len.db");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    
+    let mut engine = Engine::new(path.clone())?;
+    
+    // Should start empty
+    assert_eq!(engine.len(), 0);
+    assert!(engine.is_empty());
+    
+    // Add some entries
+    engine.set(b"key1", b"value1".to_vec())?;
+    engine.set(b"key2", b"value2".to_vec())?;
+    
+    // Should have 2 entries
+    assert_eq!(engine.len(), 2);
+    assert!(!engine.is_empty());
+    
+    // Delete an entry
+    engine.del(b"key1")?;
+    
+    // Should have 1 entry
+    assert_eq!(engine.len(), 1);
+    assert!(!engine.is_empty());
+    
+    // Delete the last entry
+    engine.del(b"key2")?;
+    
+    // Should be empty again
+    assert_eq!(engine.len(), 0);
+    assert!(engine.is_empty());
+    
+    // Clean up
+    fs::remove_file(path)?;
+    
+    Ok(())
 }

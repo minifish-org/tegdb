@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tegdb::Engine;
 
 fn engine_benchmark(c: &mut Criterion) {
-    let mut engine = Engine::new(PathBuf::from("test.db"));
+    let mut engine = Engine::new(PathBuf::from("test.db")).expect("Failed to create engine");
     let key = b"key";
     let value = b"value";
 
