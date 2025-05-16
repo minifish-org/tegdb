@@ -577,3 +577,95 @@ fn test_len_is_empty_after_batch() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_scan_boundary_conditions() -> Result<()> {
+    let path = temp_db_path("scan_boundaries");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    engine.set(b"key1", b"value1".to_vec())?;
+    engine.set(b"key2", b"value2".to_vec())?;
+    engine.set(b"key3", b"value3".to_vec())?;
+
+    // Scan for "key1" (exclusive end for "key2")
+    let result1 = engine.scan(b"key1".to_vec()..b"key2".to_vec())?.collect::<Vec<_>>();
+    assert_eq!(result1.len(), 1);
+    assert_eq!(result1[0].0, b"key1".to_vec());
+    assert_eq!(result1[0].1, b"value1".to_vec());
+
+    // Scan for "key2" and "key3"
+    // To include "key3", the end of the range must be > "key3"
+    let mut end_key3_inclusive = b"key3".to_vec();
+    end_key3_inclusive.push(0); // Makes it "key3\x00"
+    let result2 = engine.scan(b"key2".to_vec()..end_key3_inclusive)?.collect::<Vec<_>>();
+    assert_eq!(result2.len(), 2);
+    assert_eq!(result2[0].0, b"key2".to_vec());
+    assert_eq!(result2[0].1, b"value2".to_vec());
+    assert_eq!(result2[1].0, b"key3".to_vec());
+    assert_eq!(result2[1].1, b"value3".to_vec());
+
+    // Scan a range that includes nothing (e.g., between "key1" and "key2" but not including them)
+    let mut start_after_key1 = b"key1".to_vec();
+    start_after_key1.push(255); // e.g., "key1\xff"
+    let result3 = engine.scan(start_after_key1..b"key2".to_vec())?.collect::<Vec<_>>();
+    assert!(result3.is_empty());
+
+    // Scan all keys (range from before "key1" to after "key3")
+    let mut end_beyond_key3 = b"key3".to_vec();
+    end_beyond_key3.push(0); 
+    let result_all = engine.scan(b"key0".to_vec()..end_beyond_key3)?.collect::<Vec<_>>();
+    assert_eq!(result_all.len(), 3);
+    assert_eq!(result_all[0].0, b"key1".to_vec());
+    assert_eq!(result_all[1].0, b"key2".to_vec());
+    assert_eq!(result_all[2].0, b"key3".to_vec());
+
+    // Scan with a start key that doesn't exist but is before the first key
+    let result_before_all = engine.scan(b"a".to_vec()..b"key2".to_vec())?.collect::<Vec<_>>();
+    assert_eq!(result_before_all.len(), 1);
+    assert_eq!(result_before_all[0].0, b"key1".to_vec());
+
+    // Scan with an end key that includes the last key
+    let result_includes_last = engine.scan(b"key3".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    assert_eq!(result_includes_last.len(), 1);
+    assert_eq!(result_includes_last[0].0, b"key3".to_vec());
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_batch_with_duplicate_keys_in_batch() -> Result<()> {
+    let path = temp_db_path("batch_duplicates");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    engine.set(b"key_A", b"initial_A".to_vec())?; 
+    engine.set(b"key_B", b"initial_B".to_vec())?; 
+
+    let entries = vec![
+        Entry::new(b"key_A".to_vec(), Some(b"value_A1".to_vec())), // First op on key_A
+        Entry::new(b"key_C".to_vec(), Some(b"value_C1".to_vec())), // New key
+        Entry::new(b"key_A".to_vec(), Some(b"value_A2".to_vec())), // Second op on key_A
+        Entry::new(b"key_D".to_vec(), Some(b"value_D1".to_vec())), // Another new key
+        Entry::new(b"key_C".to_vec(), None),                       // Delete key_C
+        Entry::new(b"key_A".to_vec(), Some(b"value_A3".to_vec())), // Third op on key_A (final value)
+    ];
+
+    engine.batch(entries)?;
+
+    assert_eq!(engine.get(b"key_A"), Some(b"value_A3".to_vec()));
+    assert_eq!(engine.get(b"key_B"), Some(b"initial_B".to_vec())); // Unchanged
+    assert_eq!(engine.get(b"key_C"), None); // Deleted within batch
+    assert_eq!(engine.get(b"key_D"), Some(b"value_D1".to_vec())); // Inserted
+
+    // Expected keys: key_A, key_B, key_D
+    assert_eq!(engine.len(), 3);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
