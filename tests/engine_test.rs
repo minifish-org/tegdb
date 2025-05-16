@@ -930,3 +930,139 @@ fn test_idempotency_of_batch_operations() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_transaction_commit() -> Result<()> {
+    let path = temp_db_path("transaction_commit");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+    // initial values
+    engine.set(b"a", b"1".to_vec())?;
+    engine.set(b"b", b"2".to_vec())?;
+
+    // begin transaction and apply operations
+    {
+        let mut tx = engine.begin_transaction();
+        tx.set(b"a".to_vec(), b"10".to_vec())?; // update
+        tx.delete(b"b".to_vec())?;               // delete
+        tx.set(b"c".to_vec(), b"3".to_vec())?; // insert
+        tx.commit()?;
+    }
+
+    // verify committed state
+    assert_eq!(engine.get(b"a"), Some(b"10".to_vec()));
+    assert_eq!(engine.get(b"b"), None);
+    assert_eq!(engine.get(b"c"), Some(b"3".to_vec()));
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_rollback() -> Result<()> {
+    let path = temp_db_path("transaction_rollback");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"x", b"alpha".to_vec())?; // initial value
+
+    // begin transaction and perform operations without commit
+    {
+        let mut tx = engine.begin_transaction();
+        tx.set(b"x".to_vec(), b"beta".to_vec())?;
+        tx.set(b"y".to_vec(), b"100".to_vec())?;
+        tx.delete(b"x".to_vec())?;
+        tx.rollback();
+    }
+
+    // verify rollback restored original state
+    assert_eq!(engine.get(b"x"), Some(b"alpha".to_vec()));
+    assert_eq!(engine.get(b"y"), None);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_empty_commit() -> Result<()> {
+    let path = temp_db_path("tx_empty_commit");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"a", b"1".to_vec())?;
+    {
+        let tx = engine.begin_transaction();
+        // no operations
+        tx.commit()?;
+    }
+    // state unchanged
+    assert_eq!(engine.get(b"a"), Some(b"1".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_empty_rollback() -> Result<()> {
+    let path = temp_db_path("tx_empty_rollback");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"b", b"2".to_vec())?;
+    {
+        let tx = engine.begin_transaction();
+        // no operations
+        tx.rollback();
+    }
+    // state unchanged
+    assert_eq!(engine.get(b"b"), Some(b"2".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_snapshot_isolation() -> Result<()> {
+    let path = temp_db_path("tx_snapshot");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    // set initial and then updated before transaction
+    engine.set(b"k", b"v1".to_vec())?;
+    engine.set(b"k", b"v2".to_vec())?;
+    let mut tx = engine.begin_transaction();
+    // tx snapshot should see v2
+    assert_eq!(tx.get(b"k"), Some(b"v2".to_vec()));
+    // commit tx-specific update
+    tx.set(b"k".to_vec(), b"v3".to_vec())?;
+    tx.commit()?;
+    // final value should be v3
+    assert_eq!(engine.get(b"k"), Some(b"v3".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_sequential_transactions() -> Result<()> {
+    let path = temp_db_path("tx_sequential");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"x", b"1".to_vec())?;
+
+    // first transaction updates x
+    {
+        let mut tx1 = engine.begin_transaction();
+        tx1.set(b"x".to_vec(), b"10".to_vec())?;
+        tx1.commit()?;
+    }
+    assert_eq!(engine.get(b"x"), Some(b"10".to_vec()));
+
+    // second transaction deletes x
+    {
+        let mut tx2 = engine.begin_transaction();
+        tx2.delete(b"x".to_vec())?;
+        tx2.commit()?;
+    }
+    assert_eq!(engine.get(b"x"), None);
+
+    fs::remove_file(path)?;
+    Ok(())
+}

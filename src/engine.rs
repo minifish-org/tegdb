@@ -80,6 +80,14 @@ impl Engine {
         Ok(engine)
     }
 
+    /// Begins a new transaction
+    pub fn begin_transaction(&mut self) -> Transaction<'_> {
+        // Clone current state before borrowing engine
+        let snapshot = self.key_map.clone();
+        let entries = Vec::new();
+        Transaction { engine: self, entries, snapshot }
+    }
+
     /// Retrieves a value by key
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.key_map.get(key).cloned()
@@ -202,6 +210,54 @@ impl Drop for Engine {
     fn drop(&mut self) {
         // Ignore errors during drop, but try to flush
         let _ = self.flush();
+    }
+}
+
+/// Transactional context for multi-key ACID operations
+pub struct Transaction<'a> {
+    engine: &'a mut Engine,
+    entries: Vec<Entry>,
+    snapshot: KeyMap,
+}
+
+impl<'a> Transaction<'a> {
+    /// Inserts or updates a key-value pair in the transaction
+    pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
+        if key.len() > self.engine.config.max_key_size {
+            return Err(Error::KeyTooLarge(key.len()));
+        }
+        if value.len() > self.engine.config.max_value_size {
+            return Err(Error::ValueTooLarge(value.len()));
+        }
+        self.entries.push(Entry::new(key, Some(value)));
+        Ok(())
+    }
+
+    /// Deletes a key in the transaction
+    pub fn delete(&mut self, key: Vec<u8>) -> Result<()> {
+        self.entries.push(Entry::new(key, None));
+        Ok(())
+    }
+
+    /// Retrieves a value within the transaction (snapshot + local changes)
+    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        // Check local changes first
+        for entry in self.entries.iter().rev() {
+            if entry.key == key {
+                return entry.value.clone();
+            }
+        }
+        self.snapshot.get(key).cloned()
+    }
+
+    /// Commits the transaction atomically
+    pub fn commit(self) -> Result<()> {
+        self.engine.batch(self.entries)
+    }
+
+    /// Rolls back the transaction
+    pub fn rollback(self) {
+        // Dropping Transaction discards pending operations
     }
 }
 
