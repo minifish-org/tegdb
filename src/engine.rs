@@ -82,10 +82,9 @@ impl Engine {
 
     /// Begins a new transaction
     pub fn begin_transaction(&mut self) -> Transaction<'_> {
-        // Clone current state before borrowing engine
         let snapshot = self.key_map.clone();
         let entries = Vec::new();
-        Transaction { engine: self, entries, snapshot }
+        Transaction { engine: self, entries, snapshot, state: TxState::Active }
     }
 
     /// Retrieves a value by key
@@ -213,11 +212,19 @@ impl Drop for Engine {
     }
 }
 
+/// Transaction state
+enum TxState {
+    Active,
+    Committed,
+    RolledBack,
+}
+
 /// Transactional context for multi-key ACID operations
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
     entries: Vec<Entry>,
     snapshot: KeyMap,
+    state: TxState,
 }
 
 impl<'a> Transaction<'a> {
@@ -251,13 +258,26 @@ impl<'a> Transaction<'a> {
     }
 
     /// Commits the transaction atomically
-    pub fn commit(self) -> Result<()> {
-        self.engine.batch(self.entries)
+    pub fn commit(&mut self) -> Result<()> {
+        match self.state {
+            TxState::Active => {
+                let entries = std::mem::take(&mut self.entries);
+                let res = self.engine.batch(entries);
+                if res.is_ok() {
+                    self.state = TxState::Committed;
+                }
+                res
+            }
+            _ => Err(Error::Other("Transaction already finalized".to_string())),
+        }
     }
 
     /// Rolls back the transaction
-    pub fn rollback(self) {
-        // Dropping Transaction discards pending operations
+    pub fn rollback(&mut self) {
+        if let TxState::Active = self.state {
+            self.state = TxState::RolledBack;
+        }
+        // Dropping Transaction or marking RolledBack discards pending operations
     }
 }
 

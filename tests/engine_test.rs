@@ -993,7 +993,7 @@ fn test_transaction_empty_commit() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
     engine.set(b"a", b"1".to_vec())?;
     {
-        let tx = engine.begin_transaction();
+        let mut tx = engine.begin_transaction();
         // no operations
         tx.commit()?;
     }
@@ -1010,7 +1010,7 @@ fn test_transaction_empty_rollback() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
     engine.set(b"b", b"2".to_vec())?;
     {
-        let tx = engine.begin_transaction();
+        let mut tx = engine.begin_transaction();
         // no operations
         tx.rollback();
     }
@@ -1063,6 +1063,110 @@ fn test_sequential_transactions() -> Result<()> {
     }
     assert_eq!(engine.get(b"x"), None);
 
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_uncommitted_transaction_not_persisted() -> Result<()> {
+    let path = temp_db_path("tx_uncommitted_shutdown");
+    if path.exists() { fs::remove_file(&path)?; }
+    // initial session: set base value and start a transaction without committing
+    {
+        let mut engine = Engine::new(path.clone())?;
+        engine.set(b"a", b"1".to_vec())?;
+        let mut tx = engine.begin_transaction();
+        tx.set(b"a".to_vec(), b"2".to_vec())?;
+        tx.set(b"b".to_vec(), b"3".to_vec())?;
+        // dropping engine and transaction without commit
+    }
+    // reopen engine: uncommitted changes should not apply
+    let engine2 = Engine::new(path.clone())?;
+    assert_eq!(engine2.get(b"a"), Some(b"1".to_vec()));
+    assert_eq!(engine2.get(b"b"), None);
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_double_commit_fails() -> Result<()> {
+    let path = temp_db_path("tx_double_commit");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    {
+        let mut tx = engine.begin_transaction();
+        tx.set(b"k".to_vec(), b"v".to_vec())?;
+        tx.commit()?;
+        assert!(tx.commit().is_err(), "Second commit should fail");
+    }
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_commit_after_rollback_fails() -> Result<()> {
+    let path = temp_db_path("tx_commit_after_rollback");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    {
+        let mut tx = engine.begin_transaction();
+        tx.set(b"a".to_vec(), b"1".to_vec())?;
+        tx.rollback();
+        assert!(tx.commit().is_err(), "Commit after rollback should fail");
+    }
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_delete_then_set_in_transaction() -> Result<()> {
+    let path = temp_db_path("tx_delete_then_set");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"x", b"old".to_vec())?;
+    {
+        let mut tx = engine.begin_transaction();
+        tx.delete(b"x".to_vec())?;
+        tx.set(b"x".to_vec(), b"new".to_vec())?;
+        tx.commit()?;
+    }
+    assert_eq!(engine.get(b"x"), Some(b"new".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_durability_after_commit() -> Result<()> {
+    let path = temp_db_path("tx_durability_after_commit");
+    if path.exists() { fs::remove_file(&path)?; }
+    {
+        let mut engine = Engine::new(path.clone())?;
+        engine.set(b"a", b"1".to_vec())?;
+        let mut tx = engine.begin_transaction();
+        tx.set(b"a".to_vec(), b"2".to_vec())?;
+        tx.commit()?;
+    }
+    let engine2 = Engine::new(path.clone())?;
+    assert_eq!(engine2.get(b"a"), Some(b"2".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_large_transaction_memory_usage() -> Result<()> {
+    let path = temp_db_path("tx_large");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    let mut tx = engine.begin_transaction();
+    for i in 0..5000 {
+        let key = format!("key{}", i).into_bytes();
+        let value = format!("val{}", i).into_bytes();
+        tx.set(key, value)?;
+    }
+    tx.commit()?;
+    assert_eq!(engine.len(), 5000);
+    assert_eq!(engine.get(b"key0"), Some(b"val0".to_vec()));
+    assert_eq!(engine.get(b"key4999"), Some(b"val4999".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
