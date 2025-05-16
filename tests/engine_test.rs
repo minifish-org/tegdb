@@ -669,3 +669,126 @@ fn test_batch_with_duplicate_keys_in_batch() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_atomicity_batch_all_or_nothing() -> Result<()> {
+    let path = temp_db_path("atomicity_batch");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    // Initial state
+    engine.set(b"key1", b"initial_value1".to_vec())?;
+    engine.set(b"key2", b"initial_value2".to_vec())?;
+
+    let entries_successful_batch = vec![
+        Entry::new(b"key1".to_vec(), Some(b"updated_value1".to_vec())), // Update
+        Entry::new(b"key3".to_vec(), Some(b"new_value3".to_vec())),     // Insert
+        Entry::new(b"key2".to_vec(), None),                       // Delete
+    ];
+
+    // Perform a batch that should succeed
+    engine.batch(entries_successful_batch)?;
+
+    // Verify all changes from the batch are applied
+    assert_eq!(engine.get(b"key1"), Some(b"updated_value1".to_vec()));
+    assert_eq!(engine.get(b"key2"), None);
+    assert_eq!(engine.get(b"key3"), Some(b"new_value3".to_vec()));
+    assert_eq!(engine.len(), 2); // key1, key3
+
+    // Cleanup
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_durability_multiple_sessions_mixed_ops() -> Result<()> {
+    let path = temp_db_path("durability_mixed_sessions");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+
+    // Session 1: Initial writes
+    {
+        let mut engine = Engine::new(path.clone())?;
+        engine.set(b"s1_key1", b"s1_val1".to_vec())?;
+        let batch_entries1 = vec![
+            Entry::new(b"s1_batch_keyA".to_vec(), Some(b"s1_batch_valA".to_vec())),
+            Entry::new(b"s1_batch_keyB".to_vec(), Some(b"s1_batch_valB".to_vec())),
+        ];
+        engine.batch(batch_entries1)?;
+        drop(engine); // Ensure data is flushed
+    }
+
+    // Session 2: Read, update, delete
+    {
+        let mut engine = Engine::new(path.clone())?;
+        assert_eq!(engine.get(b"s1_key1"), Some(b"s1_val1".to_vec()));
+        assert_eq!(engine.get(b"s1_batch_keyA"), Some(b"s1_batch_valA".to_vec()));
+
+        engine.set(b"s1_key1", b"s1_val1_updated".to_vec())?; // Update
+        engine.del(b"s1_batch_keyB")?; // Delete
+
+        let batch_entries2 = vec![
+            Entry::new(b"s2_new_key".to_vec(), Some(b"s2_new_val".to_vec())), // Insert
+            Entry::new(b"s1_batch_keyA".to_vec(), None), // Delete via batch
+        ];
+        engine.batch(batch_entries2)?;
+        drop(engine);
+    }
+
+    // Session 3: Verify all changes
+    {
+        let engine = Engine::new(path.clone())?;
+        assert_eq!(engine.get(b"s1_key1"), Some(b"s1_val1_updated".to_vec()));
+        assert_eq!(engine.get(b"s1_batch_keyA"), None);
+        assert_eq!(engine.get(b"s1_batch_keyB"), None);
+        assert_eq!(engine.get(b"s2_new_key"), Some(b"s2_new_val".to_vec()));
+        assert_eq!(engine.len(), 2); // s1_key1, s2_new_key
+        drop(engine);
+    }
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
+    let path = temp_db_path("isolation_sequential");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+
+    // Session 1: Write some data
+    {
+        let mut engine = Engine::new(path.clone())?;
+        engine.set(b"iso_key1", b"val1_session1".to_vec())?;
+        engine.set(b"iso_key2", b"val2_session1".to_vec())?;
+        drop(engine);
+    }
+
+    // Session 2: Read data from session 1, modify some, add new
+    {
+        let mut engine = Engine::new(path.clone())?;
+        assert_eq!(engine.get(b"iso_key1"), Some(b"val1_session1".to_vec()));
+        assert_eq!(engine.get(b"iso_key2"), Some(b"val2_session1".to_vec()));
+
+        engine.set(b"iso_key2", b"val2_session2_updated".to_vec())?;
+        engine.set(b"iso_key3", b"val3_session2_new".to_vec())?;
+        drop(engine);
+    }
+
+    // Session 3: Verify changes from session 2 and original from session 1
+    {
+        let engine = Engine::new(path.clone())?;
+        assert_eq!(engine.get(b"iso_key1"), Some(b"val1_session1".to_vec())); // Unchanged from session 1
+        assert_eq!(engine.get(b"iso_key2"), Some(b"val2_session2_updated".to_vec())); // Updated in session 2
+        assert_eq!(engine.get(b"iso_key3"), Some(b"val3_session2_new".to_vec()));   // Added in session 2
+        assert_eq!(engine.len(), 3);
+        drop(engine);
+    }
+
+    fs::remove_file(path)?;
+    Ok(())
+}
