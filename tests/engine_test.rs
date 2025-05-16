@@ -327,3 +327,253 @@ fn test_engine_basic_operations_moved() -> Result<()> {
     
     Ok(())
 }
+
+#[test]
+fn test_overwrite_key() -> Result<()> {
+    let path = temp_db_path("overwrite");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    engine.set(b"key1", b"value1".to_vec())?;
+    assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
+
+    // Overwrite key1
+    engine.set(b"key1", b"value_new".to_vec())?;
+    assert_eq!(engine.get(b"key1"), Some(b"value_new".to_vec()));
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_delete_non_existent_key() -> Result<()> {
+    let path = temp_db_path("del_non_existent");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    // Delete a key that doesn't exist
+    engine.del(b"non_existent_key")?;
+    assert_eq!(engine.get(b"non_existent_key"), None);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_scan_empty_db() -> Result<()> {
+    let path = temp_db_path("scan_empty");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let engine = Engine::new(path.clone())?;
+
+    let scan_result = engine.scan(b"a".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    assert!(scan_result.is_empty());
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_scan_no_match() -> Result<()> {
+    let path = temp_db_path("scan_no_match");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    engine.set(b"key1", b"value1".to_vec())?;
+    engine.set(b"key2", b"value2".to_vec())?;
+
+    // Scan a range that won't match any existing keys
+    let scan_result = engine.scan(b"x".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    assert!(scan_result.is_empty());
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_special_characters_keys_values() -> Result<()> {
+    let path = temp_db_path("special_chars");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    let keys = vec![
+        b"key with spaces".to_vec(),
+        b"key/with/slashes".to_vec(),
+        b"key\\with\\backslashes".to_vec(),
+        b"key\"with\'quotes".to_vec(),
+        b"key\twith\nnewlines".to_vec(),
+        vec![0, 1, 2, 3, 4, 5], // Non-UTF8 key
+    ];
+    let values = vec![
+        b"value with spaces".to_vec(),
+        b"value/with/slashes".to_vec(),
+        b"value\\with\\backslashes".to_vec(),
+        b"value\"with\'quotes".to_vec(),
+        b"value\twith\nnewlines".to_vec(),
+        vec![10, 20, 30, 40, 50], // Non-UTF8 value
+    ];
+
+    for i in 0..keys.len() {
+        engine.set(&keys[i], values[i].clone())?;
+        assert_eq!(engine.get(&keys[i]), Some(values[i].clone()));
+    }
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_batch_mixed_operations() -> Result<()> {
+    let path = temp_db_path("batch_mixed");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    // Initial setup
+    engine.set(b"key1", b"initial1".to_vec())?;
+    engine.set(b"key2", b"initial2".to_vec())?;
+    engine.set(b"key3", b"initial3".to_vec())?;
+
+    let entries = vec![
+        Entry::new(b"key1".to_vec(), Some(b"updated1".to_vec())), // Update
+        Entry::new(b"key2".to_vec(), None),                       // Delete
+        Entry::new(b"key4".to_vec(), Some(b"new4".to_vec())),     // Insert
+    ];
+
+    engine.batch(entries)?;
+
+    assert_eq!(engine.get(b"key1"), Some(b"updated1".to_vec()));
+    assert_eq!(engine.get(b"key2"), None);
+    assert_eq!(engine.get(b"key3"), Some(b"initial3".to_vec())); // Unchanged
+    assert_eq!(engine.get(b"key4"), Some(b"new4".to_vec()));
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_batch_empty() -> Result<()> {
+    let path = temp_db_path("batch_empty");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    engine.set(b"key1", b"value1".to_vec())?;
+    let initial_len = engine.len();
+
+    let entries: Vec<Entry> = vec![];
+    engine.batch(entries)?;
+
+    assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
+    assert_eq!(engine.len(), initial_len);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+#[should_panic(expected = "range start is greater than range end in BTreeMap")]
+fn test_scan_reverse_range() {
+    let path = temp_db_path("scan_reverse");
+    if path.exists() {
+        fs::remove_file(&path).unwrap();
+    }
+    let mut engine = Engine::new(path.clone()).unwrap();
+
+    engine.set(b"a", b"val_a".to_vec()).unwrap();
+    engine.set(b"b", b"val_b".to_vec()).unwrap();
+    engine.set(b"c", b"val_c".to_vec()).unwrap();
+
+    // Start key is greater than end key
+    // This should panic based on BTreeMap behavior
+    let _scan_result = engine.scan(b"c".to_vec()..b"a".to_vec()).unwrap().collect::<Vec<_>>();
+    
+    // The following lines will not be reached if the panic occurs as expected.
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn test_persistence_after_batch() -> Result<()> {
+    let path = temp_db_path("persistence_batch");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+
+    {
+        let mut engine = Engine::new(path.clone())?;
+        let entries = vec![
+            Entry::new(b"batch_key1".to_vec(), Some(b"val1".to_vec())),
+            Entry::new(b"batch_key2".to_vec(), Some(b"val2".to_vec())),
+        ];
+        engine.batch(entries)?;
+        engine.set(b"single_key", b"val_single".to_vec())?; // Mix with single set
+        let entries_delete = vec![
+            Entry::new(b"batch_key1".to_vec(), None),
+        ];
+        engine.batch(entries_delete)?;
+
+        drop(engine);
+    }
+
+    {
+        let engine = Engine::new(path.clone())?;
+        assert_eq!(engine.get(b"batch_key1"), None);
+        assert_eq!(engine.get(b"batch_key2"), Some(b"val2".to_vec()));
+        assert_eq!(engine.get(b"single_key"), Some(b"val_single".to_vec()));
+        drop(engine);
+    }
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_len_is_empty_after_batch() -> Result<()> {
+    let path = temp_db_path("len_batch");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    assert!(engine.is_empty());
+    assert_eq!(engine.len(), 0);
+
+    let entries_insert = vec![
+        Entry::new(b"k1".to_vec(), Some(b"v1".to_vec())),
+        Entry::new(b"k2".to_vec(), Some(b"v2".to_vec())),
+    ];
+    engine.batch(entries_insert)?;
+    assert!(!engine.is_empty());
+    assert_eq!(engine.len(), 2);
+
+    let entries_update_delete = vec![
+        Entry::new(b"k1".to_vec(), Some(b"v1_new".to_vec())), // Update
+        Entry::new(b"k2".to_vec(), None),                  // Delete
+        Entry::new(b"k3".to_vec(), Some(b"v3".to_vec())),  // Insert
+    ];
+    engine.batch(entries_update_delete)?;
+    assert!(!engine.is_empty());
+    assert_eq!(engine.len(), 2); // k1 updated, k2 deleted, k3 inserted
+
+    let entries_delete_all = vec![
+        Entry::new(b"k1".to_vec(), None),
+        Entry::new(b"k3".to_vec(), None),
+    ];
+    engine.batch(entries_delete_all)?;
+    assert!(engine.is_empty());
+    assert_eq!(engine.len(), 0);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
