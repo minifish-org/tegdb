@@ -1170,3 +1170,49 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_mix_raw_and_transaction() -> Result<()> {
+    let path = temp_db_path("mix_raw_tx");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+
+    // Raw API: set initial value
+    engine.set(b"k", b"raw1".to_vec())?;
+    assert_eq!(engine.get(b"k"), Some(b"raw1".to_vec()));
+
+    // Transaction snapshot captures current value
+    let snap = {
+        let tx = engine.begin_transaction();
+        tx.get(b"k").unwrap()
+    };
+    assert_eq!(snap, b"raw1".to_vec());
+
+    // Raw API: update outside transaction
+    engine.set(b"k", b"raw2".to_vec())?;
+    assert_eq!(engine.get(b"k"), Some(b"raw2".to_vec()));
+
+    // Original snapshot remains unchanged
+    assert_eq!(snap, b"raw1".to_vec());
+
+    // Transaction commit after raw update
+    {
+        let mut tx2 = engine.begin_transaction();
+        tx2.set(b"k".to_vec(), b"tx1".to_vec())?;
+        tx2.commit()?;
+    }
+    assert_eq!(engine.get(b"k"), Some(b"tx1".to_vec()));
+
+    // Raw delete
+    engine.del(b"k")?;
+    assert_eq!(engine.get(b"k"), None);
+
+    // New transaction sees deletion
+    {
+        let tx3 = engine.begin_transaction();
+        assert_eq!(tx3.get(b"k"), None);
+    }
+
+    fs::remove_file(path)?;
+    Ok(())
+}
