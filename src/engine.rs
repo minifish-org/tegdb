@@ -257,6 +257,23 @@ impl<'a> Transaction<'a> {
         self.snapshot.get(key).cloned()
     }
 
+    /// Scans a range of key-value pairs in the transaction context
+    pub fn scan(&self, range: Range<Vec<u8>>) -> Vec<(Vec<u8>, Vec<u8>)> {
+        // Merge snapshot and pending entries
+        let mut merged = self.snapshot.clone();
+        for entry in &self.entries {
+            if let Some(value) = &entry.value {
+                merged.insert(entry.key.clone(), value.clone());
+            } else {
+                merged.remove(&entry.key);
+            }
+        }
+        // Collect range results
+        merged.range(range)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
     /// Commits the transaction atomically
     pub fn commit(&mut self) -> Result<()> {
         match self.state {

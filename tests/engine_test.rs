@@ -1216,3 +1216,79 @@ fn test_mix_raw_and_transaction() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_transaction_get_behaviour() -> Result<()> {
+    let path = temp_db_path("tx_get");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"k1", b"v1".to_vec())?;
+    engine.set(b"k2", b"v2".to_vec())?;
+    engine.set(b"k3", b"v3".to_vec())?;
+
+    // Transaction in its own scope
+    {
+        let mut tx = engine.begin_transaction();
+        // snapshot sees original
+        assert_eq!(tx.get(b"k1"), Some(b"v1".to_vec()));
+        assert_eq!(tx.get(b"k2"), Some(b"v2".to_vec()));
+        // pending changes
+        tx.set(b"k1".to_vec(), b"v1_tx".to_vec())?;
+        tx.delete(b"k2".to_vec())?;
+        tx.set(b"k4".to_vec(), b"v4".to_vec())?;
+        // tx.get reflects both snapshot and pending
+        assert_eq!(tx.get(b"k1"), Some(b"v1_tx".to_vec()));
+        assert_eq!(tx.get(b"k2"), None);
+        assert_eq!(tx.get(b"k3"), Some(b"v3".to_vec()));
+        assert_eq!(tx.get(b"k4"), Some(b"v4".to_vec()));
+        tx.commit()?;
+    }
+
+    // after commit, engine sees transaction changes
+    assert_eq!(engine.get(b"k1"), Some(b"v1_tx".to_vec()));
+    assert_eq!(engine.get(b"k2"), None);
+    assert_eq!(engine.get(b"k3"), Some(b"v3".to_vec()));
+    assert_eq!(engine.get(b"k4"), Some(b"v4".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_scan_behaviour() -> Result<()> {
+    let path = temp_db_path("tx_scan");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"a", b"1".to_vec())?;
+    engine.set(b"b", b"2".to_vec())?;
+    engine.set(b"c", b"3".to_vec())?;
+
+    let tx = {
+        let mut tx = engine.begin_transaction();
+        // modifications
+        tx.set(b"b".to_vec(), b"2_tx".to_vec())?;
+        tx.delete(b"c".to_vec())?;
+        tx.set(b"d".to_vec(), b"4".to_vec())?;
+        tx
+    };
+
+    // scan full range in transaction
+    let result = tx.scan(b"a".to_vec()..b"z".to_vec());
+    let expected = vec![
+        (b"a".to_vec(), b"1".to_vec()),
+        (b"b".to_vec(), b"2_tx".to_vec()),
+        (b"d".to_vec(), b"4".to_vec()),
+    ];
+    assert_eq!(result, expected);
+
+    // underlying engine scan unchanged
+    let base = engine.scan(b"a".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    let base_expected = vec![
+        (b"a".to_vec(), b"1".to_vec()),
+        (b"b".to_vec(), b"2".to_vec()),
+        (b"c".to_vec(), b"3".to_vec()),
+    ];
+    assert_eq!(base, base_expected);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
