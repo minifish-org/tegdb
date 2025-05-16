@@ -350,38 +350,3 @@ impl Drop for Log {
         let _ = FileExt::unlock(&self.file);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::env;
-    
-    fn temp_db_path() -> PathBuf {
-        let mut path = env::temp_dir();
-        path.push(format!("tegdb_test_{}", std::process::id()));
-        path
-    }
-    
-    #[test]
-    fn test_basic_operations() -> Result<()> {
-        let path = temp_db_path();
-        if path.exists() {
-            std::fs::remove_file(&path)?;
-        }
-        
-        let mut engine = Engine::new(path.clone())?;
-        
-        // Set and get
-        engine.set(b"key1", b"value1".to_vec())?;
-        assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
-        
-        // Delete
-        engine.del(b"key1")?;
-        assert_eq!(engine.get(b"key1"), None);
-        
-        // Cleanup
-        std::fs::remove_file(path)?;
-        
-        Ok(())
-    }
-}

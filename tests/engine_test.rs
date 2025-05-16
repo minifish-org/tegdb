@@ -304,3 +304,26 @@ fn test_len_and_empty() -> Result<()> {
     
     Ok(())
 }
+
+#[test]
+fn test_engine_basic_operations_moved() -> Result<()> {
+    let path = temp_db_path("basic_ops_moved");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    
+    let mut engine = Engine::new(path.clone())?;
+    
+    // Set and get
+    engine.set(b"key1", b"value1".to_vec())?;
+    assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
+    
+    // Delete
+    engine.del(b"key1")?;
+    assert_eq!(engine.get(b"key1"), None);
+    
+    // Cleanup
+    fs::remove_file(path)?;
+    
+    Ok(())
+}
