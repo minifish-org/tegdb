@@ -792,3 +792,141 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_consistency_after_complex_operations() -> Result<()> {
+    let path = temp_db_path("consistency_complex_ops");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    // 1. Initial sets
+    engine.set(b"key1", b"val1".to_vec())?;
+    engine.set(b"key2", b"val2".to_vec())?;
+    engine.set(b"key3", b"val3".to_vec())?;
+
+    assert_eq!(engine.get(b"key1"), Some(b"val1".to_vec()));
+    assert_eq!(engine.len(), 3);
+
+    // 2. First Batch: Update key1, Delete key2, Insert key4
+    let batch1_entries = vec![
+        Entry::new(b"key1".to_vec(), Some(b"val1_updated".to_vec())),
+        Entry::new(b"key2".to_vec(), None),
+        Entry::new(b"key4".to_vec(), Some(b"val4_new".to_vec())),
+    ];
+    engine.batch(batch1_entries)?;
+
+    assert_eq!(engine.get(b"key1"), Some(b"val1_updated".to_vec()));
+    assert_eq!(engine.get(b"key2"), None);
+    assert_eq!(engine.get(b"key3"), Some(b"val3".to_vec())); // Unchanged
+    assert_eq!(engine.get(b"key4"), Some(b"val4_new".to_vec()));
+    assert_eq!(engine.len(), 3); // key1, key3, key4
+
+    // 3. Individual Del and Set
+    engine.del(b"key3")?;
+    engine.set(b"key5", b"val5".to_vec())?;
+
+    assert_eq!(engine.get(b"key3"), None);
+    assert_eq!(engine.get(b"key5"), Some(b"val5".to_vec()));
+    assert_eq!(engine.len(), 3); // key1, key4, key5
+
+    // 4. Second Batch: Delete key1, Update key4, Insert key6
+    let batch2_entries = vec![
+        Entry::new(b"key1".to_vec(), None),
+        Entry::new(b"key4".to_vec(), Some(b"val4_updated_again".to_vec())),
+        Entry::new(b"key6".to_vec(), Some(b"val6_new".to_vec())),
+    ];
+    engine.batch(batch2_entries)?;
+
+    // 5. Final Verification
+    assert_eq!(engine.get(b"key1"), None, "key1 should be deleted");
+    assert_eq!(engine.get(b"key2"), None, "key2 should remain deleted");
+    assert_eq!(engine.get(b"key3"), None, "key3 should remain deleted");
+    assert_eq!(engine.get(b"key4"), Some(b"val4_updated_again".to_vec()), "key4 should be updated");
+    assert_eq!(engine.get(b"key5"), Some(b"val5".to_vec()), "key5 should be present");
+    assert_eq!(engine.get(b"key6"), Some(b"val6_new".to_vec()), "key6 should be inserted");
+
+    assert_eq!(engine.len(), 3, "Final length should be 3"); // key4, key5, key6
+
+    let scan_results = engine.scan(b"\0".to_vec()..b"\xff".to_vec())?.collect::<Vec<_>>();
+    let expected_scan_results = vec![
+        (b"key4".to_vec(), b"val4_updated_again".to_vec()),
+        (b"key5".to_vec(), b"val5".to_vec()),
+        (b"key6".to_vec(), b"val6_new".to_vec()),
+    ];
+    assert_eq!(scan_results, expected_scan_results, "Scan results do not match expected");
+
+    // Cleanup
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_idempotency_of_batch_operations() -> Result<()> {
+    let path = temp_db_path("idempotency_batch");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let mut engine = Engine::new(path.clone())?;
+
+    // Initial data
+    engine.set(b"key_initial", b"initial_val".to_vec())?;
+    engine.set(b"key_to_update", b"update_me_initial".to_vec())?;
+    engine.set(b"key_to_delete", b"delete_me_initial".to_vec())?;
+
+    let make_batch_entries = || {
+        vec![
+            Entry::new(b"key_to_update".to_vec(), Some(b"updated_val".to_vec())), // Update
+            Entry::new(b"key_to_delete".to_vec(), None),                       // Delete
+            Entry::new(b"key_new_in_batch".to_vec(), Some(b"new_val".to_vec())), // Insert
+            Entry::new(b"key_set_and_updated_in_batch".to_vec(), Some(b"first_set".to_vec())),
+            Entry::new(b"key_set_and_updated_in_batch".to_vec(), Some(b"second_set_final".to_vec())),
+            Entry::new(b"key_set_and_deleted_in_batch".to_vec(), Some(b"temp_val".to_vec())),
+            Entry::new(b"key_set_and_deleted_in_batch".to_vec(), None),
+        ]
+    };
+
+    // Apply batch for the first time
+    engine.batch(make_batch_entries())?;
+
+    // Expected state after first batch application
+    let expected_key_initial = Some(b"initial_val".to_vec());
+    let expected_key_to_update = Some(b"updated_val".to_vec());
+    let expected_key_to_delete = None;
+    let expected_key_new_in_batch = Some(b"new_val".to_vec());
+    let expected_key_set_and_updated = Some(b"second_set_final".to_vec());
+    let expected_key_set_and_deleted = None;
+    
+    // Calculate expected length
+    let mut expected_len = 0;
+    if expected_key_initial.is_some() { expected_len +=1; }
+    if expected_key_to_update.is_some() { expected_len +=1; }
+    // key_to_delete is None
+    if expected_key_new_in_batch.is_some() { expected_len +=1; }
+    if expected_key_set_and_updated.is_some() { expected_len +=1; }
+    // key_set_and_deleted is None
+
+    assert_eq!(engine.get(b"key_initial"), expected_key_initial, "After 1st batch: key_initial");
+    assert_eq!(engine.get(b"key_to_update"), expected_key_to_update, "After 1st batch: key_to_update");
+    assert_eq!(engine.get(b"key_to_delete"), expected_key_to_delete, "After 1st batch: key_to_delete");
+    assert_eq!(engine.get(b"key_new_in_batch"), expected_key_new_in_batch, "After 1st batch: key_new_in_batch");
+    assert_eq!(engine.get(b"key_set_and_updated_in_batch"), expected_key_set_and_updated, "After 1st batch: key_set_and_updated");
+    assert_eq!(engine.get(b"key_set_and_deleted_in_batch"), expected_key_set_and_deleted, "After 1st batch: key_set_and_deleted");
+    assert_eq!(engine.len(), expected_len, "After 1st batch: engine length");
+
+    // Apply batch for the second time (reconstructing the entries)
+    engine.batch(make_batch_entries())?;
+
+    // Assert state is identical to after the first application
+    assert_eq!(engine.get(b"key_initial"), expected_key_initial, "After 2nd batch: key_initial");
+    assert_eq!(engine.get(b"key_to_update"), expected_key_to_update, "After 2nd batch: key_to_update");
+    assert_eq!(engine.get(b"key_to_delete"), expected_key_to_delete, "After 2nd batch: key_to_delete");
+    assert_eq!(engine.get(b"key_new_in_batch"), expected_key_new_in_batch, "After 2nd batch: key_new_in_batch");
+    assert_eq!(engine.get(b"key_set_and_updated_in_batch"), expected_key_set_and_updated, "After 2nd batch: key_set_and_updated");
+    assert_eq!(engine.get(b"key_set_and_deleted_in_batch"), expected_key_set_and_deleted, "After 2nd batch: key_set_and_deleted");
+    assert_eq!(engine.len(), expected_len, "After 2nd batch: engine length");
+
+    fs::remove_file(path)?;
+    Ok(())
+}
