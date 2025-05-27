@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::fs;
 use std::env;
-use tegdb::{Engine, Result, Entry};
+use tegdb::{Engine, EngineConfig, Result, Entry};
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -1289,6 +1289,139 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     ];
     assert_eq!(base, base_expected);
 
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_implicit_rollback_on_drop() -> Result<()> {
+    let path = temp_db_path("tx_implicit_rollback");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"x", b"init".to_vec())?;
+    {
+        let _tx = engine.begin_transaction();
+        // tx dropped without commit or rollback
+    }
+    // state should remain unchanged
+    assert_eq!(engine.get(b"x"), Some(b"init".to_vec()));
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_snapshot_after_rollback() -> Result<()> {
+    let path = temp_db_path("tx_snapshot_rollback");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut engine = Engine::new(path.clone())?;
+    engine.set(b"k", b"orig".to_vec())?;
+    let mut tx = engine.begin_transaction();
+    tx.set(b"k".to_vec(), b"new".to_vec())?;
+    tx.delete(b"k".to_vec())?;
+    tx.rollback();
+    // after rollback, tx.get should reflect original snapshot only
+    assert_eq!(tx.get(b"k"), Some(b"orig".to_vec()));
+    let scan_res = tx.scan(b"k".to_vec()..vec![b'z']);
+    assert_eq!(scan_res, vec![(b"k".to_vec(), b"orig".to_vec())]);
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_transaction_key_size_limit() {
+    let path = temp_db_path("tx_key_limit");
+    if path.exists() { fs::remove_file(&path).unwrap(); }
+    // configure engine to allow only 1-byte keys
+    let mut config = EngineConfig::default();
+    config.max_key_size = 1;
+    let mut engine = Engine::with_config(path.clone(), config).unwrap();
+    // begin transaction and attempt oversized key
+    let mut tx = engine.begin_transaction();
+    let err = tx.set(vec![0, 1], b"v".to_vec());
+    assert!(err.is_err(), "Expected error for oversized key");
+    // valid set
+    tx.set(b"a".to_vec(), b"v".to_vec()).unwrap();
+    tx.commit().unwrap();
+    assert_eq!(engine.get(b"a"), Some(b"v".to_vec()));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn test_transaction_value_size_limit() {
+    let path = temp_db_path("tx_value_limit");
+    if path.exists() { fs::remove_file(&path).unwrap(); }
+    // configure engine to allow only 1-byte values
+    let mut config = EngineConfig::default();
+    config.max_value_size = 1;
+    let mut engine = Engine::with_config(path.clone(), config).unwrap();
+    let mut tx = engine.begin_transaction();
+    // setting oversized value should error
+    let err = tx.set(b"k".to_vec(), vec![0, 1]);
+    assert!(err.is_err(), "Expected error for oversized value");
+    // valid value
+    tx.set(b"k".to_vec(), vec![0]).unwrap();
+    tx.commit().unwrap();
+    assert_eq!(engine.get(b"k"), Some(vec![0]));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn test_engine_value_size_limit() {
+    let path = temp_db_path("value_limit");
+    if path.exists() { fs::remove_file(&path).unwrap(); }
+    // configure engine to allow only 1-byte values
+    let mut config = EngineConfig::default();
+    config.max_value_size = 1;
+    let mut engine = Engine::with_config(path.clone(), config).unwrap();
+    // setting oversized value should error
+    let err = engine.set(b"k", vec![0, 1]);
+    assert!(err.is_err(), "Expected engine.set error for oversized value");
+    // valid value
+    engine.set(b"k", vec![0]).unwrap();
+    assert_eq!(engine.get(b"k"), Some(vec![0]));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn test_transaction_error_propagation_in_transaction() -> Result<()> {
+    let path = temp_db_path("tx_error_prop");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut config = EngineConfig::default();
+    config.max_key_size = 1;
+    let mut engine = Engine::with_config(path.clone(), config)?;
+    let mut tx = engine.begin_transaction();
+    // valid operation
+    tx.set(b"a".to_vec(), b"1".to_vec())?;
+    // invalid operation should error but not abort tx
+    let err = tx.set(vec![0,1], b"2".to_vec());
+    assert!(err.is_err(), "Expected error for oversized key");
+    // further valid operation
+    tx.set(b"b".to_vec(), b"3".to_vec())?;
+    tx.commit()?;
+    // verify only valid ops applied
+    assert_eq!(engine.get(b"a"), Some(b"1".to_vec()));
+    assert_eq!(engine.get(b"b"), Some(b"3".to_vec()));
+    assert_eq!(engine.get(&vec![0,1]), None);
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_batch_error_propagation_and_atomicity() -> Result<()> {
+    let path = temp_db_path("batch_error_atomic");
+    if path.exists() { fs::remove_file(&path)?; }
+    let mut config = EngineConfig::default();
+    config.max_key_size = 1;
+    let mut engine = Engine::with_config(path.clone(), config)?;
+    engine.set(b"a", b"old".to_vec())?;
+    let entries = vec![
+        Entry::new(b"a".to_vec(), Some(b"new".to_vec())),
+        Entry::new(vec![0,1], Some(b"x".to_vec())), // oversize key
+    ];
+    let err = engine.batch(entries);
+    assert!(err.is_err(), "Expected error for oversized key in batch");
+    // ensure atomicity - no partial apply
+    assert_eq!(engine.get(b"a"), Some(b"old".to_vec()), "Batch should be atomic on error");
     fs::remove_file(path)?;
     Ok(())
 }

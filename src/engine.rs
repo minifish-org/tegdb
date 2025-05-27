@@ -292,6 +292,8 @@ impl<'a> Transaction<'a> {
     /// Rolls back the transaction
     pub fn rollback(&mut self) {
         if let TxState::Active = self.state {
+            // Discard any pending changes and restore snapshot view
+            self.entries.clear();
             self.state = TxState::RolledBack;
         }
         // Dropping Transaction or marking RolledBack discards pending operations
