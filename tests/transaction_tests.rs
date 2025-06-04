@@ -1,5 +1,5 @@
 use std::{path::PathBuf, fs, env};
-use tegdb::{Engine, EngineConfig, Result, Entry};
+use tegdb::{Engine, EngineConfig, Result};
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -29,9 +29,9 @@ fn test_transaction_commit() -> Result<()> {
     }
 
     // verify committed state
-    assert_eq!(engine.get(b"a"), Some(b"10".to_vec()));
+    assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"10".to_vec()));
     assert_eq!(engine.get(b"b"), None);
-    assert_eq!(engine.get(b"c"), Some(b"3".to_vec()));
+    assert_eq!(engine.get(b"c").map(|a| a.as_ref().to_vec()), Some(b"3".to_vec()));
 
     fs::remove_file(path)?;
     Ok(())
@@ -56,7 +56,7 @@ fn test_transaction_rollback() -> Result<()> {
     }
 
     // verify rollback restored original state
-    assert_eq!(engine.get(b"x"), Some(b"alpha".to_vec()));
+    assert_eq!(engine.get(b"x").map(|a| a.as_ref().to_vec()), Some(b"alpha".to_vec()));
     assert_eq!(engine.get(b"y"), None);
 
     fs::remove_file(path)?;
@@ -75,7 +75,7 @@ fn test_transaction_empty_commit() -> Result<()> {
         tx.commit()?;
     }
     // state unchanged
-    assert_eq!(engine.get(b"a"), Some(b"1".to_vec()));
+    assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -92,7 +92,7 @@ fn test_transaction_empty_rollback() -> Result<()> {
         tx.rollback();
     }
     // state unchanged
-    assert_eq!(engine.get(b"b"), Some(b"2".to_vec()));
+    assert_eq!(engine.get(b"b").map(|a| a.as_ref().to_vec()), Some(b"2".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -108,7 +108,7 @@ fn test_transaction_snapshot_isolation() -> Result<()> {
     assert_eq!(tx.get(b"k"), Some(b"v2".to_vec()));
     tx.set(b"k".to_vec(), b"v3".to_vec())?;
     tx.commit()?;
-    assert_eq!(engine.get(b"k"), Some(b"v3".to_vec()));
+    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"v3".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -124,7 +124,7 @@ fn test_sequential_transactions() -> Result<()> {
         tx1.set(b"x".to_vec(), b"10".to_vec())?;
         tx1.commit()?;
     }
-    assert_eq!(engine.get(b"x"), Some(b"10".to_vec()));
+    assert_eq!(engine.get(b"x").map(|a| a.as_ref().to_vec()), Some(b"10".to_vec()));
     {
         let mut tx2 = engine.begin_transaction();
         tx2.delete(b"x".to_vec())?;
@@ -147,7 +147,7 @@ fn test_uncommitted_transaction_not_persisted() -> Result<()> {
         tx.set(b"b".to_vec(), b"3".to_vec())?;
     }
     let engine2 = Engine::new(path.clone())?;
-    assert_eq!(engine2.get(b"a"), Some(b"1".to_vec()));
+    assert_eq!(engine2.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
     assert_eq!(engine2.get(b"b"), None);
     fs::remove_file(path)?;
     Ok(())
@@ -195,7 +195,7 @@ fn test_delete_then_set_in_transaction() -> Result<()> {
         tx.set(b"x".to_vec(), b"new".to_vec())?;
         tx.commit()?;
     }
-    assert_eq!(engine.get(b"x"), Some(b"new".to_vec()));
+    assert_eq!(engine.get(b"x").map(|a| a.as_ref().to_vec()), Some(b"new".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -212,7 +212,7 @@ fn test_durability_after_commit() -> Result<()> {
         tx.commit()?;
     }
     let engine2 = Engine::new(path.clone())?;
-    assert_eq!(engine2.get(b"a"), Some(b"2".to_vec()));
+    assert_eq!(engine2.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"2".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -230,8 +230,8 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     }
     tx.commit()?;
     assert_eq!(engine.len(), 5000);
-    assert_eq!(engine.get(b"key0"), Some(b"val0".to_vec()));
-    assert_eq!(engine.get(b"key4999"), Some(b"val4999".to_vec()));
+    assert_eq!(engine.get(b"key0").map(|a| a.as_ref().to_vec()), Some(b"val0".to_vec()));
+    assert_eq!(engine.get(b"key4999").map(|a| a.as_ref().to_vec()), Some(b"val4999".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -242,21 +242,21 @@ fn test_mix_raw_and_transaction() -> Result<()> {
     if path.exists() { fs::remove_file(&path)?; }
     let mut engine = Engine::new(path.clone())?;
     engine.set(b"k", b"raw1".to_vec())?;
-    assert_eq!(engine.get(b"k"), Some(b"raw1".to_vec()));
+    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"raw1".to_vec()));
     let snap = {
         let tx = engine.begin_transaction();
         tx.get(b"k").unwrap()
     };
     assert_eq!(snap, b"raw1".to_vec());
     engine.set(b"k", b"raw2".to_vec())?;
-    assert_eq!(engine.get(b"k"), Some(b"raw2".to_vec()));
+    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"raw2".to_vec()));
     assert_eq!(snap, b"raw1".to_vec());
     {
         let mut tx2 = engine.begin_transaction();
         tx2.set(b"k".to_vec(), b"tx1".to_vec())?;
         tx2.commit()?;
     }
-    assert_eq!(engine.get(b"k"), Some(b"tx1".to_vec()));
+    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"tx1".to_vec()));
     engine.del(b"k")?;
     assert_eq!(engine.get(b"k"), None);
     {
@@ -288,10 +288,10 @@ fn test_transaction_get_behaviour() -> Result<()> {
         assert_eq!(tx.get(b"k4"), Some(b"v4".to_vec()));
         tx.commit()?;
     }
-    assert_eq!(engine.get(b"k1"), Some(b"v1_tx".to_vec()));
+    assert_eq!(engine.get(b"k1").map(|a| a.as_ref().to_vec()), Some(b"v1_tx".to_vec()));
     assert_eq!(engine.get(b"k2"), None);
-    assert_eq!(engine.get(b"k3"), Some(b"v3".to_vec()));
-    assert_eq!(engine.get(b"k4"), Some(b"v4".to_vec()));
+    assert_eq!(engine.get(b"k3").map(|a| a.as_ref().to_vec()), Some(b"v3".to_vec()));
+    assert_eq!(engine.get(b"k4").map(|a| a.as_ref().to_vec()), Some(b"v4".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -338,7 +338,7 @@ fn test_implicit_rollback_on_drop() -> Result<()> {
     {
         let _tx = engine.begin_transaction();
     }
-    assert_eq!(engine.get(b"x"), Some(b"init".to_vec()));
+    assert_eq!(engine.get(b"x").map(|a| a.as_ref().to_vec()), Some(b"init".to_vec()));
     fs::remove_file(path)?;
     Ok(())
 }
@@ -372,7 +372,7 @@ fn test_transaction_key_size_limit() {
     assert!(err.is_err());
     tx.set(b"a".to_vec(), b"v".to_vec()).unwrap();
     tx.commit().unwrap();
-    assert_eq!(engine.get(b"a"), Some(b"v".to_vec()));
+    assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"v".to_vec()));
     fs::remove_file(path).unwrap();
 }
 
@@ -388,7 +388,7 @@ fn test_transaction_value_size_limit() {
     assert!(err.is_err());
     tx.set(b"k".to_vec(), vec![0]).unwrap();
     tx.commit().unwrap();
-    assert_eq!(engine.get(b"k"), Some(vec![0]));
+    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(vec![0]));
     fs::remove_file(path).unwrap();
 }
 
@@ -405,8 +405,8 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     assert!(err.is_err());
     tx.set(b"b".to_vec(), b"3".to_vec())?;
     tx.commit()?;
-    assert_eq!(engine.get(b"a"), Some(b"1".to_vec()));
-    assert_eq!(engine.get(b"b"), Some(b"3".to_vec()));
+    assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
+    assert_eq!(engine.get(b"b").map(|a| a.as_ref().to_vec()), Some(b"3".to_vec()));
     assert_eq!(engine.get(&vec![0,1]), None);
     fs::remove_file(path)?;
     Ok(())

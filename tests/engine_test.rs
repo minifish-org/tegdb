@@ -25,7 +25,7 @@ fn test_engine() -> Result<()> {
     engine.set(key, value.to_vec())?;
     let get_value = engine.get(key).unwrap();
     assert_eq!(
-        get_value,
+        &*get_value,
         value,
         "Expected: {}, Got: {}",
         String::from_utf8_lossy(value),
@@ -89,10 +89,10 @@ fn test_persistence() -> Result<()> {
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
         let value3 = engine.get(b"key3").unwrap();
-        
-        assert_eq!(value1, b"value1", "Value for key1 not persisted correctly");
-        assert_eq!(value2, b"value2", "Value for key2 not persisted correctly");
-        assert_eq!(value3, b"value3", "Value for key3 not persisted correctly");
+
+        assert_eq!(&*value1, b"value1", "Value for key1 not persisted correctly");
+        assert_eq!(&*value2, b"value2", "Value for key2 not persisted correctly");
+        assert_eq!(&*value3, b"value3", "Value for key3 not persisted correctly");
         
         // Drop engine again to ensure changes are persisted
         drop(engine);
@@ -118,10 +118,10 @@ fn test_persistence() -> Result<()> {
         let value3 = engine.get(b"key3").unwrap();
         let value4 = engine.get(b"key4").unwrap();
         
-        assert_eq!(value1, b"value1", "Original value for key1 was lost");
-        assert_eq!(value2, b"updated_value", "Value for key2 not updated correctly");
-        assert_eq!(value3, b"value3", "Original value for key3 was lost");
-        assert_eq!(value4, b"value4", "New value for key4 not persisted correctly");
+        assert_eq!(&*value1, b"value1", "Original value for key1 was lost");
+        assert_eq!(&*value2, b"updated_value", "Value for key2 not updated correctly");
+        assert_eq!(&*value3, b"value3", "Original value for key3 was lost");
+        assert_eq!(&*value4, b"value4", "New value for key4 not persisted correctly");
         
         // Drop engine again
         drop(engine);
@@ -166,7 +166,7 @@ fn test_basic_operations() -> Result<()> {
     
     engine.set(b"key", b"value".to_vec())?;
     let value = engine.get(b"key").unwrap();
-    assert_eq!(value, b"value");
+    assert_eq!(&*value, b"value");
     
     fs::remove_file(path)?;
     
@@ -218,9 +218,9 @@ fn test_batch_operations() -> Result<()> {
     engine.batch(entries)?;
     
     // Verify the entries were written
-    assert_eq!(engine.get(b"batch:1"), Some(b"value1".to_vec()));
-    assert_eq!(engine.get(b"batch:2"), Some(b"value2".to_vec()));
-    assert_eq!(engine.get(b"batch:3"), Some(b"value3".to_vec()));
+    assert_eq!(engine.get(b"batch:1").map(|a| a.as_ref().to_vec()), Some(b"value1".to_vec()));
+    assert_eq!(engine.get(b"batch:2").map(|a| a.as_ref().to_vec()), Some(b"value2".to_vec()));
+    assert_eq!(engine.get(b"batch:3").map(|a| a.as_ref().to_vec()), Some(b"value3".to_vec()));
     
     // Use batch to delete an entry
     let delete_entries = vec![
@@ -252,7 +252,7 @@ fn test_empty_string_values() -> Result<()> {
     
     // Set a value first
     engine.set(b"key2", b"value".to_vec())?;
-    assert_eq!(engine.get(b"key2"), Some(b"value".to_vec()));
+    assert_eq!(engine.get(b"key2").map(|a| a.as_ref().to_vec()), Some(b"value".to_vec()));
     
     // Then set it to empty (should delete)
     engine.set(b"key2", vec![])?;
@@ -316,7 +316,7 @@ fn test_engine_basic_operations_moved() -> Result<()> {
     
     // Set and get
     engine.set(b"key1", b"value1".to_vec())?;
-    assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value1".to_vec()));
     
     // Delete
     engine.del(b"key1")?;
@@ -337,11 +337,11 @@ fn test_overwrite_key() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
 
     engine.set(b"key1", b"value1".to_vec())?;
-    assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value1".to_vec()));
 
     // Overwrite key1
     engine.set(b"key1", b"value_new".to_vec())?;
-    assert_eq!(engine.get(b"key1"), Some(b"value_new".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value_new".to_vec()));
 
     fs::remove_file(path)?;
     Ok(())
@@ -424,7 +424,7 @@ fn test_special_characters_keys_values() -> Result<()> {
 
     for i in 0..keys.len() {
         engine.set(&keys[i], values[i].clone())?;
-        assert_eq!(engine.get(&keys[i]), Some(values[i].clone()));
+        assert_eq!(engine.get(&keys[i]).map(|a| a.as_ref().to_vec()), Some(values[i].clone()));
     }
 
     fs::remove_file(path)?;
@@ -452,10 +452,10 @@ fn test_batch_mixed_operations() -> Result<()> {
 
     engine.batch(entries)?;
 
-    assert_eq!(engine.get(b"key1"), Some(b"updated1".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"updated1".to_vec()));
     assert_eq!(engine.get(b"key2"), None);
-    assert_eq!(engine.get(b"key3"), Some(b"initial3".to_vec())); // Unchanged
-    assert_eq!(engine.get(b"key4"), Some(b"new4".to_vec()));
+    assert_eq!(engine.get(b"key3").map(|a| a.as_ref().to_vec()), Some(b"initial3".to_vec())); // Unchanged
+    assert_eq!(engine.get(b"key4").map(|a| a.as_ref().to_vec()), Some(b"new4".to_vec()));
 
     fs::remove_file(path)?;
     Ok(())
@@ -475,7 +475,7 @@ fn test_batch_empty() -> Result<()> {
     let entries: Vec<Entry> = vec![];
     engine.batch(entries)?;
 
-    assert_eq!(engine.get(b"key1"), Some(b"value1".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value1".to_vec()));
     assert_eq!(engine.len(), initial_len);
 
     fs::remove_file(path)?;
@@ -529,8 +529,8 @@ fn test_persistence_after_batch() -> Result<()> {
     {
         let engine = Engine::new(path.clone())?;
         assert_eq!(engine.get(b"batch_key1"), None);
-        assert_eq!(engine.get(b"batch_key2"), Some(b"val2".to_vec()));
-        assert_eq!(engine.get(b"single_key"), Some(b"val_single".to_vec()));
+        assert_eq!(engine.get(b"batch_key2").map(|a| a.as_ref().to_vec()), Some(b"val2".to_vec()));
+        assert_eq!(engine.get(b"single_key").map(|a| a.as_ref().to_vec()), Some(b"val_single".to_vec()));
         drop(engine);
     }
 
@@ -658,10 +658,10 @@ fn test_batch_with_duplicate_keys_in_batch() -> Result<()> {
 
     engine.batch(entries)?;
 
-    assert_eq!(engine.get(b"key_A"), Some(b"value_A3".to_vec()));
-    assert_eq!(engine.get(b"key_B"), Some(b"initial_B".to_vec())); // Unchanged
+    assert_eq!(engine.get(b"key_A").map(|a| a.as_ref().to_vec()), Some(b"value_A3".to_vec()));
+    assert_eq!(engine.get(b"key_B").map(|a| a.as_ref().to_vec()), Some(b"initial_B".to_vec())); // Unchanged
     assert_eq!(engine.get(b"key_C"), None); // Deleted within batch
-    assert_eq!(engine.get(b"key_D"), Some(b"value_D1".to_vec())); // Inserted
+    assert_eq!(engine.get(b"key_D").map(|a| a.as_ref().to_vec()), Some(b"value_D1".to_vec())); // Inserted
 
     // Expected keys: key_A, key_B, key_D
     assert_eq!(engine.len(), 3);
@@ -692,9 +692,9 @@ fn test_atomicity_batch_all_or_nothing() -> Result<()> {
     engine.batch(entries_successful_batch)?;
 
     // Verify all changes from the batch are applied
-    assert_eq!(engine.get(b"key1"), Some(b"updated_value1".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"updated_value1".to_vec()));
     assert_eq!(engine.get(b"key2"), None);
-    assert_eq!(engine.get(b"key3"), Some(b"new_value3".to_vec()));
+    assert_eq!(engine.get(b"key3").map(|a| a.as_ref().to_vec()), Some(b"new_value3".to_vec()));
     assert_eq!(engine.len(), 2); // key1, key3
 
     // Cleanup
@@ -724,8 +724,8 @@ fn test_durability_multiple_sessions_mixed_ops() -> Result<()> {
     // Session 2: Read, update, delete
     {
         let mut engine = Engine::new(path.clone())?;
-        assert_eq!(engine.get(b"s1_key1"), Some(b"s1_val1".to_vec()));
-        assert_eq!(engine.get(b"s1_batch_keyA"), Some(b"s1_batch_valA".to_vec()));
+        assert_eq!(engine.get(b"s1_key1").map(|a| a.as_ref().to_vec()), Some(b"s1_val1".to_vec()));
+        assert_eq!(engine.get(b"s1_batch_keyA").map(|a| a.as_ref().to_vec()), Some(b"s1_batch_valA".to_vec()));
 
         engine.set(b"s1_key1", b"s1_val1_updated".to_vec())?; // Update
         engine.del(b"s1_batch_keyB")?; // Delete
@@ -741,10 +741,10 @@ fn test_durability_multiple_sessions_mixed_ops() -> Result<()> {
     // Session 3: Verify all changes
     {
         let engine = Engine::new(path.clone())?;
-        assert_eq!(engine.get(b"s1_key1"), Some(b"s1_val1_updated".to_vec()));
+        assert_eq!(engine.get(b"s1_key1").map(|a| a.as_ref().to_vec()), Some(b"s1_val1_updated".to_vec()));
         assert_eq!(engine.get(b"s1_batch_keyA"), None);
         assert_eq!(engine.get(b"s1_batch_keyB"), None);
-        assert_eq!(engine.get(b"s2_new_key"), Some(b"s2_new_val".to_vec()));
+        assert_eq!(engine.get(b"s2_new_key").map(|a| a.as_ref().to_vec()), Some(b"s2_new_val".to_vec()));
         assert_eq!(engine.len(), 2); // s1_key1, s2_new_key
         drop(engine);
     }
@@ -771,8 +771,8 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
     // Session 2: Read data from session 1, modify some, add new
     {
         let mut engine = Engine::new(path.clone())?;
-        assert_eq!(engine.get(b"iso_key1"), Some(b"val1_session1".to_vec()));
-        assert_eq!(engine.get(b"iso_key2"), Some(b"val2_session1".to_vec()));
+        assert_eq!(engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()), Some(b"val1_session1".to_vec()));
+        assert_eq!(engine.get(b"iso_key2").map(|a| a.as_ref().to_vec()), Some(b"val2_session1".to_vec()));
 
         engine.set(b"iso_key2", b"val2_session2_updated".to_vec())?;
         engine.set(b"iso_key3", b"val3_session2_new".to_vec())?;
@@ -782,9 +782,9 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
     // Session 3: Verify changes from session 2 and original from session 1
     {
         let engine = Engine::new(path.clone())?;
-        assert_eq!(engine.get(b"iso_key1"), Some(b"val1_session1".to_vec())); // Unchanged from session 1
-        assert_eq!(engine.get(b"iso_key2"), Some(b"val2_session2_updated".to_vec())); // Updated in session 2
-        assert_eq!(engine.get(b"iso_key3"), Some(b"val3_session2_new".to_vec()));   // Added in session 2
+        assert_eq!(engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()), Some(b"val1_session1".to_vec())); // Unchanged from session 1
+        assert_eq!(engine.get(b"iso_key2").map(|a| a.as_ref().to_vec()), Some(b"val2_session2_updated".to_vec())); // Updated in session 2
+        assert_eq!(engine.get(b"iso_key3").map(|a| a.as_ref().to_vec()), Some(b"val3_session2_new".to_vec()));   // Added in session 2
         assert_eq!(engine.len(), 3);
         drop(engine);
     }
@@ -806,7 +806,7 @@ fn test_consistency_after_complex_operations() -> Result<()> {
     engine.set(b"key2", b"val2".to_vec())?;
     engine.set(b"key3", b"val3".to_vec())?;
 
-    assert_eq!(engine.get(b"key1"), Some(b"val1".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"val1".to_vec()));
     assert_eq!(engine.len(), 3);
 
     // 2. First Batch: Update key1, Delete key2, Insert key4
@@ -817,10 +817,10 @@ fn test_consistency_after_complex_operations() -> Result<()> {
     ];
     engine.batch(batch1_entries)?;
 
-    assert_eq!(engine.get(b"key1"), Some(b"val1_updated".to_vec()));
+    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"val1_updated".to_vec()));
     assert_eq!(engine.get(b"key2"), None);
-    assert_eq!(engine.get(b"key3"), Some(b"val3".to_vec())); // Unchanged
-    assert_eq!(engine.get(b"key4"), Some(b"val4_new".to_vec()));
+    assert_eq!(engine.get(b"key3").map(|a| a.as_ref().to_vec()), Some(b"val3".to_vec())); // Unchanged
+    assert_eq!(engine.get(b"key4").map(|a| a.as_ref().to_vec()), Some(b"val4_new".to_vec()));
     assert_eq!(engine.len(), 3); // key1, key3, key4
 
     // 3. Individual Del and Set
@@ -828,7 +828,7 @@ fn test_consistency_after_complex_operations() -> Result<()> {
     engine.set(b"key5", b"val5".to_vec())?;
 
     assert_eq!(engine.get(b"key3"), None);
-    assert_eq!(engine.get(b"key5"), Some(b"val5".to_vec()));
+    assert_eq!(engine.get(b"key5").map(|a| a.as_ref().to_vec()), Some(b"val5".to_vec()));
     assert_eq!(engine.len(), 3); // key1, key4, key5
 
     // 4. Second Batch: Delete key1, Update key4, Insert key6
@@ -843,9 +843,9 @@ fn test_consistency_after_complex_operations() -> Result<()> {
     assert_eq!(engine.get(b"key1"), None, "key1 should be deleted");
     assert_eq!(engine.get(b"key2"), None, "key2 should remain deleted");
     assert_eq!(engine.get(b"key3"), None, "key3 should remain deleted");
-    assert_eq!(engine.get(b"key4"), Some(b"val4_updated_again".to_vec()), "key4 should be updated");
-    assert_eq!(engine.get(b"key5"), Some(b"val5".to_vec()), "key5 should be present");
-    assert_eq!(engine.get(b"key6"), Some(b"val6_new".to_vec()), "key6 should be inserted");
+    assert_eq!(engine.get(b"key4").map(|a| a.as_ref().to_vec()), Some(b"val4_updated_again".to_vec()), "key4 should be updated");
+    assert_eq!(engine.get(b"key5").map(|a| a.as_ref().to_vec()), Some(b"val5".to_vec()), "key5 should be present");
+    assert_eq!(engine.get(b"key6").map(|a| a.as_ref().to_vec()), Some(b"val6_new".to_vec()), "key6 should be inserted");
 
     assert_eq!(engine.len(), 3, "Final length should be 3"); // key4, key5, key6
 
@@ -907,24 +907,24 @@ fn test_idempotency_of_batch_operations() -> Result<()> {
     if expected_key_set_and_updated.is_some() { expected_len +=1; }
     // key_set_and_deleted is None
 
-    assert_eq!(engine.get(b"key_initial"), expected_key_initial, "After 1st batch: key_initial");
-    assert_eq!(engine.get(b"key_to_update"), expected_key_to_update, "After 1st batch: key_to_update");
-    assert_eq!(engine.get(b"key_to_delete"), expected_key_to_delete, "After 1st batch: key_to_delete");
-    assert_eq!(engine.get(b"key_new_in_batch"), expected_key_new_in_batch, "After 1st batch: key_new_in_batch");
-    assert_eq!(engine.get(b"key_set_and_updated_in_batch"), expected_key_set_and_updated, "After 1st batch: key_set_and_updated");
-    assert_eq!(engine.get(b"key_set_and_deleted_in_batch"), expected_key_set_and_deleted, "After 1st batch: key_set_and_deleted");
+    assert_eq!(engine.get(b"key_initial").map(|a| a.as_ref().to_vec()), expected_key_initial, "After 1st batch: key_initial");
+    assert_eq!(engine.get(b"key_to_update").map(|a| a.as_ref().to_vec()), expected_key_to_update, "After 1st batch: key_to_update");
+    assert_eq!(engine.get(b"key_to_delete").map(|a| a.as_ref().to_vec()), expected_key_to_delete, "After 1st batch: key_to_delete");
+    assert_eq!(engine.get(b"key_new_in_batch").map(|a| a.as_ref().to_vec()), expected_key_new_in_batch, "After 1st batch: key_new_in_batch");
+    assert_eq!(engine.get(b"key_set_and_updated_in_batch").map(|a| a.as_ref().to_vec()), expected_key_set_and_updated, "After 1st batch: key_set_and_updated");
+    assert_eq!(engine.get(b"key_set_and_deleted_in_batch").map(|a| a.as_ref().to_vec()), expected_key_set_and_deleted, "After 1st batch: key_set_and_deleted");
     assert_eq!(engine.len(), expected_len, "After 1st batch: engine length");
 
     // Apply batch for the second time (reconstructing the entries)
     engine.batch(make_batch_entries())?;
 
     // Assert state is identical to after the first application
-    assert_eq!(engine.get(b"key_initial"), expected_key_initial, "After 2nd batch: key_initial");
-    assert_eq!(engine.get(b"key_to_update"), expected_key_to_update, "After 2nd batch: key_to_update");
-    assert_eq!(engine.get(b"key_to_delete"), expected_key_to_delete, "After 2nd batch: key_to_delete");
-    assert_eq!(engine.get(b"key_new_in_batch"), expected_key_new_in_batch, "After 2nd batch: key_new_in_batch");
-    assert_eq!(engine.get(b"key_set_and_updated_in_batch"), expected_key_set_and_updated, "After 2nd batch: key_set_and_updated");
-    assert_eq!(engine.get(b"key_set_and_deleted_in_batch"), expected_key_set_and_deleted, "After 2nd batch: key_set_and_deleted");
+    assert_eq!(engine.get(b"key_initial").map(|a| a.as_ref().to_vec()), expected_key_initial, "After 2nd batch: key_initial");
+    assert_eq!(engine.get(b"key_to_update").map(|a| a.as_ref().to_vec()), expected_key_to_update, "After 2nd batch: key_to_update");
+    assert_eq!(engine.get(b"key_to_delete").map(|a| a.as_ref().to_vec()), expected_key_to_delete, "After 2nd batch: key_to_delete");
+    assert_eq!(engine.get(b"key_new_in_batch").map(|a| a.as_ref().to_vec()), expected_key_new_in_batch, "After 2nd batch: key_new_in_batch");
+    assert_eq!(engine.get(b"key_set_and_updated_in_batch").map(|a| a.as_ref().to_vec()), expected_key_set_and_updated, "After 2nd batch: key_set_and_updated");
+    assert_eq!(engine.get(b"key_set_and_deleted_in_batch").map(|a| a.as_ref().to_vec()), expected_key_set_and_deleted, "After 2nd batch: key_set_and_deleted");
     assert_eq!(engine.len(), expected_len, "After 2nd batch: engine length");
 
     fs::remove_file(path)?;
@@ -944,7 +944,7 @@ fn test_engine_value_size_limit() {
     assert!(err.is_err(), "Expected engine.set error for oversized value");
     // valid value
     engine.set(b"k", vec![0]).unwrap();
-    assert_eq!(engine.get(b"k"), Some(vec![0]));
+    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(vec![0]));
     fs::remove_file(path).unwrap();
 }
 
@@ -963,7 +963,7 @@ fn test_batch_error_propagation_and_atomicity() -> Result<()> {
     let err = engine.batch(entries);
     assert!(err.is_err(), "Expected error for oversized key in batch");
     // ensure atomicity - no partial apply
-    assert_eq!(engine.get(b"a"), Some(b"old".to_vec()), "Batch should be atomic on error");
+    assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"old".to_vec()), "Batch should be atomic on error");
     fs::remove_file(path)?;
     Ok(())
 }

@@ -32,7 +32,8 @@ fn main() -> Result<()> {
     // Get the value back
     if let Some(get_value) = engine.get(key) {
         println!("Got value: {}", String::from_utf8_lossy(&get_value));
-        assert_eq!(get_value, value.to_vec());
+        // compare Arc<[u8]> to original slice
+        assert_eq!(&*get_value, value);
     } else {
         println!("Key not found (unexpected)");
     }
@@ -62,12 +63,12 @@ fn main() -> Result<()> {
     // Verify the pairs were stored correctly
     for (k, v) in &pairs {
         let stored_value = engine.get(k).expect("Key not found");
-        assert_eq!(&stored_value, v);
-        
-        println!("Verified key: {} with value: {:?}", 
-            String::from_utf8_lossy(k),
-            if k == b"binary" { format!("{:?}", v) } else { format!("{}", String::from_utf8_lossy(v)) });
-    }
+        assert_eq!(&*stored_value, v.as_slice());
+         
+         println!("Verified key: {} with value: {:?}", 
+             String::from_utf8_lossy(k),
+             if k == b"binary" { format!("{:?}", v) } else { format!("{}", String::from_utf8_lossy(v)) });
+     }
     
     // === Range Scan Operations ===
     println!("\n===== Scan operations with different ranges =====");
@@ -122,8 +123,8 @@ fn main() -> Result<()> {
     println!("Batch operation completed");
     
     // Verify batch operations
-    assert_eq!(engine.get(b"batch:1"), Some(b"batch value 1".to_vec()));
-    assert_eq!(engine.get(b"batch:2"), Some(b"batch value 2".to_vec()));
+    assert_eq!(engine.get(b"batch:1").map(|v| v.to_vec()), Some(b"batch value 1".to_vec()));
+    assert_eq!(engine.get(b"batch:2").map(|v| v.to_vec()), Some(b"batch value 2".to_vec()));
     assert_eq!(engine.get(b"user:1"), None);
     
     // === Binary data operations ===
@@ -132,7 +133,7 @@ fn main() -> Result<()> {
     // Verify we can retrieve binary data correctly
     if let Some(bin_value) = engine.get(b"binary") {
         println!("Retrieved binary value: {:?}", bin_value);
-        assert_eq!(bin_value, vec![0x00, 0x01, 0x02, 0x03, 0xFF]);
+        assert_eq!(&*bin_value, &[0x00, 0x01, 0x02, 0x03, 0xFF][..]);
     }
     
     // === Manual compaction ===

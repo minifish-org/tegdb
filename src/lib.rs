@@ -12,7 +12,7 @@
 //!     let mut engine = Engine::with_config(db_path.clone(), config)?;
 //!
 //!     engine.set(b"foo", b"bar".to_vec())?;
-//!     assert_eq!(engine.get(b"foo"), Some(b"bar".to_vec()));
+//!     assert_eq!(engine.get(b"foo").map(|a| a.as_ref().to_vec()), Some(b"bar".to_vec()));
 //!
 //!     let entries = vec![
 //!         (b"a".to_vec(), Some(b"1".to_vec())),

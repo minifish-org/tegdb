@@ -3,6 +3,7 @@ use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use fs2::FileExt;  // For file locking
 
 use crate::error::{Error, Result};
@@ -50,10 +51,9 @@ pub struct Engine {
     config: EngineConfig,
 }
 
-// KeyMap is a BTreeMap that maps keys to values
-type KeyMap = BTreeMap<Vec<u8>, Vec<u8>>;
-
-// Type alias for scan result
+// KeyMap maps keys to shared buffers instead of owned Vecs
+type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
+// Type alias for scan result (returns owned Vec<u8> values)
 type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>;
 
 impl Engine {
@@ -87,8 +87,8 @@ impl Engine {
         Transaction { engine: self, entries, snapshot, state: TxState::Active }
     }
 
-    /// Retrieves a value by key
-    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
+    /// Retrieves a value by key (zero-copy refcounted Arc)
+    pub fn get(&self, key: &[u8]) -> Option<Arc<[u8]>> {
         self.key_map.get(key).cloned()
     }
 
@@ -106,14 +106,17 @@ impl Engine {
         }
 
         // Skip writing if the value hasn't changed
-        if let Some(existing_value) = self.key_map.get(key) {
-            if existing_value == &value {
+        if let Some(existing) = self.key_map.get(key) {
+            if existing.as_ref() == value.as_slice() {
                 return Ok(());
             }
         }
 
+        // write to log, then store shared buffer
         self.log.write_entry(key, &value, self.config.sync_on_write)?;
-        self.key_map.insert(key.to_vec(), value);
+        // store as shared buffer for cheap cloning on get
+        let shared = Arc::from(value.into_boxed_slice());
+        self.key_map.insert(key.to_vec(), shared);
         
         Ok(())
     }
@@ -136,13 +139,23 @@ impl Engine {
         range: Range<Vec<u8>>,
     ) -> Result<ScanResult<'_>> {
         let iter = self.key_map.range(range)
-            .map(|(key, value)| (key.clone(), value.clone()));
-        
+            .map(|(key, value)| (key.clone(), value.as_ref().to_vec()));
         Ok(Box::new(iter))
     }
 
     /// Performs multiple operations in a batch
     pub fn batch(&mut self, entries: Vec<Entry>) -> Result<()> {
+        // Pre-validate all entries for size limits to ensure atomicity
+        for entry in &entries {
+            if entry.key.len() > self.config.max_key_size {
+                return Err(Error::KeyTooLarge(entry.key.len()));
+            }
+            if let Some(ref value) = entry.value {
+                if value.len() > self.config.max_value_size {
+                    return Err(Error::ValueTooLarge(value.len()));
+                }
+            }
+        }
         for entry in entries {
             match entry.value {
                 Some(value) => self.set(&entry.key, value)?,
@@ -195,13 +208,12 @@ impl Engine {
         let mut new_key_map = KeyMap::new();
         let mut new_log = Log::new(path)?;
         new_log.file.set_len(0)?;
-        
         for (key, value) in &self.key_map {
-            new_log.write_entry(key, value, true)?;
+            new_log.write_entry(key, value.as_ref(), true)?;
             new_key_map.insert(key.clone(), value.clone());
         }
-        
-        Ok((new_log, new_key_map))
+         
+         Ok((new_log, new_key_map))
     }
 }
 
@@ -254,7 +266,8 @@ impl<'a> Transaction<'a> {
                 return entry.value.clone();
             }
         }
-        self.snapshot.get(key).cloned()
+        // Fallback to snapshot
+        self.snapshot.get(key).map(|arc| arc.as_ref().to_vec())
     }
 
     /// Scans a range of key-value pairs in the transaction context
@@ -263,14 +276,14 @@ impl<'a> Transaction<'a> {
         let mut merged = self.snapshot.clone();
         for entry in &self.entries {
             if let Some(value) = &entry.value {
-                merged.insert(entry.key.clone(), value.clone());
+                merged.insert(entry.key.clone(), Arc::from(value.clone().into_boxed_slice()));
             } else {
                 merged.remove(&entry.key);
             }
         }
         // Collect range results
         merged.range(range)
-            .map(|(k, v)| (k.clone(), v.clone()))
+            .map(|(k, v)| (k.clone(), v.as_ref().to_vec()))
             .collect()
     }
 
@@ -329,13 +342,13 @@ impl Log {
     }
 
     fn build_key_map(&mut self) -> Result<KeyMap> {
-        let mut len_buf = [0u8; 4];
-        let mut key_map = KeyMap::new();
-        let file_len = self.file.metadata()?.len();
-        let mut reader = BufReader::new(&mut self.file);
-        let mut pos = reader.seek(SeekFrom::Start(0))?;
+         let mut len_buf = [0u8; 4];
+         let mut key_map = KeyMap::new();
+         let file_len = self.file.metadata()?.len();
+         let mut reader = BufReader::new(&mut self.file);
+         let mut pos = reader.seek(SeekFrom::Start(0))?;
 
-        while pos < file_len {
+         while pos < file_len {
             // Read key length
             match reader.read_exact(&mut len_buf) {
                 Ok(()) => {},
@@ -391,13 +404,15 @@ impl Log {
             if value_len == 0 {
                 key_map.remove(&key);
             } else {
-                key_map.insert(key, value);
+                // wrap in Arc for cheap clones on get()
+                let shared = Arc::from(value.into_boxed_slice());
+                key_map.insert(key, shared);
             }
-
-            pos = value_pos + value_len as u64;
-        }
-        
-        Ok(key_map)
+             
+             pos = value_pos + value_len as u64;
+         }
+         
+         Ok(key_map)
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8], sync: bool) -> Result<()> {
