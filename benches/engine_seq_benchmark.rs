@@ -123,5 +123,5 @@ fn benchmark_large(c: &mut Criterion) {
     sled_benchmark(c, 255_000);
 }
 
-criterion_group!(benches, benchmark_large);
+criterion_group!(benches, benchmark_small, benchmark_large);
 criterion_main!(benches);
