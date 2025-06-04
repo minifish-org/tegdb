@@ -53,8 +53,8 @@ pub struct Engine {
 
 // KeyMap maps keys to shared buffers instead of owned Vecs
 type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
-// Type alias for scan result (returns owned Vec<u8> values)
-type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Vec<u8>)> + 'a>;
+// Type alias for scan result (returns keys and shared buffer Arcs for values)
+type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
 
 impl Engine {
     /// Creates a new database engine with default configuration
@@ -139,7 +139,8 @@ impl Engine {
         range: Range<Vec<u8>>,
     ) -> Result<ScanResult<'_>> {
         let iter = self.key_map.range(range)
-            .map(|(key, value)| (key.clone(), value.as_ref().to_vec()));
+            // clone key Vec (small) and clone Arc (cheap refcount increment)
+            .map(|(key, value)| (key.clone(), Arc::clone(value)));
         Ok(Box::new(iter))
     }
 
