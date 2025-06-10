@@ -36,15 +36,15 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-//    c.bench_function(&format!("engine seq get {}", value_size), |b| {
-//        let mut i = 0;
-//        b.iter(|| {
-//            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
-//            let key = key_str.as_bytes();
-//            let _ = black_box(engine.get(black_box(key)));
-//            i += 1;
-//        })
-//    });
+    c.bench_function(&format!("engine seq get {}", value_size), |b| {
+        let mut i = 0;
+        b.iter(|| {
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
+            let key = key_str.as_bytes();
+            let _ = black_box(engine.get(black_box(key)));
+            i += 1;
+        })
+    });
 
     // Add sequential scan benchmark for engine
     c.bench_function(&format!("engine seq scan {}", value_size), |b| {
@@ -57,15 +57,15 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
- //   c.bench_function(&format!("engine seq del {}", value_size), |b| {
- //       let mut i = 0;
- //       b.iter(|| {
- //           let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
- //           let key = key_str.as_bytes();
- //           let _ = engine.del(black_box(key)); // Just benchmark the operation, don't unwrap
- //           i += 1;
- //       })
- //   });
+    c.bench_function(&format!("engine seq del {}", value_size), |b| {
+        let mut i = 0;
+        b.iter(|| {
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
+            let key = key_str.as_bytes();
+            let _ = engine.del(black_box(key)); // Just benchmark the operation, don't unwrap
+            i += 1;
+        })
+    });
     
     // Clean up the test file after benchmarks
     drop(engine); // Ensure the file is closed
@@ -100,15 +100,15 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-//    c.bench_function(&format!("sled seq get {}", value_size), |b| {
-//        let mut i = 0;
-//        b.iter(|| {
-//            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
-//            let key = key_str.as_bytes();
-//            let _ = black_box(db.get(black_box(key)));
-//            i += 1;
-//        })
-//    });
+    c.bench_function(&format!("sled seq get {}", value_size), |b| {
+        let mut i = 0;
+        b.iter(|| {
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
+            let key = key_str.as_bytes();
+            let _ = black_box(db.get(black_box(key)));
+            i += 1;
+        })
+    });
 
     // Add sequential scan benchmark for sled
     c.bench_function(&format!("sled seq scan {}", value_size), |b| {
@@ -120,15 +120,15 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-//    c.bench_function(&format!("sled seq remove {}", value_size), |b| {
-//        let mut i = 0;
-//        b.iter(|| {
-//            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
-//            let key = key_str.as_bytes();
-//            let _ = db.remove(black_box(key));
-//            i += 1;
-//        })
-//    });
+    c.bench_function(&format!("sled seq remove {}", value_size), |b| {
+        let mut i = 0;
+        b.iter(|| {
+            let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
+            let key = key_str.as_bytes();
+            let _ = db.remove(black_box(key));
+            i += 1;
+        })
+    });
 
     drop(db); // Ensure the database is closed
     std::fs::remove_dir_all(path_str).unwrap_or_default();
@@ -144,5 +144,5 @@ fn benchmark_large(c: &mut Criterion) {
     sled_benchmark(c, 255_000);
 }
 
-criterion_group!(benches, benchmark_large);
+criterion_group!(benches, benchmark_small, benchmark_large);
 criterion_main!(benches);
