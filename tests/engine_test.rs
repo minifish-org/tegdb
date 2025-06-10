@@ -594,7 +594,7 @@ fn test_scan_boundary_conditions() -> Result<()> {
     let result1 = engine.scan(b"key1".to_vec()..b"key2".to_vec())?.collect::<Vec<_>>();
     assert_eq!(result1.len(), 1);
     assert_eq!(result1[0].0, b"key1".to_vec());
-    assert_eq!(result1[0].1, b"value1".to_vec());
+    assert_eq!(result1[0].1.as_ref(), b"value1");
 
     // Scan for "key2" and "key3"
     // To include "key3", the end of the range must be > "key3"
@@ -603,9 +603,9 @@ fn test_scan_boundary_conditions() -> Result<()> {
     let result2 = engine.scan(b"key2".to_vec()..end_key3_inclusive)?.collect::<Vec<_>>();
     assert_eq!(result2.len(), 2);
     assert_eq!(result2[0].0, b"key2".to_vec());
-    assert_eq!(result2[0].1, b"value2".to_vec());
+    assert_eq!(result2[0].1.as_ref(), b"value2");
     assert_eq!(result2[1].0, b"key3".to_vec());
-    assert_eq!(result2[1].1, b"value3".to_vec());
+    assert_eq!(result2[1].1.as_ref(), b"value3");
 
     // Scan a range that includes nothing (e.g., between "key1" and "key2" but not including them)
     let mut start_after_key1 = b"key1".to_vec();
@@ -855,7 +855,11 @@ fn test_consistency_after_complex_operations() -> Result<()> {
         (b"key5".to_vec(), b"val5".to_vec()),
         (b"key6".to_vec(), b"val6_new".to_vec()),
     ];
-    assert_eq!(scan_results, expected_scan_results, "Scan results do not match expected");
+    assert_eq!(scan_results.len(), expected_scan_results.len(), "Scan results length mismatch");
+    for (i, (actual, expected)) in scan_results.iter().zip(expected_scan_results.iter()).enumerate() {
+        assert_eq!(actual.0, expected.0, "Key mismatch at index {}", i);
+        assert_eq!(actual.1.as_ref(), expected.1.as_slice(), "Value mismatch at index {}", i);
+    }
 
     // Cleanup
     fs::remove_file(path)?;
