@@ -37,5 +37,6 @@ mod error;
 pub mod sql;
 pub mod executor;
 
-pub use engine::{Engine, EngineConfig, Entry};
+pub use engine::{Engine, EngineConfig, Entry, Transaction};
 pub use error::{Error, Result};
+pub use executor::{Executor, ResultSet};
