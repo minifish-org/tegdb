@@ -13,7 +13,7 @@ Successfully implemented a comprehensive SQL parser for TegDB using the `nom` cr
 - **UPDATE** statements with assignments and WHERE conditions
 - **DELETE** statements with WHERE conditions
 
-### 2. SQL Executor (`src/sql_executor.rs`)
+### 2. SQL Executor (`src/executor.rs`)
 - Bridges parsed SQL statements with TegDB engine operations
 - Executes basic CRUD operations against the key-value store
 - Handles WHERE clause evaluation
@@ -40,9 +40,9 @@ Successfully implemented a comprehensive SQL parser for TegDB using the `nom` cr
 
 ```
 src/
-├── sql.rs           # SQL parser using nom
-├── sql_executor.rs  # SQL statement executor
-└── lib.rs          # Module exports
+├── sql.rs      # SQL parser using nom
+├── executor.rs # SQL statement executor
+└── lib.rs      # Module exports
 
 examples/
 ├── sql_parser_demo.rs      # Basic parser demonstration
@@ -55,7 +55,7 @@ tests/
 ## Usage Example
 
 ```rust
-use tegdb::{Engine, sql::parse_sql, sql_executor::SqlExecutor};
+use tegdb::{Engine, sql::parse_sql, executor::SqlExecutor};
 
 // Create database and SQL executor
 let engine = Engine::new("mydb.db".into())?;

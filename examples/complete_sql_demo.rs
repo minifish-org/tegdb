@@ -1,4 +1,4 @@
-use tegdb::{Engine, sql::{parse_sql, SqlStatement}, sql_executor::{SqlExecutor, SqlResult}};
+use tegdb::{Engine, sql::{parse_sql, SqlStatement}, executor::{SqlExecutor, SqlResult}};
 use tempfile::tempdir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
