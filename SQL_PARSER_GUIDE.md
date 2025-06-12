@@ -14,7 +14,7 @@ The SQL parser supports the following statements:
 ## Basic Usage
 
 ```rust
-use tegdb::{Engine, sql::{parse_sql, SqlStatement}, executor::{SqlExecutor, SqlResult}};
+use tegdb::{Engine, sql::{parse_sql, SqlStatement}, executor::{Executor, ResultSet}};
 
 // Create database and SQL executor
 let engine = Engine::new("mydb.db".into())?;

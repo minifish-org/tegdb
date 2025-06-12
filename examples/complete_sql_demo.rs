@@ -1,4 +1,4 @@
-use tegdb::{Engine, sql::{parse_sql, SqlStatement}, executor::{SqlExecutor, SqlResult}};
+use tegdb::{Engine, sql::{parse_sql, SqlStatement}, executor::{Executor, ResultSet}};
 use tempfile::tempdir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let db_path = dir.path().join("demo.db");
     let engine = Engine::new(db_path)?;
-    let mut sql_executor = SqlExecutor::new(engine);
+    let mut sql_executor = Executor::new(engine);
 
     // Example SQL operations
     let sql_statements = vec![
@@ -114,9 +114,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn display_result(result: &SqlResult) {
+fn display_result(result: &ResultSet) {
     match result {
-        SqlResult::Select { columns, rows } => {
+        ResultSet::Select { columns, rows } => {
             if rows.is_empty() {
                 println!("    No rows returned");
             } else {
@@ -127,16 +127,16 @@ fn display_result(result: &SqlResult) {
                 println!("    ({} row(s) returned)", rows.len());
             }
         }
-        SqlResult::Insert { rows_affected } => {
+        ResultSet::Insert { rows_affected } => {
             println!("    {} row(s) inserted", rows_affected);
         }
-        SqlResult::Update { rows_affected } => {
+        ResultSet::Update { rows_affected } => {
             println!("    {} row(s) updated", rows_affected);
         }
-        SqlResult::Delete { rows_affected } => {
+        ResultSet::Delete { rows_affected } => {
             println!("    {} row(s) deleted", rows_affected);
         }
-        SqlResult::CreateTable { table_name } => {
+        ResultSet::CreateTable { table_name } => {
             println!("    Table '{}' created", table_name);
         }
     }

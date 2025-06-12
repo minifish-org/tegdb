@@ -1,4 +1,4 @@
-use tegdb::{Engine, sql::parse_sql, executor::{SqlExecutor, SqlResult}};
+use tegdb::{Engine, sql::parse_sql, executor::{Executor, ResultSet}};
 use tempfile::tempdir;
 
 #[test]
@@ -6,26 +6,26 @@ fn test_sql_integration_basic_operations() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_integration.db");
     let engine = Engine::new(db_path).unwrap();
-    let mut executor = SqlExecutor::new(engine);
+    let mut executor = Executor::new(engine);
 
     // Create table
     let create_sql = "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)";
     let (_, statement) = parse_sql(create_sql).unwrap();
     let result = executor.execute(statement).unwrap();
-    assert!(matches!(result, SqlResult::CreateTable { .. }));
+    assert!(matches!(result, ResultSet::CreateTable { .. }));
 
     // Insert data
     let insert_sql = "INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 999.99), (2, 'Mouse', 29.99)";
     let (_, statement) = parse_sql(insert_sql).unwrap();
     let result = executor.execute(statement).unwrap();
-    assert!(matches!(result, SqlResult::Insert { rows_affected: 2 }));
+    assert!(matches!(result, ResultSet::Insert { rows_affected: 2 }));
 
     // Select all
     let select_sql = "SELECT * FROM products";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result = executor.execute(statement).unwrap();
     
-    if let SqlResult::Select { columns: _, rows } = result {
+    if let ResultSet::Select { columns: _, rows } = result {
         assert_eq!(rows.len(), 2);
     } else {
         panic!("Expected Select result");
@@ -36,7 +36,7 @@ fn test_sql_integration_basic_operations() {
     let (_, statement) = parse_sql(select_where_sql).unwrap();
     let result = executor.execute(statement).unwrap();
     
-    if let SqlResult::Select { columns, rows } = result {
+    if let ResultSet::Select { columns, rows } = result {
         assert_eq!(columns, vec!["name"]);
         assert_eq!(rows.len(), 1);
     } else {
@@ -47,20 +47,20 @@ fn test_sql_integration_basic_operations() {
     let update_sql = "UPDATE products SET price = 899.99 WHERE name = 'Laptop'";
     let (_, statement) = parse_sql(update_sql).unwrap();
     let result = executor.execute(statement).unwrap();
-    assert!(matches!(result, SqlResult::Update { rows_affected: 1 }));
+    assert!(matches!(result, ResultSet::Update { rows_affected: 1 }));
 
     // Delete
     let delete_sql = "DELETE FROM products WHERE price < 50.0";
     let (_, statement) = parse_sql(delete_sql).unwrap();
     let result = executor.execute(statement).unwrap();
-    assert!(matches!(result, SqlResult::Delete { rows_affected: 1 }));
+    assert!(matches!(result, ResultSet::Delete { rows_affected: 1 }));
 
     // Verify final state
     let final_select_sql = "SELECT * FROM products";
     let (_, statement) = parse_sql(final_select_sql).unwrap();
     let result = executor.execute(statement).unwrap();
     
-    if let SqlResult::Select { columns: _, rows } = result {
+    if let ResultSet::Select { columns: _, rows } = result {
         assert_eq!(rows.len(), 1); // Only the laptop should remain
     } else {
         panic!("Expected Select result");
@@ -103,7 +103,7 @@ fn test_sql_executor_persistence() {
     // First session - create and insert data
     {
         let engine = Engine::new(db_path.clone()).unwrap();
-        let mut executor = SqlExecutor::new(engine);
+        let mut executor = Executor::new(engine);
 
         let create_sql = "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)";
         let (_, statement) = parse_sql(create_sql).unwrap();
@@ -117,13 +117,13 @@ fn test_sql_executor_persistence() {
     // Second session - verify data persists
     {
         let engine = Engine::new(db_path).unwrap();
-        let mut executor = SqlExecutor::new(engine);
+        let mut executor = Executor::new(engine);
 
         let select_sql = "SELECT * FROM settings";
         let (_, statement) = parse_sql(select_sql).unwrap();
         let result = executor.execute(statement).unwrap();
         
-        if let SqlResult::Select { columns: _, rows } = result {
+        if let ResultSet::Select { columns: _, rows } = result {
             assert_eq!(rows.len(), 2);
         } else {
             panic!("Expected Select result");

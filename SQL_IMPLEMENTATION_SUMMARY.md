@@ -55,11 +55,11 @@ tests/
 ## Usage Example
 
 ```rust
-use tegdb::{Engine, sql::parse_sql, executor::SqlExecutor};
+use tegdb::{Engine, sql::parse_sql, executor::Executor};
 
 // Create database and SQL executor
 let engine = Engine::new("mydb.db".into())?;
-let mut executor = SqlExecutor::new(engine);
+let mut executor = Executor::new(engine);
 
 // Parse and execute SQL
 let sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
