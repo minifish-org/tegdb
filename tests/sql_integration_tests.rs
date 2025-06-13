@@ -8,6 +8,10 @@ fn test_sql_integration_basic_operations() {
     let engine = Engine::new(db_path).unwrap();
     let mut executor = Executor::new(engine);
 
+    // Begin transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // Create table
     let create_sql = "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)";
     let (_, statement) = parse_sql(create_sql).unwrap();
@@ -30,6 +34,14 @@ fn test_sql_integration_basic_operations() {
     } else {
         panic!("Expected Select result");
     }
+
+    // Commit transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Begin new transaction for queries
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
 
     // Select with WHERE
     let select_where_sql = "SELECT name FROM products WHERE price > 50.0";
@@ -65,6 +77,10 @@ fn test_sql_integration_basic_operations() {
     } else {
         panic!("Expected Select result");
     }
+
+    // Commit final transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
 }
 
 #[test]
@@ -105,6 +121,10 @@ fn test_sql_executor_persistence() {
         let engine = Engine::new(db_path.clone()).unwrap();
         let mut executor = Executor::new(engine);
 
+        // Begin transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+
         let create_sql = "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)";
         let (_, statement) = parse_sql(create_sql).unwrap();
         executor.execute(statement).unwrap();
@@ -112,12 +132,20 @@ fn test_sql_executor_persistence() {
         let insert_sql = "INSERT INTO settings (key, value) VALUES ('theme', 'dark'), ('language', 'en')";
         let (_, statement) = parse_sql(insert_sql).unwrap();
         executor.execute(statement).unwrap();
+
+        // Commit transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
     }
 
     // Second session - verify data persists
     {
         let engine = Engine::new(db_path).unwrap();
         let mut executor = Executor::new(engine);
+
+        // Begin transaction for reading
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
 
         let select_sql = "SELECT * FROM settings";
         let (_, statement) = parse_sql(select_sql).unwrap();
@@ -128,5 +156,9 @@ fn test_sql_executor_persistence() {
         } else {
             panic!("Expected Select result");
         }
+
+        // Commit transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
     }
 }

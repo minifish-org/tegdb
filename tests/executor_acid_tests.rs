@@ -10,6 +10,10 @@ fn test_transaction_atomicity() {
     let engine = Engine::new(db_path).unwrap();
     let mut executor = Executor::new(engine);
 
+    // Start transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // Create table
     let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
     let (_, statement) = parse_sql(create_sql).unwrap();
@@ -20,6 +24,14 @@ fn test_transaction_atomicity() {
     let (_, statement) = parse_sql(insert_sql).unwrap();
     executor.execute(statement).unwrap();
 
+    // Commit transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Start new transaction to verify data
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // Verify initial state
     let select_sql = "SELECT * FROM users";
     let (_, statement) = parse_sql(select_sql).unwrap();
@@ -28,8 +40,15 @@ fn test_transaction_atomicity() {
         assert_eq!(rows.len(), 1);
     }
 
-    // Each SQL operation runs in its own transaction, so atomicity is per-statement
-    // This test demonstrates that each statement is atomic
+    // Commit verification transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Test atomicity with transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+    
+    // This test demonstrates that operations within a transaction are atomic
     let update_sql = "UPDATE users SET age = 30 WHERE id = 1";
     let (_, statement) = parse_sql(update_sql).unwrap();
     let result = executor.execute(statement).unwrap();
@@ -37,7 +56,14 @@ fn test_transaction_atomicity() {
         assert_eq!(rows_affected, 1);
     }
 
+    // Commit the update
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
     // Verify the update was applied atomically
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+    
     let select_sql = "SELECT age FROM users WHERE id = 1";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result = executor.execute(statement).unwrap();
@@ -45,6 +71,10 @@ fn test_transaction_atomicity() {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][0], SqlValue::Integer(30));
     }
+    
+    // Commit verification transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
 }
 
 /// Test consistency - data remains in a valid state before and after transactions
@@ -55,6 +85,10 @@ fn test_transaction_consistency() {
     let engine = Engine::new(db_path).unwrap();
     let mut executor = Executor::new(engine);
 
+    // Begin transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // Create table
     let create_sql = "CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER)";
     let (_, statement) = parse_sql(create_sql).unwrap();
@@ -63,6 +97,14 @@ fn test_transaction_consistency() {
     // Insert initial data
     let insert_sql = "INSERT INTO accounts (id, balance) VALUES (1, 100), (2, 50)";
     let (_, statement) = parse_sql(insert_sql).unwrap();
+    executor.execute(statement).unwrap();
+
+    // Commit initial setup
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Begin transaction for verification
+    let (_, statement) = parse_sql("BEGIN").unwrap();
     executor.execute(statement).unwrap();
 
     // Verify initial consistency - total balance should be 150
@@ -82,12 +124,20 @@ fn test_transaction_consistency() {
         assert_eq!(total_balance, 150);
     }
 
+    // Commit verification transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Begin transaction for update
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // Update one account
     let update_sql = "UPDATE accounts SET balance = 75 WHERE id = 1";
     let (_, statement) = parse_sql(update_sql).unwrap();
     executor.execute(statement).unwrap();
 
-    // Verify consistency is maintained
+    // Verify consistency is maintained within transaction
     let select_sql = "SELECT * FROM accounts";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result = executor.execute(statement).unwrap();
@@ -104,6 +154,10 @@ fn test_transaction_consistency() {
         };
         assert_eq!(account1_balance, 75);
     }
+    
+    // Commit the update transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
 }
 
 /// Test isolation - transactions don't interfere with each other
@@ -113,6 +167,10 @@ fn test_transaction_isolation() {
     let db_path = dir.path().join("test_isolation.db");
     let engine = Engine::new(db_path).unwrap();
     let mut executor = Executor::new(engine);
+
+    // Begin setup transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
 
     // Create table
     let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
@@ -124,22 +182,34 @@ fn test_transaction_isolation() {
     let (_, statement) = parse_sql(insert_sql).unwrap();
     executor.execute(statement).unwrap();
 
+    // Commit setup transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Begin first transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // First SELECT - should see the inserted data
     let select_sql = "SELECT * FROM users";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result1 = executor.execute(statement).unwrap();
     
-    // Update data
+    // Update data within same transaction
     let update_sql = "UPDATE users SET name = 'Jane' WHERE id = 1";
     let (_, statement) = parse_sql(update_sql).unwrap();
     executor.execute(statement).unwrap();
 
-    // Second SELECT - should see updated data
+    // Second SELECT - should see updated data within transaction
     let select_sql = "SELECT * FROM users";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result2 = executor.execute(statement).unwrap();
 
-    // Verify isolation - each transaction sees a consistent snapshot
+    // Commit the transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Verify isolation - each query within transaction sees consistent view
     if let (ResultSet::Select { columns: cols1, rows: rows1 }, ResultSet::Select { columns: cols2, rows: rows2 }) = (result1, result2) {
         assert_eq!(rows1.len(), 1);
         assert_eq!(rows2.len(), 1);
@@ -167,6 +237,10 @@ fn test_transaction_durability() {
         let engine = Engine::new(db_path.clone()).unwrap();
         let mut executor = Executor::new(engine);
 
+        // Begin transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+
         // Create table
         let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
         let (_, statement) = parse_sql(create_sql).unwrap();
@@ -176,12 +250,20 @@ fn test_transaction_durability() {
         let insert_sql = "INSERT INTO users (id, name) VALUES (1, 'John'), (2, 'Jane')";
         let (_, statement) = parse_sql(insert_sql).unwrap();
         executor.execute(statement).unwrap();
+
+        // Commit transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
     } // Engine dropped here, data should be persisted
 
     // Second session - verify data persists
     {
         let engine = Engine::new(db_path).unwrap();
         let mut executor = Executor::new(engine);
+
+        // Begin verification transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
 
         // Query data
         let select_sql = "SELECT * FROM users";
@@ -192,6 +274,10 @@ fn test_transaction_durability() {
             assert_eq!(rows.len(), 2);
             // Data should have persisted across engine restart
         }
+
+        // Commit verification transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
     }
 }
 
@@ -203,6 +289,10 @@ fn test_delete_transaction_isolation() {
     let engine = Engine::new(db_path).unwrap();
     let mut executor = Executor::new(engine);
 
+    // Begin setup transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
+
     // Create table and insert data
     let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
     let (_, statement) = parse_sql(create_sql).unwrap();
@@ -210,6 +300,14 @@ fn test_delete_transaction_isolation() {
 
     let insert_sql = "INSERT INTO users (id, name) VALUES (1, 'John'), (2, 'Jane'), (3, 'Bob')";
     let (_, statement) = parse_sql(insert_sql).unwrap();
+    executor.execute(statement).unwrap();
+
+    // Commit setup transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
+
+    // Begin deletion transaction
+    let (_, statement) = parse_sql("BEGIN").unwrap();
     executor.execute(statement).unwrap();
 
     // Delete specific record
@@ -221,7 +319,7 @@ fn test_delete_transaction_isolation() {
         assert_eq!(rows_affected, 1);
     }
 
-    // Verify deletion
+    // Verify deletion within transaction
     let select_sql = "SELECT * FROM users";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result = executor.execute(statement).unwrap();
@@ -242,6 +340,10 @@ fn test_delete_transaction_isolation() {
         assert!(ids.contains(&3));
         assert!(!ids.contains(&2));
     }
+
+    // Commit deletion transaction
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
 }
 
 /// Test multiple operations maintain transactional guarantees
@@ -251,6 +353,10 @@ fn test_multiple_operations_acid() {
     let db_path = dir.path().join("test_multiple.db");
     let engine = Engine::new(db_path).unwrap();
     let mut executor = Executor::new(engine);
+
+    // Begin transaction for all operations
+    let (_, statement) = parse_sql("BEGIN").unwrap();
+    executor.execute(statement).unwrap();
 
     // Create table
     let create_sql = "CREATE TABLE inventory (id INTEGER PRIMARY KEY, item TEXT, quantity INTEGER)";
@@ -262,7 +368,7 @@ fn test_multiple_operations_acid() {
     let (_, statement) = parse_sql(insert_sql).unwrap();
     executor.execute(statement).unwrap();
 
-    // Update quantities (each in its own transaction)
+    // Update quantities within the same transaction
     let update1_sql = "UPDATE inventory SET quantity = 8 WHERE id = 1";
     let (_, statement) = parse_sql(update1_sql).unwrap();
     executor.execute(statement).unwrap();
@@ -276,7 +382,7 @@ fn test_multiple_operations_acid() {
     let (_, statement) = parse_sql(insert2_sql).unwrap();
     executor.execute(statement).unwrap();
 
-    // Verify final state
+    // Verify final state within transaction
     let select_sql = "SELECT * FROM inventory";
     let (_, statement) = parse_sql(select_sql).unwrap();
     let result = executor.execute(statement).unwrap();
@@ -298,4 +404,8 @@ fn test_multiple_operations_acid() {
             }
         }
     }
+
+    // Commit all operations
+    let (_, statement) = parse_sql("COMMIT").unwrap();
+    executor.execute(statement).unwrap();
 }

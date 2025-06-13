@@ -44,6 +44,15 @@ fn main() {
                         println!("  → This is a CREATE TABLE statement for table: {}", create.table);
                         println!("  → Number of columns: {}", create.columns.len());
                     }
+                    SqlStatement::Begin => {
+                        println!("  → This is a BEGIN transaction statement");
+                    }
+                    SqlStatement::Commit => {
+                        println!("  → This is a COMMIT transaction statement");
+                    }
+                    SqlStatement::Rollback => {
+                        println!("  → This is a ROLLBACK transaction statement");
+                    }
                 }
             }
             Err(e) => {

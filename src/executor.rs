@@ -16,6 +16,25 @@ pub struct Executor {
     engine: Engine,
     /// Metadata about tables (simple schema storage)
     table_schemas: HashMap<String, TableSchema>,
+    /// Track if we're in an explicit transaction
+    in_transaction: bool,
+    /// Transaction ID counter
+    transaction_counter: u64,
+    /// Pending operations within the current transaction
+    pending_operations: Vec<Entry>,
+}
+
+/// Entry for batch operations
+#[derive(Debug, Clone)]
+pub struct Entry {
+    pub key: Vec<u8>,
+    pub value: Option<Vec<u8>>,
+}
+
+impl Entry {
+    pub fn new(key: Vec<u8>, value: Option<Vec<u8>>) -> Self {
+        Self { key, value }
+    }
 }
 
 /// Simple table schema representation
@@ -55,6 +74,18 @@ pub enum ResultSet {
     CreateTable { 
         table_name: String 
     },
+    /// Result of a BEGIN operation
+    Begin { 
+        transaction_id: String 
+    },
+    /// Result of a COMMIT operation
+    Commit { 
+        transaction_id: String 
+    },
+    /// Result of a ROLLBACK operation
+    Rollback { 
+        transaction_id: String 
+    },
 }
 
 impl Executor {
@@ -63,21 +94,346 @@ impl Executor {
         Self {
             engine,
             table_schemas: HashMap::new(),
+            in_transaction: false,
+            transaction_counter: 0,
+            pending_operations: Vec::new(),
         }
     }
 
-    /// Execute a parsed SQL statement with transaction support for ACID compliance
+    /// Execute a parsed SQL statement with explicit transaction control
     pub fn execute(&mut self, statement: SqlStatement) -> Result<ResultSet> {
         match statement {
-            SqlStatement::Select(select) => self.execute_select_with_transaction(select),
-            SqlStatement::Insert(insert) => self.execute_insert_with_transaction(insert),
-            SqlStatement::Update(update) => self.execute_update_with_transaction(update),
-            SqlStatement::Delete(delete) => self.execute_delete_with_transaction(delete),
-            SqlStatement::CreateTable(create) => self.execute_create_table_with_transaction(create),
+            SqlStatement::Begin => self.execute_begin(),
+            SqlStatement::Commit => self.execute_commit(),
+            SqlStatement::Rollback => self.execute_rollback(),
+            SqlStatement::Select(select) => {
+                if !self.in_transaction {
+                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
+                }
+                self.execute_select(select)
+            }
+            SqlStatement::Insert(insert) => {
+                if !self.in_transaction {
+                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
+                }
+                self.execute_insert(insert)
+            }
+            SqlStatement::Update(update) => {
+                if !self.in_transaction {
+                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
+                }
+                self.execute_update(update)
+            }
+            SqlStatement::Delete(delete) => {
+                if !self.in_transaction {
+                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
+                }
+                self.execute_delete(delete)
+            }
+            SqlStatement::CreateTable(create) => {
+                if !self.in_transaction {
+                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
+                }
+                self.execute_create_table(create)
+            }
         }
+    }
+
+    /// Execute a BEGIN statement
+    fn execute_begin(&mut self) -> Result<ResultSet> {
+        if self.in_transaction {
+            return Err(crate::Error::Other("Already in a transaction".to_string()));
+        }
+        
+        self.in_transaction = true;
+        self.transaction_counter += 1;
+        let transaction_id = format!("tx_{}", self.transaction_counter);
+        
+        Ok(ResultSet::Begin { transaction_id })
+    }
+
+    /// Execute a COMMIT statement
+    fn execute_commit(&mut self) -> Result<ResultSet> {
+        if !self.in_transaction {
+            return Err(crate::Error::Other("No active transaction to commit".to_string()));
+        }
+        
+        // Apply all pending operations atomically using the engine's batch method
+        if !self.pending_operations.is_empty() {
+            // Convert our Entry format to the engine's Entry format
+            let engine_entries: Vec<crate::Entry> = self.pending_operations
+                .iter()
+                .map(|op| crate::Entry::new(op.key.clone(), op.value.clone()))
+                .collect();
+            
+            self.engine.batch(engine_entries)?;
+        }
+        
+        // Clear transaction state
+        self.in_transaction = false;
+        self.pending_operations.clear();
+        let transaction_id = format!("tx_{}", self.transaction_counter);
+        
+        Ok(ResultSet::Commit { transaction_id })
+    }
+
+    /// Execute a ROLLBACK statement
+    fn execute_rollback(&mut self) -> Result<ResultSet> {
+        if !self.in_transaction {
+            return Err(crate::Error::Other("No active transaction to rollback".to_string()));
+        }
+        
+        // Discard all pending operations without applying them
+        self.in_transaction = false;
+        self.pending_operations.clear();
+        let transaction_id = format!("tx_{}", self.transaction_counter);
+        
+        Ok(ResultSet::Rollback { transaction_id })
+    }
+
+    /// Execute a SELECT statement within a transaction
+    fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
+        // Create a snapshot view combining committed data and pending operations
+        let table_key_prefix = format!("{}:", select.table);
+        let mut matching_rows = Vec::new();
+        
+        // Get the current snapshot from the engine
+        let start_key = table_key_prefix.as_bytes().to_vec();
+        let end_key = format!("{}~", select.table).as_bytes().to_vec(); // '~' comes after ':'
+        
+        // Scan committed data
+        let mut committed_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        let scan_iter = self.engine.scan(start_key..end_key)?;
+        for (key, value) in scan_iter {
+            committed_data.insert(key, value.as_ref().to_vec());
+        }
+        
+        // Apply pending operations to get the transaction view
+        for operation in &self.pending_operations {
+            if operation.key.starts_with(table_key_prefix.as_bytes()) {
+                match &operation.value {
+                    Some(value) => {
+                        committed_data.insert(operation.key.clone(), value.clone());
+                    }
+                    None => {
+                        committed_data.remove(&operation.key);
+                    }
+                }
+            }
+        }
+        
+        // Process the merged data
+        for (_key, value) in committed_data {
+            // Deserialize the row data
+            if let Ok(row_data) = self.deserialize_row(&value) {
+                // Apply WHERE clause if present
+                if let Some(ref where_clause) = select.where_clause {
+                    if self.evaluate_condition(&where_clause.condition, &row_data) {
+                        matching_rows.push(row_data);
+                    }
+                } else {
+                    matching_rows.push(row_data);
+                }
+            }
+        }
+
+        // Apply column selection
+        let result_columns = if select.columns.len() == 1 && select.columns[0] == "*" {
+            // Return all columns - for simplicity, we'll use the first row's keys
+            if let Some(first_row) = matching_rows.first() {
+                first_row.keys().cloned().collect()
+            } else {
+                vec![]
+            }
+        } else {
+            select.columns
+        };
+
+        // Extract selected columns from matching rows
+        let result_rows: Vec<Vec<SqlValue>> = matching_rows
+            .into_iter()
+            .map(|row| {
+                result_columns
+                    .iter()
+                    .map(|col| row.get(col).cloned().unwrap_or(SqlValue::Null))
+                    .collect()
+            })
+            .collect();
+
+        // Apply LIMIT if present
+        let limited_rows = if let Some(limit) = select.limit {
+            result_rows.into_iter().take(limit as usize).collect()
+        } else {
+            result_rows
+        };
+
+        Ok(ResultSet::Select {
+            columns: result_columns,
+            rows: limited_rows,
+        })
+    }
+
+    /// Execute an INSERT statement within a transaction
+    fn execute_insert(&mut self, insert: InsertStatement) -> Result<ResultSet> {
+        let mut rows_affected = 0;
+
+        // Prepare and accumulate each row operation
+        for (_row_idx, values) in insert.values.iter().enumerate() {
+            // Create a simple row ID (in practice, you might want auto-increment or UUID)
+            let row_id = format!("row_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+            let key = format!("{}:{}", insert.table, row_id);
+            
+            // Create row data map
+            let mut row_data = HashMap::new();
+            for (col_idx, value) in values.iter().enumerate() {
+                if let Some(column_name) = insert.columns.get(col_idx) {
+                    row_data.insert(column_name.clone(), value.clone());
+                }
+            }
+
+            // Serialize the row and add to pending operations
+            let serialized_row = self.serialize_row(&row_data)?;
+            self.pending_operations.push(Entry::new(key.as_bytes().to_vec(), Some(serialized_row)));
+            rows_affected += 1;
+        }
+
+        Ok(ResultSet::Insert { rows_affected })
+    }
+
+    /// Execute an UPDATE statement within a transaction
+    fn execute_update(&mut self, update: UpdateStatement) -> Result<ResultSet> {
+        let mut rows_affected = 0;
+        let table_key_prefix = format!("{}:", update.table);
+        
+        // First, find all rows that match the WHERE clause
+        let start_key = table_key_prefix.as_bytes().to_vec();
+        let end_key = format!("{}~", update.table).as_bytes().to_vec();
+        
+        // Get current state (committed + pending)
+        let mut current_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        let scan_iter = self.engine.scan(start_key..end_key)?;
+        for (key, value) in scan_iter {
+            current_data.insert(key, value.as_ref().to_vec());
+        }
+        
+        // Apply pending operations
+        for operation in &self.pending_operations {
+            if operation.key.starts_with(table_key_prefix.as_bytes()) {
+                match &operation.value {
+                    Some(value) => {
+                        current_data.insert(operation.key.clone(), value.clone());
+                    }
+                    None => {
+                        current_data.remove(&operation.key);
+                    }
+                }
+            }
+        }
+        
+        // Process each row
+        for (key, value) in current_data {
+            if let Ok(mut row_data) = self.deserialize_row(&value) {
+                // Check if row matches WHERE clause
+                let matches = if let Some(ref where_clause) = update.where_clause {
+                    self.evaluate_condition(&where_clause.condition, &row_data)
+                } else {
+                    true
+                };
+                
+                if matches {
+                    // Apply updates
+                    for assignment in &update.assignments {
+                        row_data.insert(assignment.column.clone(), assignment.value.clone());
+                    }
+                    
+                    // Serialize updated row and add to pending operations
+                    let serialized_row = self.serialize_row(&row_data)?;
+                    self.pending_operations.push(Entry::new(key, Some(serialized_row)));
+                    rows_affected += 1;
+                }
+            }
+        }
+
+        Ok(ResultSet::Update { rows_affected })
+    }
+
+    /// Execute a DELETE statement within a transaction
+    fn execute_delete(&mut self, delete: DeleteStatement) -> Result<ResultSet> {
+        let mut rows_affected = 0;
+        let table_key_prefix = format!("{}:", delete.table);
+        
+        // Get current state (committed + pending)
+        let start_key = table_key_prefix.as_bytes().to_vec();
+        let end_key = format!("{}~", delete.table).as_bytes().to_vec();
+        
+        let mut current_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        let scan_iter = self.engine.scan(start_key..end_key)?;
+        for (key, value) in scan_iter {
+            current_data.insert(key, value.as_ref().to_vec());
+        }
+        
+        // Apply pending operations to get current view
+        for operation in &self.pending_operations {
+            if operation.key.starts_with(table_key_prefix.as_bytes()) {
+                match &operation.value {
+                    Some(value) => {
+                        current_data.insert(operation.key.clone(), value.clone());
+                    }
+                    None => {
+                        current_data.remove(&operation.key);
+                    }
+                }
+            }
+        }
+        
+        // Find rows to delete
+        for (key, value) in current_data {
+            if let Ok(row_data) = self.deserialize_row(&value) {
+                // Check if row matches WHERE clause
+                let should_delete = if let Some(ref where_clause) = delete.where_clause {
+                    self.evaluate_condition(&where_clause.condition, &row_data)
+                } else {
+                    true // DELETE without WHERE deletes all rows
+                };
+                
+                if should_delete {
+                    // Add deletion to pending operations (None value means delete)
+                    self.pending_operations.push(Entry::new(key, None));
+                    rows_affected += 1;
+                }
+            }
+        }
+
+        Ok(ResultSet::Delete { rows_affected })
+    }
+
+    /// Execute a CREATE TABLE statement within a transaction
+    fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
+        // Store table schema metadata
+        let schema = TableSchema {
+            columns: create.columns.iter().map(|col| ColumnInfo {
+                name: col.name.clone(),
+                data_type: col.data_type.clone(),
+                constraints: col.constraints.clone(),
+            }).collect(),
+        };
+        
+        // Store schema in memory (in a real implementation, this would be persisted)
+        self.table_schemas.insert(create.table.clone(), schema);
+        
+        // In a real implementation, you might want to store the schema in the database
+        // For now, we'll just track it in memory and add an entry to indicate the table exists
+        let schema_key = format!("__schema__:{}", create.table);
+        let serialized_schema = self.serialize_schema(&create)?;
+        self.pending_operations.push(Entry::new(schema_key.as_bytes().to_vec(), Some(serialized_schema)));
+
+        Ok(ResultSet::CreateTable { 
+            table_name: create.table 
+        })
     }
 
     /// Execute a SELECT statement with its own transaction
+    #[allow(dead_code)]
     fn execute_select_with_transaction(&mut self, select: SelectStatement) -> Result<ResultSet> {
         // For SELECT, we can use a read-only transaction snapshot
         let transaction = self.engine.begin_transaction();
@@ -145,6 +501,7 @@ impl Executor {
     }
 
     /// Execute an INSERT statement with its own transaction
+    #[allow(dead_code)]
     fn execute_insert_with_transaction(&mut self, insert: InsertStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
 
@@ -185,6 +542,7 @@ impl Executor {
     }
 
     /// Execute an UPDATE statement with its own transaction
+    #[allow(dead_code)]
     fn execute_update_with_transaction(&mut self, update: UpdateStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", update.table);
@@ -237,6 +595,7 @@ impl Executor {
     }
 
     /// Execute a DELETE statement with its own transaction
+    #[allow(dead_code)]
     fn execute_delete_with_transaction(&mut self, delete: DeleteStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", delete.table);
@@ -283,6 +642,7 @@ impl Executor {
     }
 
     /// Execute a CREATE TABLE statement with its own transaction
+    #[allow(dead_code)]
     fn execute_create_table_with_transaction(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
         // Prepare schema data before transaction
         let schema = TableSchema {
@@ -479,6 +839,14 @@ mod tests {
         let engine = Engine::new(db_path).unwrap();
         let mut executor = Executor::new(engine);
 
+        // Begin transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        let result = executor.execute(statement).unwrap();
+        match result {
+            ResultSet::Begin { .. } => {},
+            _ => panic!("Expected Begin result"),
+        }
+
         // Create table
         let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
         let (_, statement) = parse_sql(create_sql).unwrap();
@@ -502,6 +870,14 @@ mod tests {
             }
             _ => panic!("Expected Insert result"),
         }
+
+        // Commit transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        let result = executor.execute(statement).unwrap();
+        match result {
+            ResultSet::Commit { .. } => {},
+            _ => panic!("Expected Commit result"),
+        }
     }
 
     #[test]
@@ -510,6 +886,15 @@ mod tests {
         let db_path = dir.path().join("test.db");
         let engine = Engine::new(db_path).unwrap();
         let mut executor = Executor::new(engine);
+
+        // Begin transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+
+        // Create table first
+        let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
+        let (_, statement) = parse_sql(create_sql).unwrap();
+        executor.execute(statement).unwrap();
 
         // Insert test data
         let insert_sql = "INSERT INTO users (id, name, age) VALUES (1, 'John', 25), (2, 'Jane', 30)";
@@ -527,6 +912,10 @@ mod tests {
             }
             _ => panic!("Expected Select result"),
         }
+
+        // Commit transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
     }
 
     #[test]
@@ -535,6 +924,15 @@ mod tests {
         let db_path = dir.path().join("test.db");
         let engine = Engine::new(db_path).unwrap();
         let mut executor = Executor::new(engine);
+
+        // Begin transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+
+        // Create table first
+        let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
+        let (_, statement) = parse_sql(create_sql).unwrap();
+        executor.execute(statement).unwrap();
 
         // Insert initial data
         let insert_sql = "INSERT INTO users (id, name, age) VALUES (1, 'John', 25)";
@@ -549,9 +947,15 @@ mod tests {
             assert_eq!(rows.len(), 1);
         }
 
-        // This test demonstrates that each SQL statement runs in its own transaction
-        // If there was an error during execution, the transaction would be rolled back
-        // In a real scenario, you might want to add explicit transaction boundaries
-        // for multi-statement operations
+        // Test rollback
+        let (_, statement) = parse_sql("ROLLBACK").unwrap();
+        let result = executor.execute(statement).unwrap();
+        match result {
+            ResultSet::Rollback { .. } => {},
+            _ => panic!("Expected Rollback result"),
+        }
+
+        // This test demonstrates rollback functionality
+        // All operations within the transaction are discarded
     }
 }

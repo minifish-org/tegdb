@@ -20,6 +20,9 @@ pub enum SqlStatement {
     Update(UpdateStatement),
     Delete(DeleteStatement),
     CreateTable(CreateTableStatement),
+    Begin,
+    Commit,
+    Rollback,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +145,9 @@ pub fn parse_sql(input: &str) -> IResult<&str, SqlStatement> {
             map(parse_update, SqlStatement::Update),
             map(parse_delete, SqlStatement::Delete),
             map(parse_create_table, SqlStatement::CreateTable),
+            map(parse_begin, |_| SqlStatement::Begin),
+            map(parse_commit, |_| SqlStatement::Commit),
+            map(parse_rollback, |_| SqlStatement::Rollback),
         )),
         multispace0,
     )(input)
@@ -288,6 +294,27 @@ fn parse_create_table(input: &str) -> IResult<&str, CreateTableStatement> {
         input,
         CreateTableStatement { table, columns },
     ))
+}
+
+// Parse BEGIN statement
+fn parse_begin(input: &str) -> IResult<&str, ()> {
+    let (input, _) = alt((
+        tag_no_case("BEGIN"),
+        tag_no_case("START TRANSACTION"),
+    ))(input)?;
+    Ok((input, ()))
+}
+
+// Parse COMMIT statement
+fn parse_commit(input: &str) -> IResult<&str, ()> {
+    let (input, _) = tag_no_case("COMMIT")(input)?;
+    Ok((input, ()))
+}
+
+// Parse ROLLBACK statement
+fn parse_rollback(input: &str) -> IResult<&str, ()> {
+    let (input, _) = tag_no_case("ROLLBACK")(input)?;
+    Ok((input, ()))
 }
 
 // Parse column list (for SELECT)
