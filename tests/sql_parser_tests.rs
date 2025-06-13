@@ -1,4 +1,4 @@
-use tegdb::sql::*;
+use tegdb::parser::*;
 
 #[test]
 fn test_parse_select() {

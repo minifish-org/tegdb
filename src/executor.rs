@@ -3,7 +3,7 @@
 //! This module provides a SQL executor that can take parsed SQL statements
 //! and execute them against a TegDB engine instance using transactions for ACID compliance.
 
-use crate::sql::{
+use crate::parser::{
     SqlStatement, SelectStatement, InsertStatement, UpdateStatement, 
     DeleteStatement, CreateTableStatement, SqlValue, Condition, 
     ComparisonOperator
@@ -46,8 +46,8 @@ pub struct TableSchema {
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
     pub name: String,
-    pub data_type: crate::sql::DataType,
-    pub constraints: Vec<crate::sql::ColumnConstraint>,
+    pub data_type: crate::parser::DataType,
+    pub constraints: Vec<crate::parser::ColumnConstraint>,
 }
 
 /// Result of executing a SQL statement
@@ -791,18 +791,18 @@ impl Executor {
             .iter()
             .map(|col| {
                 let data_type = match col.data_type {
-                    crate::sql::DataType::Integer => "INTEGER",
-                    crate::sql::DataType::Text => "TEXT",
-                    crate::sql::DataType::Real => "REAL",
-                    crate::sql::DataType::Blob => "BLOB",
+                    crate::parser::DataType::Integer => "INTEGER",
+                    crate::parser::DataType::Text => "TEXT",
+                    crate::parser::DataType::Real => "REAL",
+                    crate::parser::DataType::Blob => "BLOB",
                 };
                 
                 let constraints = col.constraints
                     .iter()
                     .map(|c| match c {
-                        crate::sql::ColumnConstraint::PrimaryKey => "PRIMARY_KEY",
-                        crate::sql::ColumnConstraint::NotNull => "NOT_NULL",
-                        crate::sql::ColumnConstraint::Unique => "UNIQUE",
+                        crate::parser::ColumnConstraint::PrimaryKey => "PRIMARY_KEY",
+                        crate::parser::ColumnConstraint::NotNull => "NOT_NULL",
+                        crate::parser::ColumnConstraint::Unique => "UNIQUE",
                     })
                     .collect::<Vec<_>>()
                     .join(",");
@@ -829,7 +829,7 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sql::parse_sql;
+    use crate::parser::parse_sql;
     use tempfile::tempdir;
 
     #[test]

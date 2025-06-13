@@ -34,7 +34,7 @@
 
 mod engine;
 mod error;
-pub mod sql;
+pub mod parser;
 pub mod executor;
 
 pub use engine::{Engine, EngineConfig, Entry, Transaction};

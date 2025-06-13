@@ -1,5 +1,5 @@
 use tegdb::{Engine, executor::{Executor, ResultSet}};
-use tegdb::sql::{parse_sql, SqlValue};
+use tegdb::parser::{parse_sql, SqlValue};
 use tempfile::tempdir;
 
 /// Test basic explicit transaction workflow

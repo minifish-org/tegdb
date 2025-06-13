@@ -1,4 +1,4 @@
-use tegdb::{Engine, executor::Executor, sql::parse_sql, executor::ResultSet};
+use tegdb::{Engine, executor::Executor, parser::parse_sql, executor::ResultSet};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("TegDB Comprehensive Explicit Transaction Demo");

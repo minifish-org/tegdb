@@ -1,4 +1,4 @@
-use tegdb::{Engine, sql::parse_sql, executor::{Executor, ResultSet}};
+use tegdb::{Engine, parser::parse_sql, executor::{Executor, ResultSet}};
 use tempfile::tempdir;
 
 #[test]

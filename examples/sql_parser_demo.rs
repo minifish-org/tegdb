@@ -1,4 +1,4 @@
-use tegdb::sql::{parse_sql, SqlStatement};
+use tegdb::parser::{parse_sql, SqlStatement};
 
 fn main() {
     // Example SQL statements
