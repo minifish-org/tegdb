@@ -1,4 +1,4 @@
-use tegdb::parser::{parse_sql, SqlStatement};
+use tegdb::parser::{parse_sql, Statement};
 
 /// Test parsing BEGIN statements
 #[test]
@@ -8,21 +8,21 @@ fn test_parse_begin() {
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 
     // Test case insensitive
     let sql = "begin";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 
     // Test with extra spaces
     let sql = "  BEGIN  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 }
 
 /// Test parsing START TRANSACTION statements
@@ -33,28 +33,28 @@ fn test_parse_start_transaction() {
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 
     // Test case insensitive
     let sql = "start transaction";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 
     // Test mixed case
     let sql = "Start Transaction";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 
     // Test with extra spaces
     let sql = "  START    TRANSACTION  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Begin));
+    assert!(matches!(statement, Statement::Begin));
 }
 
 /// Test parsing COMMIT statements
@@ -65,21 +65,21 @@ fn test_parse_commit() {
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Commit));
+    assert!(matches!(statement, Statement::Commit));
 
     // Test case insensitive
     let sql = "commit";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Commit));
+    assert!(matches!(statement, Statement::Commit));
 
     // Test with extra spaces
     let sql = "  COMMIT  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Commit));
+    assert!(matches!(statement, Statement::Commit));
 }
 
 /// Test parsing ROLLBACK statements
@@ -90,21 +90,21 @@ fn test_parse_rollback() {
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Rollback));
+    assert!(matches!(statement, Statement::Rollback));
 
     // Test case insensitive
     let sql = "rollback";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Rollback));
+    assert!(matches!(statement, Statement::Rollback));
 
     // Test with extra spaces
     let sql = "  ROLLBACK  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
-    assert!(matches!(statement, SqlStatement::Rollback));
+    assert!(matches!(statement, Statement::Rollback));
 }
 
 /// Test transaction statement priority in parsing
@@ -126,9 +126,9 @@ fn test_transaction_statement_priority() {
         let (_, statement) = result.unwrap();
         
         match sql {
-            "BEGIN" | "START TRANSACTION" => assert!(matches!(statement, SqlStatement::Begin)),
-            "COMMIT" => assert!(matches!(statement, SqlStatement::Commit)),
-            "ROLLBACK" => assert!(matches!(statement, SqlStatement::Rollback)),
+            "BEGIN" | "START TRANSACTION" => assert!(matches!(statement, Statement::Begin)),
+            "COMMIT" => assert!(matches!(statement, Statement::Commit)),
+            "ROLLBACK" => assert!(matches!(statement, Statement::Rollback)),
             _ => panic!("Unexpected SQL statement: {}", sql),
         }
     }

@@ -14,7 +14,7 @@ use nom::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SqlStatement {
+pub enum Statement {
     Select(SelectStatement),
     Insert(InsertStatement),
     Update(UpdateStatement),
@@ -136,18 +136,18 @@ pub enum SqlValue {
 }
 
 // Parser implementation
-pub fn parse_sql(input: &str) -> IResult<&str, SqlStatement> {
+pub fn parse_sql(input: &str) -> IResult<&str, Statement> {
     delimited(
         multispace0,
         alt((
-            map(parse_select, SqlStatement::Select),
-            map(parse_insert, SqlStatement::Insert),
-            map(parse_update, SqlStatement::Update),
-            map(parse_delete, SqlStatement::Delete),
-            map(parse_create_table, SqlStatement::CreateTable),
-            map(parse_begin, |_| SqlStatement::Begin),
-            map(parse_commit, |_| SqlStatement::Commit),
-            map(parse_rollback, |_| SqlStatement::Rollback),
+            map(parse_select, Statement::Select),
+            map(parse_insert, Statement::Insert),
+            map(parse_update, Statement::Update),
+            map(parse_delete, Statement::Delete),
+            map(parse_create_table, Statement::CreateTable),
+            map(parse_begin, |_| Statement::Begin),
+            map(parse_commit, |_| Statement::Commit),
+            map(parse_rollback, |_| Statement::Rollback),
         )),
         multispace0,
     )(input)

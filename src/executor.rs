@@ -4,7 +4,7 @@
 //! and execute them against a TegDB engine instance using transactions for ACID compliance.
 
 use crate::parser::{
-    SqlStatement, SelectStatement, InsertStatement, UpdateStatement, 
+    Statement, SelectStatement, InsertStatement, UpdateStatement, 
     DeleteStatement, CreateTableStatement, SqlValue, Condition, 
     ComparisonOperator
 };
@@ -101,36 +101,36 @@ impl Executor {
     }
 
     /// Execute a parsed SQL statement with explicit transaction control
-    pub fn execute(&mut self, statement: SqlStatement) -> Result<ResultSet> {
+    pub fn execute(&mut self, statement: Statement) -> Result<ResultSet> {
         match statement {
-            SqlStatement::Begin => self.execute_begin(),
-            SqlStatement::Commit => self.execute_commit(),
-            SqlStatement::Rollback => self.execute_rollback(),
-            SqlStatement::Select(select) => {
+            Statement::Begin => self.execute_begin(),
+            Statement::Commit => self.execute_commit(),
+            Statement::Rollback => self.execute_rollback(),
+            Statement::Select(select) => {
                 if !self.in_transaction {
                     return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
                 }
                 self.execute_select(select)
             }
-            SqlStatement::Insert(insert) => {
+            Statement::Insert(insert) => {
                 if !self.in_transaction {
                     return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
                 }
                 self.execute_insert(insert)
             }
-            SqlStatement::Update(update) => {
+            Statement::Update(update) => {
                 if !self.in_transaction {
                     return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
                 }
                 self.execute_update(update)
             }
-            SqlStatement::Delete(delete) => {
+            Statement::Delete(delete) => {
                 if !self.in_transaction {
                     return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
                 }
                 self.execute_delete(delete)
             }
-            SqlStatement::CreateTable(create) => {
+            Statement::CreateTable(create) => {
                 if !self.in_transaction {
                     return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
                 }

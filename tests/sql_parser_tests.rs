@@ -7,7 +7,7 @@ fn test_parse_select() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.columns, vec!["*".to_string()]);
             assert_eq!(select.table, "users");
             assert!(select.where_clause.is_none());
@@ -23,7 +23,7 @@ fn test_parse_select_with_where() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.columns, vec!["name".to_string(), "age".to_string()]);
             assert_eq!(select.table, "users");
             assert!(select.where_clause.is_some());
@@ -39,7 +39,7 @@ fn test_parse_insert() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             assert_eq!(insert.table, "users");
             assert_eq!(insert.columns, vec!["name".to_string(), "age".to_string()]);
             assert_eq!(insert.values.len(), 1);
@@ -56,7 +56,7 @@ fn test_parse_update() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Update(update) => {
+        Statement::Update(update) => {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 1);
             assert_eq!(update.assignments[0].column, "name");
@@ -74,7 +74,7 @@ fn test_parse_delete() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Delete(delete) => {
+        Statement::Delete(delete) => {
             assert_eq!(delete.table, "users");
             assert!(delete.where_clause.is_some());
         }
@@ -89,7 +89,7 @@ fn test_parse_create_table() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::CreateTable(create) => {
+        Statement::CreateTable(create) => {
             assert_eq!(create.table, "users");
             assert_eq!(create.columns.len(), 3);
             
@@ -119,7 +119,7 @@ fn test_parse_select_with_order_by() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.table, "users");
             assert!(select.order_by.is_some());
             let order_by = select.order_by.unwrap();
@@ -138,7 +138,7 @@ fn test_parse_select_with_limit() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.table, "users");
             assert_eq!(select.limit, Some(10));
         }
@@ -153,7 +153,7 @@ fn test_parse_complex_where_clause() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.table, "users");
             assert!(select.where_clause.is_some());
             // The condition should be parsed correctly with proper precedence
@@ -169,7 +169,7 @@ fn test_parse_insert_multiple_values() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             assert_eq!(insert.table, "users");
             assert_eq!(insert.columns, vec!["name".to_string(), "age".to_string()]);
             assert_eq!(insert.values.len(), 2);
@@ -187,7 +187,7 @@ fn test_parse_sql_values() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             let values = &insert.values[0];
             assert_eq!(values[0], SqlValue::Integer(42));
             assert_eq!(values[1], SqlValue::Real(3.14));
@@ -216,7 +216,7 @@ fn test_parse_with_extra_whitespace() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.table, "users");
             assert_eq!(select.columns, vec!["*".to_string()]);
         }
@@ -250,7 +250,7 @@ fn test_parse_select_multiple_columns() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.columns, vec![
                 "id".to_string(),
                 "name".to_string(), 
@@ -281,7 +281,7 @@ fn test_parse_where_clause_operators() {
         assert!(result.is_ok(), "Failed to parse: {}", sql);
         let (_, statement) = result.unwrap();
         match statement {
-            SqlStatement::Select(select) => {
+            Statement::Select(select) => {
                 assert!(select.where_clause.is_some());
                 let where_clause = select.where_clause.unwrap();
                 match where_clause.condition {
@@ -303,7 +303,7 @@ fn test_parse_and_or_precedence() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert!(select.where_clause.is_some());
             let where_clause = select.where_clause.unwrap();
             // Should be parsed as: (age > 18 AND status = 'active') OR role = 'admin'
@@ -340,7 +340,7 @@ fn test_parse_create_table_various_types() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::CreateTable(create) => {
+        Statement::CreateTable(create) => {
             assert_eq!(create.table, "products");
             assert_eq!(create.columns.len(), 7);
             
@@ -373,7 +373,7 @@ fn test_parse_insert_with_null_values() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             let values = &insert.values[0];
             assert_eq!(values[0], SqlValue::Text("John".to_string()));
             assert_eq!(values[1], SqlValue::Null);
@@ -390,7 +390,7 @@ fn test_parse_update_multiple_assignments() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Update(update) => {
+        Statement::Update(update) => {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 3);
             
@@ -414,7 +414,7 @@ fn test_parse_negative_numbers() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             let values = &insert.values[0];
             assert_eq!(values[0], SqlValue::Text("arctic".to_string()));
             assert_eq!(values[1], SqlValue::Integer(-25));
@@ -430,7 +430,7 @@ fn test_parse_real_numbers() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             let values = &insert.values[0];
             assert_eq!(values[0], SqlValue::Text("temperature".to_string()));
             assert_eq!(values[1], SqlValue::Real(-12.5));
@@ -446,7 +446,7 @@ fn test_parse_delete_without_where() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Delete(delete) => {
+        Statement::Delete(delete) => {
             assert_eq!(delete.table, "temp_data");
             assert!(delete.where_clause.is_none());
         }
@@ -461,7 +461,7 @@ fn test_parse_update_without_where() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Update(update) => {
+        Statement::Update(update) => {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 1);
             assert_eq!(update.assignments[0].column, "active");
@@ -479,7 +479,7 @@ fn test_parse_select_order_by_default_asc() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert!(select.order_by.is_some());
             let order_by = select.order_by.unwrap();
             assert_eq!(order_by.len(), 1);
@@ -497,7 +497,7 @@ fn test_parse_identifiers_with_underscores() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.columns, vec![
                 "user_id".to_string(),
                 "first_name".to_string(),
@@ -519,7 +519,7 @@ fn test_parse_large_numbers() {
     if result.is_ok() {
         let (_, statement) = result.unwrap();
         match statement {
-            SqlStatement::Insert(insert) => {
+            Statement::Insert(insert) => {
                 let values = &insert.values[0];
                 // Just check that parsing succeeded, actual values may vary based on implementation
                 assert!(matches!(values[0], SqlValue::Integer(_)));
@@ -537,7 +537,7 @@ fn test_parse_empty_string_literal() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Insert(insert) => {
+        Statement::Insert(insert) => {
             let values = &insert.values[0];
             assert_eq!(values[0], SqlValue::Text("hello".to_string()));
         }
@@ -551,7 +551,7 @@ fn test_parse_empty_string_literal() {
     if empty_result.is_ok() {
         let (_, statement) = empty_result.unwrap();
         match statement {
-            SqlStatement::Insert(insert) => {
+            Statement::Insert(insert) => {
                 let values = &insert.values[0];
                 assert_eq!(values[0], SqlValue::Text("".to_string()));
             }
@@ -568,7 +568,7 @@ fn test_parse_mixed_case_keywords() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.table, "Users"); // Table names should preserve case
             assert!(select.where_clause.is_some());
             assert!(select.order_by.is_some());
@@ -585,7 +585,7 @@ fn test_parse_complex_table_names() {
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
     match statement {
-        SqlStatement::Select(select) => {
+        Statement::Select(select) => {
             assert_eq!(select.table, "user_account_settings");
         }
         _ => panic!("Expected SELECT statement"),

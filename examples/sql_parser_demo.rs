@@ -1,4 +1,4 @@
-use tegdb::parser::{parse_sql, SqlStatement};
+use tegdb::parser::{parse_sql, Statement};
 
 fn main() {
     // Example SQL statements
@@ -25,32 +25,32 @@ fn main() {
                 
                 // Demonstrate pattern matching on the parsed statement
                 match statement {
-                    SqlStatement::Select(select) => {
+                    Statement::Select(select) => {
                         println!("  → This is a SELECT statement for table: {}", select.table);
                         println!("  → Selected columns: {:?}", select.columns);
                     }
-                    SqlStatement::Insert(insert) => {
+                    Statement::Insert(insert) => {
                         println!("  → This is an INSERT statement for table: {}", insert.table);
                         println!("  → Number of value rows: {}", insert.values.len());
                     }
-                    SqlStatement::Update(update) => {
+                    Statement::Update(update) => {
                         println!("  → This is an UPDATE statement for table: {}", update.table);
                         println!("  → Number of assignments: {}", update.assignments.len());
                     }
-                    SqlStatement::Delete(delete) => {
+                    Statement::Delete(delete) => {
                         println!("  → This is a DELETE statement for table: {}", delete.table);
                     }
-                    SqlStatement::CreateTable(create) => {
+                    Statement::CreateTable(create) => {
                         println!("  → This is a CREATE TABLE statement for table: {}", create.table);
                         println!("  → Number of columns: {}", create.columns.len());
                     }
-                    SqlStatement::Begin => {
+                    Statement::Begin => {
                         println!("  → This is a BEGIN transaction statement");
                     }
-                    SqlStatement::Commit => {
+                    Statement::Commit => {
                         println!("  → This is a COMMIT transaction statement");
                     }
-                    SqlStatement::Rollback => {
+                    Statement::Rollback => {
                         println!("  → This is a ROLLBACK transaction statement");
                     }
                 }
