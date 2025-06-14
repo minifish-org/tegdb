@@ -18,8 +18,6 @@ pub struct Executor<'a> {
     table_schemas: HashMap<String, TableSchema>,
     /// Track if we're in an explicit transaction
     in_transaction: bool,
-    /// Transaction ID counter
-    transaction_counter: u64,
 }
 
 /// Simple table schema representation
@@ -80,7 +78,6 @@ impl<'a> Executor<'a> {
             transaction,
             table_schemas: HashMap::new(),
             in_transaction: false,
-            transaction_counter: 0,
         }
     }
 
@@ -130,8 +127,7 @@ impl<'a> Executor<'a> {
         }
         
         self.in_transaction = true;
-        self.transaction_counter += 1;
-        let transaction_id = format!("tx_{}", self.transaction_counter);
+        let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
         Ok(ResultSet::Begin { transaction_id })
     }
@@ -147,7 +143,7 @@ impl<'a> Executor<'a> {
         
         // Clear transaction state
         self.in_transaction = false;
-        let transaction_id = format!("tx_{}", self.transaction_counter);
+        let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
         Ok(ResultSet::Commit { transaction_id })
     }
@@ -163,7 +159,7 @@ impl<'a> Executor<'a> {
         
         // Clear transaction state
         self.in_transaction = false;
-        let transaction_id = format!("tx_{}", self.transaction_counter);
+        let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
         Ok(ResultSet::Rollback { transaction_id })
     }
