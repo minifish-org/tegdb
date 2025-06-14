@@ -8,12 +8,12 @@ use crate::parser::{
     DeleteStatement, CreateTableStatement, SqlValue, Condition, 
     ComparisonOperator
 };
-use crate::{Engine, Result};
+use crate::Result;
 use std::collections::HashMap;
 
 /// A SQL executor that can execute parsed SQL statements against a TegDB engine
-pub struct Executor {
-    engine: Engine,
+pub struct Executor<'a> {
+    transaction: crate::Transaction<'a>,
     /// Metadata about tables (simple schema storage)
     table_schemas: HashMap<String, TableSchema>,
     /// Track if we're in an explicit transaction
@@ -88,11 +88,11 @@ pub enum ResultSet {
     },
 }
 
-impl Executor {
-    /// Create a new SQL executor with the given TegDB engine
-    pub fn new(engine: Engine) -> Self {
+impl<'a> Executor<'a> {
+    /// Create a new SQL executor with the given TegDB transaction
+    pub fn new(transaction: crate::Transaction<'a>) -> Self {
         Self {
-            engine,
+            transaction,
             table_schemas: HashMap::new(),
             in_transaction: false,
             transaction_counter: 0,
@@ -158,16 +158,20 @@ impl Executor {
             return Err(crate::Error::Other("No active transaction to commit".to_string()));
         }
         
-        // Apply all pending operations atomically using the engine's batch method
-        if !self.pending_operations.is_empty() {
-            // Convert our Entry format to the engine's Entry format
-            let engine_entries: Vec<crate::Entry> = self.pending_operations
-                .iter()
-                .map(|op| crate::Entry::new(op.key.clone(), op.value.clone()))
-                .collect();
-            
-            self.engine.batch(engine_entries)?;
+        // Apply all pending operations atomically using the transaction's methods
+        for operation in &self.pending_operations {
+            match &operation.value {
+                Some(value) => {
+                    self.transaction.set(operation.key.clone(), value.clone())?;
+                }
+                None => {
+                    self.transaction.delete(operation.key.clone())?;
+                }
+            }
         }
+        
+        // Commit the transaction
+        self.transaction.commit()?;
         
         // Clear transaction state
         self.in_transaction = false;
@@ -195,17 +199,19 @@ impl Executor {
     fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
         // Create a snapshot view combining committed data and pending operations
         let table_key_prefix = format!("{}:", select.table);
-        let mut matching_rows = Vec::new();
+        let mut matching_rows: Vec<HashMap<String, SqlValue>> = Vec::new();
         
-        // Get the current snapshot from the engine
+        // Get the current snapshot from the transaction
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", select.table).as_bytes().to_vec(); // '~' comes after ':'
         
-        // Scan committed data
+        // Scan committed data using transaction's scan method
+        let scan_results = self.transaction.scan(start_key..end_key);
+        
+        // Convert the scan results to our internal format
         let mut committed_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        let scan_iter = self.engine.scan(start_key..end_key)?;
-        for (key, value) in scan_iter {
-            committed_data.insert(key, value.as_ref().to_vec());
+        for (key, value) in scan_results {
+            committed_data.insert(key, value);
         }
         
         // Apply pending operations to get the transaction view
@@ -309,11 +315,11 @@ impl Executor {
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", update.table).as_bytes().to_vec();
         
-        // Get current state (committed + pending)
+        // Get current state (committed + pending) using transaction's scan method
+        let scan_results = self.transaction.scan(start_key..end_key);
         let mut current_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        let scan_iter = self.engine.scan(start_key..end_key)?;
-        for (key, value) in scan_iter {
-            current_data.insert(key, value.as_ref().to_vec());
+        for (key, value) in scan_results {
+            current_data.insert(key, value);
         }
         
         // Apply pending operations
@@ -362,14 +368,14 @@ impl Executor {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", delete.table);
         
-        // Get current state (committed + pending)
+        // Get current state (committed + pending) using transaction's scan method
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", delete.table).as_bytes().to_vec();
         
+        let scan_results = self.transaction.scan(start_key..end_key);
         let mut current_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        let scan_iter = self.engine.scan(start_key..end_key)?;
-        for (key, value) in scan_iter {
-            current_data.insert(key, value.as_ref().to_vec());
+        for (key, value) in scan_results {
+            current_data.insert(key, value);
         }
         
         // Apply pending operations to get current view
@@ -571,13 +577,13 @@ impl Executor {
         Ok(serialized.into_bytes())
     }
 
-    /// Get the underlying engine reference
-    pub fn engine(&self) -> &Engine {
-        &self.engine
+    /// Get the underlying transaction reference
+    pub fn transaction(&self) -> &crate::Transaction<'a> {
+        &self.transaction
     }
 
-    /// Get a mutable reference to the underlying engine
-    pub fn engine_mut(&mut self) -> &mut Engine {
-        &mut self.engine
+    /// Get a mutable reference to the underlying transaction
+    pub fn transaction_mut(&mut self) -> &mut crate::Transaction<'a> {
+        &mut self.transaction
     }
 }
