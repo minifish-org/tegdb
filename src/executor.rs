@@ -20,21 +20,6 @@ pub struct Executor<'a> {
     in_transaction: bool,
     /// Transaction ID counter
     transaction_counter: u64,
-    /// Pending operations within the current transaction
-    pending_operations: Vec<Entry>,
-}
-
-/// Entry for batch operations
-#[derive(Debug, Clone)]
-pub struct Entry {
-    pub key: Vec<u8>,
-    pub value: Option<Vec<u8>>,
-}
-
-impl Entry {
-    pub fn new(key: Vec<u8>, value: Option<Vec<u8>>) -> Self {
-        Self { key, value }
-    }
 }
 
 /// Simple table schema representation
@@ -96,7 +81,6 @@ impl<'a> Executor<'a> {
             table_schemas: HashMap::new(),
             in_transaction: false,
             transaction_counter: 0,
-            pending_operations: Vec::new(),
         }
     }
 
@@ -158,24 +142,11 @@ impl<'a> Executor<'a> {
             return Err(crate::Error::Other("No active transaction to commit".to_string()));
         }
         
-        // Apply all pending operations atomically using the transaction's methods
-        for operation in &self.pending_operations {
-            match &operation.value {
-                Some(value) => {
-                    self.transaction.set(operation.key.clone(), value.clone())?;
-                }
-                None => {
-                    self.transaction.delete(operation.key.clone())?;
-                }
-            }
-        }
-        
-        // Commit the transaction
+        // Commit the transaction (all pending operations are handled internally by the transaction)
         self.transaction.commit()?;
         
         // Clear transaction state
         self.in_transaction = false;
-        self.pending_operations.clear();
         let transaction_id = format!("tx_{}", self.transaction_counter);
         
         Ok(ResultSet::Commit { transaction_id })
@@ -187,9 +158,11 @@ impl<'a> Executor<'a> {
             return Err(crate::Error::Other("No active transaction to rollback".to_string()));
         }
         
-        // Discard all pending operations without applying them
+        // Rollback the transaction (all pending operations are discarded internally)
+        self.transaction.rollback();
+        
+        // Clear transaction state
         self.in_transaction = false;
-        self.pending_operations.clear();
         let transaction_id = format!("tx_{}", self.transaction_counter);
         
         Ok(ResultSet::Rollback { transaction_id })
@@ -197,39 +170,18 @@ impl<'a> Executor<'a> {
 
     /// Execute a SELECT statement within a transaction
     fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
-        // Create a snapshot view combining committed data and pending operations
+        // Get data from the transaction (includes committed data + pending operations)
         let table_key_prefix = format!("{}:", select.table);
         let mut matching_rows: Vec<HashMap<String, SqlValue>> = Vec::new();
         
-        // Get the current snapshot from the transaction
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", select.table).as_bytes().to_vec(); // '~' comes after ':'
         
-        // Scan committed data using transaction's scan method
+        // The transaction's scan method already includes pending operations
         let scan_results = self.transaction.scan(start_key..end_key);
         
-        // Convert the scan results to our internal format
-        let mut committed_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        for (key, value) in scan_results {
-            committed_data.insert(key, value);
-        }
-        
-        // Apply pending operations to get the transaction view
-        for operation in &self.pending_operations {
-            if operation.key.starts_with(table_key_prefix.as_bytes()) {
-                match &operation.value {
-                    Some(value) => {
-                        committed_data.insert(operation.key.clone(), value.clone());
-                    }
-                    None => {
-                        committed_data.remove(&operation.key);
-                    }
-                }
-            }
-        }
-        
-        // Process the merged data
-        for (_key, value) in committed_data {
+        // Process the scan results
+        for (_key, value) in scan_results {
             // Deserialize the row data
             if let Ok(row_data) = self.deserialize_row(&value) {
                 // Apply WHERE clause if present
@@ -283,7 +235,7 @@ impl<'a> Executor<'a> {
     fn execute_insert(&mut self, insert: InsertStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
 
-        // Prepare and accumulate each row operation
+        // Prepare and apply each row operation directly to the transaction
         for (_row_idx, values) in insert.values.iter().enumerate() {
             // Create a simple row ID (in practice, you might want auto-increment or UUID)
             let row_id = format!("row_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
@@ -297,9 +249,9 @@ impl<'a> Executor<'a> {
                 }
             }
 
-            // Serialize the row and add to pending operations
+            // Serialize the row and add directly to the transaction
             let serialized_row = self.serialize_row(&row_data)?;
-            self.pending_operations.push(Entry::new(key.as_bytes().to_vec(), Some(serialized_row)));
+            self.transaction.set(key.as_bytes().to_vec(), serialized_row)?;
             rows_affected += 1;
         }
 
@@ -311,30 +263,11 @@ impl<'a> Executor<'a> {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", update.table);
         
-        // First, find all rows that match the WHERE clause
+        // Get current state using transaction's scan method (includes pending operations)
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", update.table).as_bytes().to_vec();
         
-        // Get current state (committed + pending) using transaction's scan method
-        let scan_results = self.transaction.scan(start_key..end_key);
-        let mut current_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        for (key, value) in scan_results {
-            current_data.insert(key, value);
-        }
-        
-        // Apply pending operations
-        for operation in &self.pending_operations {
-            if operation.key.starts_with(table_key_prefix.as_bytes()) {
-                match &operation.value {
-                    Some(value) => {
-                        current_data.insert(operation.key.clone(), value.clone());
-                    }
-                    None => {
-                        current_data.remove(&operation.key);
-                    }
-                }
-            }
-        }
+        let current_data = self.transaction.scan(start_key..end_key);
         
         // Process each row
         for (key, value) in current_data {
@@ -352,9 +285,9 @@ impl<'a> Executor<'a> {
                         row_data.insert(assignment.column.clone(), assignment.value.clone());
                     }
                     
-                    // Serialize updated row and add to pending operations
+                    // Serialize updated row and apply directly to transaction
                     let serialized_row = self.serialize_row(&row_data)?;
-                    self.pending_operations.push(Entry::new(key, Some(serialized_row)));
+                    self.transaction.set(key, serialized_row)?;
                     rows_affected += 1;
                 }
             }
@@ -368,29 +301,11 @@ impl<'a> Executor<'a> {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", delete.table);
         
-        // Get current state (committed + pending) using transaction's scan method
+        // Get current state using transaction's scan method (includes pending operations)
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", delete.table).as_bytes().to_vec();
         
-        let scan_results = self.transaction.scan(start_key..end_key);
-        let mut current_data: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-        for (key, value) in scan_results {
-            current_data.insert(key, value);
-        }
-        
-        // Apply pending operations to get current view
-        for operation in &self.pending_operations {
-            if operation.key.starts_with(table_key_prefix.as_bytes()) {
-                match &operation.value {
-                    Some(value) => {
-                        current_data.insert(operation.key.clone(), value.clone());
-                    }
-                    None => {
-                        current_data.remove(&operation.key);
-                    }
-                }
-            }
-        }
+        let current_data = self.transaction.scan(start_key..end_key);
         
         // Find rows to delete
         for (key, value) in current_data {
@@ -403,8 +318,8 @@ impl<'a> Executor<'a> {
                 };
                 
                 if should_delete {
-                    // Add deletion to pending operations (None value means delete)
-                    self.pending_operations.push(Entry::new(key, None));
+                    // Apply deletion directly to transaction
+                    self.transaction.delete(key)?;
                     rows_affected += 1;
                 }
             }
@@ -427,11 +342,10 @@ impl<'a> Executor<'a> {
         // Store schema in memory (in a real implementation, this would be persisted)
         self.table_schemas.insert(create.table.clone(), schema);
         
-        // In a real implementation, you might want to store the schema in the database
-        // For now, we'll just track it in memory and add an entry to indicate the table exists
+        // Store the schema in the database using the transaction
         let schema_key = format!("__schema__:{}", create.table);
         let serialized_schema = self.serialize_schema(&create)?;
-        self.pending_operations.push(Entry::new(schema_key.as_bytes().to_vec(), Some(serialized_schema)));
+        self.transaction.set(schema_key.as_bytes().to_vec(), serialized_schema)?;
 
         Ok(ResultSet::CreateTable { 
             table_name: create.table 
