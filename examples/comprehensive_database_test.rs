@@ -1,0 +1,87 @@
+// examples/comprehensive_database_test.rs
+use tegdb::{Database, Result, parser::SqlValue};
+
+fn main() -> Result<()> {
+    // Create/open database
+    let mut db = Database::open("comprehensive_test.db")?;
+    
+    println!("=== Setting up database ===");
+    
+    // Create table
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    println!("✓ Table created");
+    
+    // Insert test data
+    db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
+    db.execute("INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")?;
+    db.execute("INSERT INTO users (id, name, age) VALUES (3, 'Carol', 35)")?;
+    println!("✓ Test data inserted");
+    
+    // Query all data
+    let result = db.query("SELECT id, name, age FROM users")?;
+    println!("\n=== Initial data ===");
+    print_query_result(&result);
+    
+    println!("\n=== Testing explicit transaction ===");
+    
+    // Test explicit transaction
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        // Try UPDATE within transaction
+        let updated = tx.execute("UPDATE users SET age = 31 WHERE name = 'Alice'")?;
+        println!("UPDATE affected {} rows", updated);
+        
+        // Try DELETE within transaction
+        let deleted = tx.execute("DELETE FROM users WHERE name = 'Bob'")?;
+        println!("DELETE affected {} rows", deleted);
+        
+        // Try SELECT within transaction to see changes
+        let tx_result = tx.query("SELECT id, name, age FROM users")?;
+        println!("Data within transaction:");
+        print_query_result(&tx_result);
+        
+        // Commit transaction
+        tx.commit()?;
+        println!("✓ Transaction committed");
+    }
+    
+    // Query again to see final state
+    let final_result = db.query("SELECT id, name, age FROM users")?;
+    println!("\n=== Final data after transaction ===");
+    print_query_result(&final_result);
+    
+    // Test simple operations
+    println!("\n=== Testing simple operations ===");
+    db.execute("INSERT INTO users (id, name, age) VALUES (4, 'David', 28)")?;
+    let updated = db.execute("UPDATE users SET age = 36 WHERE name = 'Carol'")?;
+    println!("Simple UPDATE affected {} rows", updated);
+    
+    let simple_result = db.query("SELECT id, name, age FROM users")?;
+    println!("Final state:");
+    print_query_result(&simple_result);
+    
+    Ok(())
+}
+
+fn print_query_result(result: &tegdb::QueryResult) {
+    println!("Columns: {:?}", result.columns());
+    println!("Rows: {}", result.rows().len());
+    
+    for row in result.iter() {
+        let id = match row.get("id").unwrap() {
+            SqlValue::Integer(i) => *i,
+            _ => 0,
+        };
+        let name = match row.get("name").unwrap() {
+            SqlValue::Text(s) => s.clone(),
+            _ => "Unknown".to_string(),
+        };
+        let age = match row.get("age").unwrap() {
+            SqlValue::Integer(i) => *i,
+            _ => 0,
+        };
+        
+        println!("  ID: {}, Name: {}, Age: {}", id, name, age);
+    }
+}
