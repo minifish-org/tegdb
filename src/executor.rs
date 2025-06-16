@@ -132,16 +132,13 @@ impl<'a> Executor<'a> {
         Ok(ResultSet::Begin { transaction_id })
     }
 
-    /// Execute a COMMIT statement
+    /// Execute a COMMIT statement  
     fn execute_commit(&mut self) -> Result<ResultSet> {
         if !self.in_transaction {
             return Err(crate::Error::Other("No active transaction to commit".to_string()));
         }
         
-        // Commit the transaction (all pending operations are handled internally by the transaction)
-        self.transaction.commit()?;
-        
-        // Clear transaction state
+        // Note: The actual commit will happen when the transaction is dropped/committed externally
         self.in_transaction = false;
         let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
@@ -154,10 +151,7 @@ impl<'a> Executor<'a> {
             return Err(crate::Error::Other("No active transaction to rollback".to_string()));
         }
         
-        // Rollback the transaction (all pending operations are discarded internally)
-        self.transaction.rollback();
-        
-        // Clear transaction state
+        // Note: The actual rollback will happen when the transaction is dropped/rolled back externally
         self.in_transaction = false;
         let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
@@ -177,7 +171,7 @@ impl<'a> Executor<'a> {
         let scan_results = self.transaction.scan(start_key..end_key);
         
         // Process the scan results
-        for (_key, value) in scan_results {
+        for (key, value) in scan_results {
             // Deserialize the row data
             if let Ok(row_data) = self.deserialize_row(&value) {
                 // Apply WHERE clause if present

@@ -7,8 +7,9 @@ use tempfile::tempdir;
 fn test_explicit_transaction_basic_workflow() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_basic.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -46,68 +47,91 @@ fn test_explicit_transaction_basic_workflow() {
 fn test_explicit_transaction_rollback() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_rollback.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    
+    // Setup initial data in first transaction
+    {
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
-    // Setup initial data
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
 
-    let create_sql = "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)";
-    let (_, statement) = parse_sql(create_sql).unwrap();
-    executor.execute(statement).unwrap();
+        let create_sql = "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)";
+        let (_, statement) = parse_sql(create_sql).unwrap();
+        executor.execute(statement).unwrap();
 
-    let insert_sql = "INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 999.99)";
-    let (_, statement) = parse_sql(insert_sql).unwrap();
-    executor.execute(statement).unwrap();
+        let insert_sql = "INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 999.99)";
+        let (_, statement) = parse_sql(insert_sql).unwrap();
+        executor.execute(statement).unwrap();
 
-    let (_, statement) = parse_sql("COMMIT").unwrap();
-    executor.execute(statement).unwrap();
-
-    // Start new transaction with operations to rollback
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
-
-    // Insert more data
-    let insert_sql = "INSERT INTO products (id, name, price) VALUES (2, 'Mouse', 29.99)";
-    let (_, statement) = parse_sql(insert_sql).unwrap();
-    executor.execute(statement).unwrap();
-
-    // Update existing data
-    let update_sql = "UPDATE products SET price = 899.99 WHERE id = 1";
-    let (_, statement) = parse_sql(update_sql).unwrap();
-    executor.execute(statement).unwrap();
-
-    // Verify changes are visible within transaction
-    let select_sql = "SELECT * FROM products";
-    let (_, statement) = parse_sql(select_sql).unwrap();
-    let result = executor.execute(statement).unwrap();
-    if let ResultSet::Select { rows, .. } = result {
-        assert_eq!(rows.len(), 2); // Should see both products
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
+        
+        // Actually commit
+        executor.transaction_mut().commit().unwrap();
     }
 
-    // Rollback transaction
-    let (_, statement) = parse_sql("ROLLBACK").unwrap();
-    let result = executor.execute(statement).unwrap();
-    assert!(matches!(result, ResultSet::Rollback { .. }));
+    // Second transaction with operations to rollback
+    {
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
-    // Verify rollback worked - start new transaction to check
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
 
-    let select_sql = "SELECT * FROM products";
-    let (_, statement) = parse_sql(select_sql).unwrap();
-    let result = executor.execute(statement).unwrap();
-    if let ResultSet::Select { rows, .. } = result {
-        assert_eq!(rows.len(), 1); // Should only see original product
-        // Original price should be unchanged
-        if let SqlValue::Real(price) = &rows[0][2] { // Assuming price is 3rd column
-            assert!((price - 999.99).abs() < 0.01);
+        // Insert more data
+        let insert_sql = "INSERT INTO products (id, name, price) VALUES (2, 'Mouse', 29.99)";
+        let (_, statement) = parse_sql(insert_sql).unwrap();
+        executor.execute(statement).unwrap();
+
+        // Update existing data
+        let update_sql = "UPDATE products SET price = 899.99 WHERE id = 1";
+        let (_, statement) = parse_sql(update_sql).unwrap();
+        executor.execute(statement).unwrap();
+
+        // Verify changes are visible within transaction
+        let select_sql = "SELECT * FROM products";
+        let (_, statement) = parse_sql(select_sql).unwrap();
+        let result = executor.execute(statement).unwrap();
+        if let ResultSet::Select { rows, .. } = result {
+            assert_eq!(rows.len(), 2); // Should see both products
         }
+
+        // Rollback transaction
+        let (_, statement) = parse_sql("ROLLBACK").unwrap();
+        let result = executor.execute(statement).unwrap();
+        assert!(matches!(result, ResultSet::Rollback { .. }));
+        
+        // Actually rollback
+        executor.transaction_mut().rollback();
     }
 
-    let (_, statement) = parse_sql("COMMIT").unwrap();
-    executor.execute(statement).unwrap();
+    // Third transaction to verify rollback worked
+    {
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
+
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+
+        let select_sql = "SELECT * FROM products";
+        let (_, statement) = parse_sql(select_sql).unwrap();
+        let result = executor.execute(statement).unwrap();
+        if let ResultSet::Select { rows, .. } = result {
+            assert_eq!(rows.len(), 1); // Should only see original product
+            // Original price should be unchanged
+            if let SqlValue::Real(price) = &rows[0][2] { // Assuming price is 3rd column
+                assert!((price - 999.99).abs() < 0.01);
+            }
+        }
+
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
+        
+        // Actually commit
+        executor.transaction_mut().commit().unwrap();
+    }
 }
 
 /// Test error handling - operations without transactions should fail
@@ -115,8 +139,9 @@ fn test_explicit_transaction_rollback() {
 fn test_explicit_transaction_error_handling() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_errors.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Try operations without BEGIN - should fail
     let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)";
@@ -150,8 +175,9 @@ fn test_explicit_transaction_error_handling() {
 fn test_explicit_transaction_complex_operations() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_complex.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Start transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -224,8 +250,9 @@ fn test_explicit_transaction_complex_operations() {
 fn test_explicit_transaction_nested_behavior() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_nested.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Start first transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();

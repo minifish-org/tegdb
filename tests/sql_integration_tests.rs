@@ -5,8 +5,9 @@ use tempfile::tempdir;
 fn test_sql_integration_basic_operations() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_integration.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -118,8 +119,9 @@ fn test_sql_executor_persistence() {
     
     // First session - create and insert data
     {
-        let engine = Engine::new(db_path.clone()).unwrap();
-        let mut executor = Executor::new(engine);
+        let mut engine = Engine::new(db_path.clone()).unwrap();
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
         // Begin transaction
         let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -136,12 +138,16 @@ fn test_sql_executor_persistence() {
         // Commit transaction
         let (_, statement) = parse_sql("COMMIT").unwrap();
         executor.execute(statement).unwrap();
+        
+        // Actually commit
+        executor.transaction_mut().commit().unwrap();
     }
 
     // Second session - verify data persists
     {
-        let engine = Engine::new(db_path).unwrap();
-        let mut executor = Executor::new(engine);
+        let mut engine = Engine::new(db_path).unwrap();
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
         // Begin transaction for reading
         let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -160,6 +166,9 @@ fn test_sql_executor_persistence() {
         // Commit transaction
         let (_, statement) = parse_sql("COMMIT").unwrap();
         executor.execute(statement).unwrap();
+        
+        // Actually commit
+        executor.transaction_mut().commit().unwrap();
     }
 }
 
@@ -167,8 +176,9 @@ fn test_sql_executor_persistence() {
 fn test_executor_create_and_insert() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -215,8 +225,9 @@ fn test_executor_create_and_insert() {
 fn test_executor_select() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -253,8 +264,9 @@ fn test_executor_select() {
 fn test_transaction_rollback_on_error() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();

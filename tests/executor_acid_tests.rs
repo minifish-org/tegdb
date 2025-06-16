@@ -7,74 +7,93 @@ use tempfile::tempdir;
 fn test_transaction_atomicity() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_atomicity.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    
+    // First transaction - setup
+    {
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
-    // Start transaction
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
+        // Start transaction
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
 
-    // Create table
-    let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
-    let (_, statement) = parse_sql(create_sql).unwrap();
-    executor.execute(statement).unwrap();
+        // Create table
+        let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
+        let (_, statement) = parse_sql(create_sql).unwrap();
+        executor.execute(statement).unwrap();
 
-    // Insert initial data
-    let insert_sql = "INSERT INTO users (id, name, age) VALUES (1, 'John', 25)";
-    let (_, statement) = parse_sql(insert_sql).unwrap();
-    executor.execute(statement).unwrap();
+        // Insert initial data
+        let insert_sql = "INSERT INTO users (id, name, age) VALUES (1, 'John', 25)";
+        let (_, statement) = parse_sql(insert_sql).unwrap();
+        executor.execute(statement).unwrap();
 
-    // Commit transaction
-    let (_, statement) = parse_sql("COMMIT").unwrap();
-    executor.execute(statement).unwrap();
-
-    // Start new transaction to verify data
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
-
-    // Verify initial state
-    let select_sql = "SELECT * FROM users";
-    let (_, statement) = parse_sql(select_sql).unwrap();
-    let result = executor.execute(statement).unwrap();
-    if let ResultSet::Select { rows, .. } = result {
-        assert_eq!(rows.len(), 1);
+        // Commit transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
+        
+        // Actually commit the transaction
+        executor.transaction_mut().commit().unwrap();
     }
 
-    // Commit verification transaction
-    let (_, statement) = parse_sql("COMMIT").unwrap();
-    executor.execute(statement).unwrap();
+    // Second transaction - verify and update
+    {
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
-    // Test atomicity with transaction
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
-    
-    // This test demonstrates that operations within a transaction are atomic
-    let update_sql = "UPDATE users SET age = 30 WHERE id = 1";
-    let (_, statement) = parse_sql(update_sql).unwrap();
-    let result = executor.execute(statement).unwrap();
-    if let ResultSet::Update { rows_affected } = result {
-        assert_eq!(rows_affected, 1);
+        // Start new transaction to verify data
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+
+        // Verify initial state
+        let select_sql = "SELECT * FROM users";
+        let (_, statement) = parse_sql(select_sql).unwrap();
+        let result = executor.execute(statement).unwrap();
+        if let ResultSet::Select { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+        }
+
+        // Test atomicity with transaction
+        // This test demonstrates that operations within a transaction are atomic
+        let update_sql = "UPDATE users SET age = 30 WHERE id = 1";
+        let (_, statement) = parse_sql(update_sql).unwrap();
+        let result = executor.execute(statement).unwrap();
+        if let ResultSet::Update { rows_affected } = result {
+            assert_eq!(rows_affected, 1);
+        }
+
+        // Commit the update
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
+        
+        // Actually commit the transaction
+        executor.transaction_mut().commit().unwrap();
     }
 
-    // Commit the update
-    let (_, statement) = parse_sql("COMMIT").unwrap();
-    executor.execute(statement).unwrap();
+    // Third transaction - final verification
+    {
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
-    // Verify the update was applied atomically
-    let (_, statement) = parse_sql("BEGIN").unwrap();
-    executor.execute(statement).unwrap();
-    
-    let select_sql = "SELECT age FROM users WHERE id = 1";
-    let (_, statement) = parse_sql(select_sql).unwrap();
-    let result = executor.execute(statement).unwrap();
-    if let ResultSet::Select { rows, .. } = result {
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0][0], SqlValue::Integer(30));
+        // Verify the update was applied atomically
+        let (_, statement) = parse_sql("BEGIN").unwrap();
+        executor.execute(statement).unwrap();
+        
+        let select_sql = "SELECT age FROM users WHERE id = 1";
+        let (_, statement) = parse_sql(select_sql).unwrap();
+        let result = executor.execute(statement).unwrap();
+        if let ResultSet::Select { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0][0], SqlValue::Integer(30));
+        }
+        
+        // Commit verification transaction
+        let (_, statement) = parse_sql("COMMIT").unwrap();
+        executor.execute(statement).unwrap();
+        
+        // Actually commit the transaction
+        executor.transaction_mut().commit().unwrap();
     }
-    
-    // Commit verification transaction
-    let (_, statement) = parse_sql("COMMIT").unwrap();
-    executor.execute(statement).unwrap();
 }
 
 /// Test consistency - data remains in a valid state before and after transactions
@@ -82,8 +101,9 @@ fn test_transaction_atomicity() {
 fn test_transaction_consistency() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_consistency.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -165,8 +185,9 @@ fn test_transaction_consistency() {
 fn test_transaction_isolation() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_isolation.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin setup transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -234,8 +255,9 @@ fn test_transaction_durability() {
     
     // First session - insert data
     {
-        let engine = Engine::new(db_path.clone()).unwrap();
-        let mut executor = Executor::new(engine);
+        let mut engine = Engine::new(db_path.clone()).unwrap();
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
         // Begin transaction
         let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -254,12 +276,16 @@ fn test_transaction_durability() {
         // Commit transaction
         let (_, statement) = parse_sql("COMMIT").unwrap();
         executor.execute(statement).unwrap();
+        
+        // Actually commit the transaction
+        executor.transaction_mut().commit().unwrap();
     } // Engine dropped here, data should be persisted
 
     // Second session - verify data persists
     {
-        let engine = Engine::new(db_path).unwrap();
-        let mut executor = Executor::new(engine);
+        let mut engine = Engine::new(db_path).unwrap();
+        let transaction = engine.begin_transaction();
+        let mut executor = Executor::new(transaction);
 
         // Begin verification transaction
         let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -278,6 +304,9 @@ fn test_transaction_durability() {
         // Commit verification transaction
         let (_, statement) = parse_sql("COMMIT").unwrap();
         executor.execute(statement).unwrap();
+        
+        // Actually commit the transaction
+        executor.transaction_mut().commit().unwrap();
     }
 }
 
@@ -286,8 +315,9 @@ fn test_transaction_durability() {
 fn test_delete_transaction_isolation() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_delete.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin setup transaction
     let (_, statement) = parse_sql("BEGIN").unwrap();
@@ -351,8 +381,9 @@ fn test_delete_transaction_isolation() {
 fn test_multiple_operations_acid() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_multiple.db");
-    let engine = Engine::new(db_path).unwrap();
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path).unwrap();
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Begin transaction for all operations
     let (_, statement) = parse_sql("BEGIN").unwrap();

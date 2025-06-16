@@ -8,8 +8,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a temporary database
     let dir = tempdir()?;
     let db_path = dir.path().join("demo.db");
-    let engine = Engine::new(db_path)?;
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new(db_path)?;
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Demonstrate explicit transaction workflow
     let sql_statements = vec![

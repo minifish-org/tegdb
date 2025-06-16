@@ -5,8 +5,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===========================================");
 
     // Create database and executor
-    let engine = Engine::new("explicit_transaction_comprehensive_demo.db".into())?;
-    let mut executor = Executor::new(engine);
+    let mut engine = Engine::new("explicit_transaction_comprehensive_demo.db".into())?;
+    let transaction = engine.begin_transaction();
+    let mut executor = Executor::new(transaction);
 
     // Test 1: Basic workflow with COMMIT
     println!("\nTest 1: Basic workflow with COMMIT");
