@@ -48,15 +48,22 @@
 //! for direct engine manipulation.
 mod engine;
 mod error;
-mod parser;
-mod executor;
 mod database;
+
+// Make these modules public when dev feature is enabled so tests can access them
+#[cfg(feature = "dev")]
+pub mod parser;
+#[cfg(not(feature = "dev"))]
+mod parser;
+
+#[cfg(feature = "dev")]
+pub mod executor;
+#[cfg(not(feature = "dev"))]
+mod executor;
 
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
 pub use database::{Database, QueryResult, Row, Transaction as DbTransaction};
-// Export SqlValue as it's needed for working with query results
-pub use parser::SqlValue;
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
@@ -64,7 +71,16 @@ pub use engine::{Engine, EngineConfig, Entry, Transaction};
 #[cfg(feature = "dev")]
 pub use executor::{Executor, ResultSet};
 #[cfg(feature = "dev")]
-pub use parser::{parse_sql, Statement, SqlValue};
+pub use parser::{
+    parse_sql, Statement, SqlValue, DataType, ColumnConstraint, ComparisonOperator, 
+    OrderDirection, Condition, SelectStatement, InsertStatement, UpdateStatement, 
+    DeleteStatement, CreateTableStatement, ColumnDefinition, WhereClause, 
+    Assignment, OrderByClause
+};
+
+// Export SqlValue unconditionally as it's needed for working with query results
+#[cfg(not(feature = "dev"))]
+pub use parser::SqlValue;
 
 // For backward compatibility, also expose via modules when dev feature is enabled
 #[cfg(feature = "dev")]

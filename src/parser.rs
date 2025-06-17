@@ -300,7 +300,7 @@ fn parse_create_table(input: &str) -> IResult<&str, CreateTableStatement> {
 fn parse_begin(input: &str) -> IResult<&str, ()> {
     let (input, _) = alt((
         tag_no_case("BEGIN"),
-        tag_no_case("START TRANSACTION"),
+        map(tuple((tag_no_case("START"), multispace1, tag_no_case("TRANSACTION"))), |_| ""),
     ))(input)?;
     Ok((input, ()))
 }
