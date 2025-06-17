@@ -1,8 +1,8 @@
 //! # TegDB - A high-performance, embedded database engine
 //!
-//! TegDB provides both low-level engine access and a high-level SQLite-like database interface.
+//! TegDB provides a high-level SQLite-like database interface for easy database operations.
 //!
-//! ## High-level Database API (Recommended)
+//! ## Database API
 //!
 //! The `Database` struct provides a SQLite-like interface for easy database operations:
 //!
@@ -34,55 +34,40 @@
 //! # }
 //! ```
 //!
-//! ## Low-level Engine API
+//! ## Low-level API (Advanced Users)
 //!
-//! For advanced use cases, you can access the low-level engine directly:
+//! For advanced use cases, benchmarks, or examples, you can enable the `dev` feature
+//! to access the low-level engine API:
 //!
-//! ```no_run
-//! use tempfile::tempdir;
-//! use tegdb::{Engine, EngineConfig, Entry, Result};
-//!
-//! # fn main() -> Result<()> {
-//!     let dir = tempdir()?;
-//!     let db_path = dir.path().join("demo.db");
-//!
-//!     let config = EngineConfig { sync_on_write: true, ..Default::default() };
-//!     let mut engine = Engine::with_config(db_path.clone(), config)?;
-//!
-//!     engine.set(b"foo", b"bar".to_vec())?;
-//!     assert_eq!(engine.get(b"foo").map(|a| a.as_ref().to_vec()), Some(b"bar".to_vec()));
-//!
-//!     let entries = vec![
-//!         (b"a".to_vec(), Some(b"1".to_vec())),
-//!         (b"b".to_vec(), Some(b"2".to_vec())),
-//!     ]
-//!     .into_iter()
-//!     .map(|(k, v)| Entry::new(k, v))
-//!     .collect::<Vec<_>>();
-//!     engine.batch(entries)?;
-//!
-//!     // Collect scan results into a Vec to get length
-//!     let iter = engine.scan(b"a".to_vec()..b"z".to_vec())?;
-//!     let results: Vec<_> = iter.collect();
-//!     assert_eq!(results.len(), 2);
-//!
-//!     # Ok(())
-//! # }
+//! ```toml
+//! [dependencies]
+//! tegdb = { version = "0.2", features = ["dev"] }
 //! ```
+//!
+//! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
+//! for direct engine manipulation.
 mod engine;
 mod error;
-pub mod parser;
-pub mod executor;
+mod parser;
+mod executor;
 mod database;
 
-pub use engine::{Engine, EngineConfig, Entry, Transaction};
+// Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
-pub use executor::{Executor, ResultSet};
 pub use database::{Database, QueryResult, Row, Transaction as DbTransaction};
 
-// Keep low-level API for advanced users
+// Conditionally expose low-level API for development, examples, and benchmarks
+#[cfg(feature = "dev")]
+pub use engine::{Engine, EngineConfig, Entry, Transaction};
+#[cfg(feature = "dev")]
+pub use executor::{Executor, ResultSet};
+#[cfg(feature = "dev")]
+pub use parser::{parse_sql, Statement, SqlValue};
+
+// For backward compatibility, also expose via modules when dev feature is enabled
+#[cfg(feature = "dev")]
 pub mod low_level {
-    pub use crate::engine::{Engine, Transaction as EngineTransaction};
+    pub use crate::engine::{Engine, Transaction as EngineTransaction, Entry, EngineConfig};
     pub use crate::executor::{Executor, ResultSet};
     pub use crate::parser::{parse_sql, Statement, SqlValue};
 }

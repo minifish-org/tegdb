@@ -3,7 +3,7 @@
 //! This module provides a SQLite-like interface for TegDB, making it easy for users
 //! to interact with the database without dealing with low-level engine details.
 
-use crate::{Engine, executor::Executor, parser::{parse_sql, SqlValue}, Result};
+use crate::{engine::Engine, executor::Executor, parser::{parse_sql, SqlValue}, Result};
 use std::path::Path;
 
 /// Database connection, similar to sqlite::Connection
@@ -137,7 +137,7 @@ pub struct Transaction<'a> {
 }
 
 impl<'a> Transaction<'a> {
-    fn new(transaction: crate::Transaction<'a>) -> Self {
+    fn new(transaction: crate::engine::Transaction<'a>) -> Self {
         let mut executor = Executor::new(transaction);
         // Start the transaction immediately
         let _ = executor.execute(crate::parser::Statement::Begin);
@@ -192,7 +192,7 @@ impl<'a> Transaction<'a> {
     }
     
     /// Get mutable reference to the underlying transaction for low-level access
-    pub fn transaction_mut(&mut self) -> &mut crate::Transaction<'a> {
+    pub fn transaction_mut(&mut self) -> &mut crate::engine::Transaction<'a> {
         self.executor.transaction_mut()
     }
 }

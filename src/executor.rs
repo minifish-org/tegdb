@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 /// A SQL executor that can execute parsed SQL statements against a TegDB engine
 pub struct Executor<'a> {
-    transaction: crate::Transaction<'a>,
+    transaction: crate::engine::Transaction<'a>,
     /// Metadata about tables (simple schema storage)
     table_schemas: HashMap<String, TableSchema>,
     /// Track if we're in an explicit transaction
@@ -73,7 +73,7 @@ pub enum ResultSet {
 
 impl<'a> Executor<'a> {
     /// Create a new SQL executor with the given TegDB transaction
-    pub fn new(transaction: crate::Transaction<'a>) -> Self {
+    pub fn new(transaction: crate::engine::Transaction<'a>) -> Self {
         Self {
             transaction,
             table_schemas: HashMap::new(),
@@ -171,7 +171,7 @@ impl<'a> Executor<'a> {
         let scan_results = self.transaction.scan(start_key..end_key);
         
         // Process the scan results
-        for (key, value) in scan_results {
+        for (_key, value) in scan_results {
             // Deserialize the row data
             if let Ok(row_data) = self.deserialize_row(&value) {
                 // Apply WHERE clause if present
@@ -482,12 +482,12 @@ impl<'a> Executor<'a> {
     }
 
     /// Get the underlying transaction reference
-    pub fn transaction(&self) -> &crate::Transaction<'a> {
+    pub fn transaction(&self) -> &crate::engine::Transaction<'a> {
         &self.transaction
     }
 
     /// Get a mutable reference to the underlying transaction
-    pub fn transaction_mut(&mut self) -> &mut crate::Transaction<'a> {
+    pub fn transaction_mut(&mut self) -> &mut crate::engine::Transaction<'a> {
         &mut self.transaction
     }
 }

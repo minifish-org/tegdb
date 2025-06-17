@@ -28,7 +28,14 @@ tempfile = "3.10.1"
 [[bench]]
 name = "engine_basic_benchmark"
 harness = false
+required-features = ["dev"]
 
 [[bench]]
 name = "engine_seq_benchmark"
 harness = false
+required-features = ["dev"]
+
+[features]
+default = []
+# Feature to expose low-level API for examples, benchmarks, and advanced users
+dev = []
