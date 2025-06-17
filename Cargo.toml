@@ -42,3 +42,39 @@ dev = []
 # Enable dev feature for docs.rs documentation
 [package.metadata.docs.rs]
 features = ["dev"]
+
+# Test configurations with dev feature requirement
+[[test]]
+name = "engine_tests"
+path = "tests/engine_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "executor_acid_tests"
+path = "tests/executor_acid_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "explicit_transaction_integration_tests"
+path = "tests/explicit_transaction_integration_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "sql_integration_tests"
+path = "tests/sql_integration_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "sql_parser_tests"
+path = "tests/sql_parser_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "transaction_parsing_tests"
+path = "tests/transaction_parsing_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "transaction_tests"
+path = "tests/transaction_tests.rs"
+required-features = ["dev"]
