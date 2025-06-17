@@ -1,9 +1,14 @@
 // examples/comprehensive_database_test.rs
-use tegdb::{Database, Result, parser::SqlValue};
+use tegdb::{Database, Result, SqlValue};
+use tempfile::NamedTempFile;
 
 fn main() -> Result<()> {
+    // Create a temporary database file that will be automatically cleaned up
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
     // Create/open database
-    let mut db = Database::open("comprehensive_test.db")?;
+    let mut db = Database::open(db_path)?;
     
     println!("=== Setting up database ===");
     
@@ -61,6 +66,7 @@ fn main() -> Result<()> {
     println!("Final state:");
     print_query_result(&simple_result);
     
+    // Database file is automatically cleaned up when temp_file goes out of scope
     Ok(())
 }
 

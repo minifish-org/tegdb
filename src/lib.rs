@@ -55,6 +55,8 @@ mod database;
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
 pub use database::{Database, QueryResult, Row, Transaction as DbTransaction};
+// Export SqlValue as it's needed for working with query results
+pub use parser::SqlValue;
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]

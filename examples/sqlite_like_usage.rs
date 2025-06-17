@@ -1,9 +1,14 @@
 // examples/sqlite_like_usage.rs
-use tegdb::{Database, Result, parser::SqlValue};
+use tegdb::{Database, Result, SqlValue};
+use tempfile::NamedTempFile;
 
 fn main() -> Result<()> {
+    // Create a temporary database file that will be automatically cleaned up
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
     // Create/open database, similar to SQLite
-    let mut db = Database::open("my_database.db")?;
+    let mut db = Database::open(db_path)?;
     
     // Create table
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
@@ -54,5 +59,6 @@ fn main() -> Result<()> {
     let result2 = db.query("SELECT id, name, age FROM users")?;
     println!("After transaction - Found {} rows", result2.rows().len());
     
+    // Database file is automatically cleaned up when temp_file goes out of scope
     Ok(())
 }
