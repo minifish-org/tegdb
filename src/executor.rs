@@ -68,11 +68,18 @@ pub enum ResultSet {
 impl<'a> Executor<'a> {
     /// Create a new SQL executor with the given TegDB transaction
     pub fn new(transaction: crate::engine::Transaction<'a>) -> Self {
-        Self {
+        let mut executor = Self {
             transaction,
             table_schemas: HashMap::new(),
             in_transaction: false,
-        }
+        };
+        
+        // Load existing table schemas from the engine
+        executor.load_schemas().unwrap_or_else(|e| {
+            eprintln!("Warning: Failed to load table schemas: {}", e);
+        });
+        
+        executor
     }
 
     /// Execute a parsed SQL statement with explicit transaction control
@@ -331,6 +338,77 @@ impl<'a> Executor<'a> {
         Ok(ResultSet::CreateTable { 
             table_name: create.table 
         })
+    }
+
+    /// Load existing table schemas from the engine
+    fn load_schemas(&mut self) -> Result<()> {
+        // Scan for all schema keys
+        let schema_prefix = "__schema__:".as_bytes().to_vec();
+        let schema_end = "__schema__~".as_bytes().to_vec(); // '~' comes after ':'
+        
+        let schema_entries = self.transaction.scan(schema_prefix..schema_end);
+        
+        for (key, value) in schema_entries {
+            // Extract table name from key
+            let key_str = String::from_utf8_lossy(&key);
+            if let Some(table_name) = key_str.strip_prefix("__schema__:") {
+                // Deserialize schema
+                if let Ok(schema) = self.deserialize_schema(&value) {
+                    self.table_schemas.insert(table_name.to_string(), schema);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Deserialize table schema from bytes
+    fn deserialize_schema(&self, data: &[u8]) -> Result<TableSchema> {
+        let data_str = String::from_utf8_lossy(data);
+        let mut columns = Vec::new();
+
+        for column_part in data_str.split('|') {
+            if column_part.is_empty() {
+                continue;
+            }
+
+            let components: Vec<&str> = column_part.splitn(3, ':').collect();
+            if components.len() >= 2 {
+                let column_name = components[0].to_string();
+                let data_type_str = components[1];
+                let constraints_str = if components.len() > 2 { components[2] } else { "" };
+
+                let data_type = match data_type_str {
+                    "INTEGER" => crate::parser::DataType::Integer,
+                    "TEXT" => crate::parser::DataType::Text,
+                    "REAL" => crate::parser::DataType::Real,
+                    "BLOB" => crate::parser::DataType::Blob,
+                    _ => crate::parser::DataType::Text, // Default fallback
+                };
+
+                let constraints = if constraints_str.is_empty() {
+                    Vec::new()
+                } else {
+                    constraints_str
+                        .split(',')
+                        .filter_map(|c| match c {
+                            "PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
+                            "NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
+                            "UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
+                            _ => None,
+                        })
+                        .collect()
+                };
+
+                columns.push(ColumnInfo {
+                    name: column_name,
+                    data_type,
+                    constraints,
+                });
+            }
+        }
+
+        Ok(TableSchema { columns })
     }
 
     /// Evaluate a condition against a row of data
