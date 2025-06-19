@@ -231,10 +231,6 @@ impl<'a> Executor<'a> {
 
         // Prepare and apply each row operation directly to the transaction
         for (_row_idx, values) in insert.values.iter().enumerate() {
-            // Create a simple row ID (in practice, you might want auto-increment or UUID)
-            let row_id = format!("row_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
-            let key = format!("{}:{}", insert.table, row_id);
-            
             // Create row data map
             let mut row_data = HashMap::new();
             for (col_idx, value) in values.iter().enumerate() {
@@ -243,9 +239,20 @@ impl<'a> Executor<'a> {
                 }
             }
 
-            // Serialize the row and add directly to the transaction
+            // Generate row key based on primary key values (IOT approach)
+            let row_key = self.generate_row_key(&insert.table, &row_data)?;
+            
+            // Check for primary key constraint violation
+            if self.primary_key_exists(&insert.table, &row_data)? {
+                return Err(crate::Error::Other(format!(
+                    "Primary key constraint violation: duplicate key in table '{}'", 
+                    insert.table
+                )));
+            }
+
+            // Serialize the row and store with primary key as the actual storage key
             let serialized_row = self.serialize_row(&row_data)?;
-            self.transaction.set(key.as_bytes().to_vec(), serialized_row)?;
+            self.transaction.set(row_key.as_bytes().to_vec(), serialized_row)?;
             rows_affected += 1;
         }
 
@@ -324,6 +331,18 @@ impl<'a> Executor<'a> {
 
     /// Execute a CREATE TABLE statement within a transaction
     fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
+        // Validate that the table has at least one primary key column
+        let has_primary_key = create.columns
+            .iter()
+            .any(|col| col.constraints.contains(&crate::parser::ColumnConstraint::PrimaryKey));
+        
+        if !has_primary_key {
+            return Err(crate::Error::Other(format!(
+                "Table '{}' must have at least one PRIMARY KEY column for IOT implementation", 
+                create.table
+            )));
+        }
+
         // Store table schema metadata
         let schema = TableSchema {
             columns: create.columns.iter().map(|col| ColumnInfo {
@@ -493,5 +512,91 @@ impl<'a> Executor<'a> {
     /// Get a mutable reference to the underlying transaction
     pub fn transaction_mut(&mut self) -> &mut crate::engine::Transaction<'a> {
         &mut self.transaction
+    }
+
+    /// Get the primary key column(s) for a table
+    fn get_primary_key_columns(&self, table_name: &str) -> Result<Vec<String>> {
+        if let Some(schema) = self.table_schemas.get(table_name) {
+            let pk_columns: Vec<String> = schema.columns
+                .iter()
+                .filter(|col| col.constraints.contains(&crate::parser::ColumnConstraint::PrimaryKey))
+                .map(|col| col.name.clone())
+                .collect();
+            
+            if pk_columns.is_empty() {
+                Err(crate::Error::Other(format!(
+                    "Table '{}' must have a primary key column", table_name
+                )))
+            } else {
+                Ok(pk_columns)
+            }
+        } else {
+            Err(crate::Error::Other(format!("Table '{}' not found", table_name)))
+        }
+    }
+
+    /// Generate a row key based on primary key values (IOT approach)
+    fn generate_row_key(&self, table_name: &str, row_data: &HashMap<String, SqlValue>) -> Result<String> {
+        let pk_columns = self.get_primary_key_columns(table_name)?;
+        
+        let pk_values: Result<Vec<String>> = pk_columns
+            .iter()
+            .map(|col| {
+                match row_data.get(col) {
+                    Some(SqlValue::Integer(i)) => Ok(format!("{:020}", i)), // Zero-padded for sorting
+                    Some(SqlValue::Text(s)) => Ok(s.clone()),
+                    Some(SqlValue::Real(r)) => Ok(format!("{:020.10}", r)), // Fixed precision for sorting
+                    Some(SqlValue::Null) => Err(crate::Error::Other(format!(
+                        "Primary key column '{}' cannot be NULL", col
+                    ))),
+                    None => Err(crate::Error::Other(format!(
+                        "Primary key column '{}' is required", col
+                    ))),
+                }
+            })
+            .collect();
+
+        let pk_values = pk_values?;
+        
+        // Create clustered key: table:pk_value1:pk_value2:...
+        Ok(format!("{}:{}", table_name, pk_values.join(":")))
+    }
+
+    /// Check if a primary key already exists (for duplicate prevention)
+    fn primary_key_exists(&mut self, table_name: &str, row_data: &HashMap<String, SqlValue>) -> Result<bool> {
+        let row_key = self.generate_row_key(table_name, row_data)?;
+        
+        // Check if key exists in the transaction state
+        let key_bytes = row_key.as_bytes().to_vec();
+        Ok(self.transaction.get(&key_bytes).is_some())
+    }
+
+    /// Direct lookup by primary key (efficient IOT access)
+    fn get_row_by_primary_key(&mut self, table_name: &str, pk_values: &HashMap<String, SqlValue>) -> Result<Option<HashMap<String, SqlValue>>> {
+        let row_key = self.generate_row_key(table_name, pk_values)?;
+        
+        if let Some(value) = self.transaction.get(row_key.as_bytes()) {
+            Ok(Some(self.deserialize_row(&value)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Extract primary key values from a row for efficient operations
+    fn extract_primary_key_values(&self, table_name: &str, row_data: &HashMap<String, SqlValue>) -> Result<HashMap<String, SqlValue>> {
+        let pk_columns = self.get_primary_key_columns(table_name)?;
+        let mut pk_values = HashMap::new();
+        
+        for pk_col in pk_columns {
+            if let Some(value) = row_data.get(&pk_col) {
+                pk_values.insert(pk_col, value.clone());
+            } else {
+                return Err(crate::Error::Other(format!(
+                    "Primary key column '{}' missing from row data", pk_col
+                )));
+            }
+        }
+        
+        Ok(pk_values)
     }
 }
