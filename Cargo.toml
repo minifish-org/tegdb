@@ -35,6 +35,11 @@ name = "engine_seq_benchmark"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "parser_benchmark"
+harness = false
+required-features = ["dev"]
+
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []
