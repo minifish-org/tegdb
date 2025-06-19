@@ -20,6 +20,7 @@ pub enum Statement {
     Update(UpdateStatement),
     Delete(DeleteStatement),
     CreateTable(CreateTableStatement),
+    DropTable(DropTableStatement),
     Begin,
     Commit,
     Rollback,
@@ -58,6 +59,12 @@ pub struct DeleteStatement {
 pub struct CreateTableStatement {
     pub table: String,
     pub columns: Vec<ColumnDefinition>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropTableStatement {
+    pub table: String,
+    pub if_exists: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +152,7 @@ pub fn parse_sql(input: &str) -> IResult<&str, Statement> {
             map(parse_update, Statement::Update),
             map(parse_delete, Statement::Delete),
             map(parse_create_table, Statement::CreateTable),
+            map(parse_drop_table, Statement::DropTable),
             map(parse_begin, |_| Statement::Begin),
             map(parse_commit, |_| Statement::Commit),
             map(parse_rollback, |_| Statement::Rollback),
@@ -294,6 +302,45 @@ fn parse_create_table(input: &str) -> IResult<&str, CreateTableStatement> {
         input,
         CreateTableStatement { table, columns },
     ))
+}
+
+// Parse DROP TABLE statement
+fn parse_drop_table(input: &str) -> IResult<&str, DropTableStatement> {
+    let (input, _) = tag_no_case("DROP")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, _) = tag_no_case("TABLE")(input)?;
+    let (input, _) = multispace1(input)?;
+    
+    // Try to parse optional "IF EXISTS"
+    let (input, if_exists) = opt(tuple((
+        tag_no_case("IF"),
+        multispace1,
+        tag_no_case("EXISTS"),
+        multispace1,
+    )))(input)?;
+    
+    let (input, table) = parse_drop_table_identifier(input)?;
+
+    Ok((
+        input,
+        DropTableStatement {
+            table,
+            if_exists: if_exists.is_some(),
+        },
+    ))
+}
+
+// Parse identifier but reject reserved keywords for DROP TABLE context
+fn parse_drop_table_identifier(input: &str) -> IResult<&str, String> {
+    // First check if the next token is a reserved keyword that would be invalid as a table name
+    if let Ok((_, _)) = tag_no_case::<&str, &str, nom::error::Error<&str>>("IF")(input) {
+        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+    }
+    if let Ok((_, _)) = tag_no_case::<&str, &str, nom::error::Error<&str>>("EXISTS")(input) {
+        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+    }
+    
+    parse_identifier(input)
 }
 
 // Parse BEGIN statement

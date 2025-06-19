@@ -608,3 +608,116 @@ fn test_parse_syntax_error_cases() {
         assert!(result.is_err(), "Expected syntax error for: {}", sql);
     }
 }
+
+#[test]
+fn test_parse_drop_table() {
+    let sql = "DROP TABLE users";
+    let result = parse_sql(sql);
+    assert!(result.is_ok());
+    let (_, statement) = result.unwrap();
+    match statement {
+        Statement::DropTable(drop) => {
+            assert_eq!(drop.table, "users");
+            assert_eq!(drop.if_exists, false);
+        }
+        _ => panic!("Expected DROP TABLE statement"),
+    }
+}
+
+#[test]
+fn test_parse_drop_table_if_exists() {
+    let sql = "DROP TABLE IF EXISTS users";
+    let result = parse_sql(sql);
+    assert!(result.is_ok());
+    let (_, statement) = result.unwrap();
+    match statement {
+        Statement::DropTable(drop) => {
+            assert_eq!(drop.table, "users");
+            assert_eq!(drop.if_exists, true);
+        }
+        _ => panic!("Expected DROP TABLE statement"),
+    }
+}
+
+#[test]
+fn test_parse_drop_table_case_insensitive() {
+    let test_cases = vec![
+        "drop table users",
+        "DROP table users",
+        "Drop Table users",
+        "DROP TABLE users",
+        "drop table if exists users",
+        "DROP TABLE IF EXISTS users",
+        "Drop Table If Exists users",
+    ];
+
+    for sql in test_cases {
+        let result = parse_sql(sql);
+        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        let (_, statement) = result.unwrap();
+        match statement {
+            Statement::DropTable(drop) => {
+                assert_eq!(drop.table, "users");
+                // The if_exists flag should be set correctly based on the SQL
+                let expected_if_exists = sql.to_lowercase().contains("if exists");
+                assert_eq!(drop.if_exists, expected_if_exists);
+            }
+            _ => panic!("Expected DROP TABLE statement for: {}", sql),
+        }
+    }
+}
+
+#[test]
+fn test_parse_drop_table_with_whitespace() {
+    let sql = "   DROP    TABLE    IF    EXISTS    my_table   ";
+    let result = parse_sql(sql);
+    assert!(result.is_ok());
+    let (_, statement) = result.unwrap();
+    match statement {
+        Statement::DropTable(drop) => {
+            assert_eq!(drop.table, "my_table");
+            assert_eq!(drop.if_exists, true);
+        }
+        _ => panic!("Expected DROP TABLE statement"),
+    }
+}
+
+#[test]
+fn test_parse_drop_table_various_table_names() {
+    let test_cases = vec![
+        ("DROP TABLE users", "users"),
+        ("DROP TABLE user_accounts", "user_accounts"),
+        ("DROP TABLE _private_table", "_private_table"),
+        ("DROP TABLE table123", "table123"),
+        ("DROP TABLE a", "a"),
+    ];
+
+    for (sql, expected_table) in test_cases {
+        let result = parse_sql(sql);
+        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        let (_, statement) = result.unwrap();
+        match statement {
+            Statement::DropTable(drop) => {
+                assert_eq!(drop.table, expected_table);
+                assert_eq!(drop.if_exists, false);
+            }
+            _ => panic!("Expected DROP TABLE statement for: {}", sql),
+        }
+    }
+}
+
+#[test]
+fn test_parse_drop_table_error_cases() {
+    let error_cases = vec![
+        "DROP users",           // Missing TABLE keyword
+        "DROP TABLE",           // Missing table name
+        "DROP TABLE IF users",  // Missing EXISTS keyword after IF
+        "DROP TABLE EXISTS users", // Missing IF keyword before EXISTS
+        "DROP TABLE IF EXISTS", // Missing table name after IF EXISTS
+    ];
+
+    for sql in error_cases {
+        let result = parse_sql(sql);
+        assert!(result.is_err(), "Expected error for: {}", sql);
+    }
+}

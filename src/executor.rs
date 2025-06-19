@@ -5,7 +5,7 @@
 
 use crate::parser::{
     Statement, SelectStatement, InsertStatement, UpdateStatement, 
-    DeleteStatement, CreateTableStatement, SqlValue, Condition, 
+    DeleteStatement, CreateTableStatement, DropTableStatement, SqlValue, Condition, 
     ComparisonOperator
 };
 use crate::Result;
@@ -56,6 +56,11 @@ pub enum ResultSet {
     /// Result of a CREATE TABLE operation
     CreateTable { 
         table_name: String 
+    },
+    /// Result of a DROP TABLE operation
+    DropTable { 
+        table_name: String,
+        existed: bool, // Indicates if the table existed before dropping
     },
     /// Result of a BEGIN operation
     Begin,
@@ -123,6 +128,12 @@ impl<'a> Executor<'a> {
                     return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
                 }
                 self.execute_create_table(create)
+            }
+            Statement::DropTable(drop) => {
+                if !self.in_transaction {
+                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
+                }
+                self.execute_drop_table(drop)
             }
         }
     }
@@ -362,6 +373,73 @@ impl<'a> Executor<'a> {
 
         Ok(ResultSet::CreateTable { 
             table_name: create.table 
+        })
+    }
+
+    /// Execute a DROP TABLE statement within a transaction
+    fn execute_drop_table(&mut self, drop: DropTableStatement) -> Result<ResultSet> {
+        let schema_key = format!("__schema__:{}", drop.table);
+        
+        // Check if table exists by looking for its schema
+        let table_exists = self.transaction.get(schema_key.as_bytes()).is_some();
+
+        // Handle IF EXISTS logic
+        if !table_exists {
+            if drop.if_exists {
+                // Table doesn't exist but IF EXISTS was specified, so this is not an error
+                return Ok(ResultSet::DropTable { 
+                    table_name: drop.table,
+                    existed: false 
+                });
+            } else {
+                // Table doesn't exist and IF EXISTS was not specified, so this is an error
+                return Err(crate::Error::Other(format!(
+                    "Table '{}' does not exist", 
+                    drop.table
+                )));
+            }
+        }
+
+        // Remove the table schema from storage
+        self.transaction.delete(schema_key.as_bytes().to_vec())?;
+        
+        // Remove the table schema from memory
+        self.table_schemas.remove(&drop.table);
+
+        // Remove all data rows for this table
+        // We need to scan for all keys that start with the table name prefix
+        let table_prefix = format!("{}:", drop.table);
+        let mut keys_to_delete = Vec::new();
+        
+        // Since we don't have a scan_prefix method, we'll use a range scan
+        // from the table prefix to the next possible prefix
+        let start_key = table_prefix.as_bytes().to_vec();
+        let mut end_key = start_key.clone();
+        // Increment the last byte to create an exclusive upper bound
+        if let Some(last_byte) = end_key.last_mut() {
+            if *last_byte < 255 {
+                *last_byte += 1;
+            } else {
+                end_key.push(0);
+            }
+        } else {
+            end_key.push(0);
+        }
+
+        // Scan for all keys with the table prefix
+        let scan_results = self.transaction.scan(start_key..end_key);
+        for (key, _) in scan_results {
+            keys_to_delete.push(key);
+        }
+
+        // Delete all found keys
+        for key in keys_to_delete {
+            self.transaction.delete(key)?;
+        }
+
+        Ok(ResultSet::DropTable { 
+            table_name: drop.table,
+            existed: true 
         })
     }
 

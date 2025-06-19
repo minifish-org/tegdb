@@ -74,7 +74,7 @@ pub use executor::{Executor, ResultSet};
 pub use parser::{
     parse_sql, Statement, SqlValue, DataType, ColumnConstraint, ComparisonOperator, 
     OrderDirection, Condition, SelectStatement, InsertStatement, UpdateStatement, 
-    DeleteStatement, CreateTableStatement, ColumnDefinition, WhereClause, 
+    DeleteStatement, CreateTableStatement, DropTableStatement, ColumnDefinition, WhereClause, 
     Assignment, OrderByClause
 };
 
