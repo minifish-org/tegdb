@@ -58,17 +58,11 @@ pub enum ResultSet {
         table_name: String 
     },
     /// Result of a BEGIN operation
-    Begin { 
-        transaction_id: String 
-    },
+    Begin,
     /// Result of a COMMIT operation
-    Commit { 
-        transaction_id: String 
-    },
+    Commit,
     /// Result of a ROLLBACK operation
-    Rollback { 
-        transaction_id: String 
-    },
+    Rollback,
 }
 
 impl<'a> Executor<'a> {
@@ -127,9 +121,8 @@ impl<'a> Executor<'a> {
         }
         
         self.in_transaction = true;
-        let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
-        Ok(ResultSet::Begin { transaction_id })
+        Ok(ResultSet::Begin)
     }
 
     /// Execute a COMMIT statement  
@@ -140,9 +133,8 @@ impl<'a> Executor<'a> {
         
         // Note: The actual commit will happen when the transaction is dropped/committed externally
         self.in_transaction = false;
-        let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
-        Ok(ResultSet::Commit { transaction_id })
+        Ok(ResultSet::Commit)
     }
 
     /// Execute a ROLLBACK statement
@@ -153,9 +145,8 @@ impl<'a> Executor<'a> {
         
         // Note: The actual rollback will happen when the transaction is dropped/rolled back externally
         self.in_transaction = false;
-        let transaction_id = format!("tx_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         
-        Ok(ResultSet::Rollback { transaction_id })
+        Ok(ResultSet::Rollback)
     }
 
     /// Execute a SELECT statement within a transaction
