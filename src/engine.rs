@@ -2,7 +2,7 @@
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use fs2::FileExt;  // For file locking
 
@@ -83,7 +83,8 @@ impl Engine {
     /// Begins a new transaction
     pub fn begin_transaction(&mut self) -> Transaction<'_> {
         let entries = Vec::new();
-        Transaction { engine: self, entries, state: TxState::Active }
+        let pending_changes = None; // Start without HashMap for better performance
+        Transaction { engine: self, entries, pending_changes, state: TxState::Active }
     }
 
     /// Retrieves a value by key (zero-copy refcounted Arc)
@@ -242,34 +243,85 @@ enum TxState {
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
     entries: Vec<Entry>,
+    // Fast lookup cache for pending changes - only populated when beneficial
+    pending_changes: Option<HashMap<Vec<u8>, usize>>,
     state: TxState,
 }
 
 impl<'a> Transaction<'a> {
+    /// Threshold for when to build the pending changes cache
+    const CACHE_THRESHOLD: usize = 10;
+    
+    /// Ensures pending_changes HashMap is built if we have enough entries
+    fn ensure_cache_if_beneficial(&mut self) {
+        if self.pending_changes.is_none() && self.entries.len() >= Self::CACHE_THRESHOLD {
+            let mut cache = HashMap::with_capacity(self.entries.len());
+            for (index, entry) in self.entries.iter().enumerate() {
+                cache.insert(entry.key.clone(), index);
+            }
+            self.pending_changes = Some(cache);
+        }
+    }
+    
     /// Inserts or updates a key-value pair in the transaction
     pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
+        // Optimized validation - avoid branching when possible
+        debug_assert!(key.len() <= self.engine.config.max_key_size, "Key too large");
+        debug_assert!(value.len() <= self.engine.config.max_value_size, "Value too large");
+        
+        // Only validate in release mode when sizes are suspicious
         if key.len() > self.engine.config.max_key_size {
             return Err(Error::KeyTooLarge(key.len()));
         }
         if value.len() > self.engine.config.max_value_size {
             return Err(Error::ValueTooLarge(value.len()));
         }
+        
+        let index = self.entries.len();
+        
+        // Update cache if it exists
+        if let Some(ref mut cache) = self.pending_changes {
+            cache.insert(key.clone(), index);
+        }
+        
         self.entries.push(Entry::new(key, Some(value)));
+        
+        // Check if we should build cache for future operations
+        self.ensure_cache_if_beneficial();
         Ok(())
     }
 
     /// Deletes a key in the transaction
     pub fn delete(&mut self, key: Vec<u8>) -> Result<()> {
+        let index = self.entries.len();
+        
+        // Update cache if it exists
+        if let Some(ref mut cache) = self.pending_changes {
+            cache.insert(key.clone(), index);
+        }
+        
         self.entries.push(Entry::new(key, None));
+        
+        // Check if we should build cache for future operations
+        self.ensure_cache_if_beneficial();
         Ok(())
     }
 
     /// Retrieves a value within the transaction (engine state + local changes)
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        // Check local changes first
-        for entry in self.entries.iter().rev() {
-            if entry.key == key {
-                return entry.value.clone();
+        // Use cache if available for fast O(1) lookup
+        if let Some(ref cache) = self.pending_changes {
+            if let Some(&index) = cache.get(key) {
+                if let Some(entry) = self.entries.get(index) {
+                    return entry.value.clone();
+                }
+            }
+        } else {
+            // Fallback to linear search for small transactions
+            for entry in self.entries.iter().rev() {
+                if entry.key == key {
+                    return entry.value.clone();
+                }
             }
         }
         // Fallback to engine's current state
@@ -278,22 +330,61 @@ impl<'a> Transaction<'a> {
 
     /// Scans a range of key-value pairs in the transaction context
     pub fn scan(&self, range: Range<Vec<u8>>) -> Vec<(Vec<u8>, Vec<u8>)> {
-        // Start with engine's current state
-        let mut merged = self.engine.key_map.clone();
+        // Always build cache for scanning since it's more efficient than cloning
+        let cache = if let Some(ref existing_cache) = self.pending_changes {
+            existing_cache
+        } else {
+            // Build temporary cache for this scan
+            let mut temp_cache = HashMap::with_capacity(self.entries.len());
+            for (index, entry) in self.entries.iter().enumerate() {
+                temp_cache.insert(entry.key.clone(), index);
+            }
+            // We can't update self.pending_changes here since we're in a &self method
+            // So we'll use the temporary cache
+            return self.scan_with_cache(&temp_cache, range);
+        };
         
-        // Apply pending entries
-        for entry in &self.entries {
-            if let Some(value) = &entry.value {
-                merged.insert(entry.key.clone(), Arc::from(value.clone().into_boxed_slice()));
+        self.scan_with_cache(cache, range)
+    }
+    
+    /// Helper method for scanning with a given cache
+    fn scan_with_cache(&self, cache: &HashMap<Vec<u8>, usize>, range: Range<Vec<u8>>) -> Vec<(Vec<u8>, Vec<u8>)> {
+        let mut result = Vec::new();
+        
+        // Step 1: Get base data from engine within range
+        for (key, value) in self.engine.key_map.range(range.clone()) {
+            // Check if this key is overridden in pending changes
+            if let Some(&index) = cache.get(key) {
+                if let Some(entry) = self.entries.get(index) {
+                    // Only include if not deleted (value is Some)
+                    if let Some(ref pending_value) = entry.value {
+                        result.push((key.clone(), pending_value.clone()));
+                    }
+                    // If deleted (value is None), skip this key
+                }
             } else {
-                merged.remove(&entry.key);
+                // No pending change, use engine value
+                result.push((key.clone(), value.as_ref().to_vec()));
             }
         }
         
-        // Collect range results
-        merged.range(range)
-            .map(|(k, v)| (k.clone(), v.as_ref().to_vec()))
-            .collect()
+        // Step 2: Add new keys from pending changes that fall within range
+        for (key, &index) in cache {
+            if key >= &range.start && key < &range.end {
+                // Only add if this key wasn't already in the engine's key_map
+                if !self.engine.key_map.contains_key(key) {
+                    if let Some(entry) = self.entries.get(index) {
+                        if let Some(ref value) = entry.value {
+                            result.push((key.clone(), value.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Step 3: Sort the result to maintain order (since we might have added out-of-order)
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        result
     }
 
     /// Commits the transaction atomically
@@ -307,6 +398,7 @@ impl<'a> Transaction<'a> {
                 }
                 
                 let entries = std::mem::take(&mut self.entries);
+                self.pending_changes = None; // Clear the cache after taking entries
                 let res = self.engine.batch(entries);
                 if res.is_ok() {
                     self.state = TxState::Committed;
@@ -319,17 +411,18 @@ impl<'a> Transaction<'a> {
 
     /// Rolls back the transaction
     pub fn rollback(&mut self) {
-        // Fast rollback: just mark as rolled back, entries will be ignored
+        // Fast rollback: just mark as rolled back, clear caches
         self.state = TxState::RolledBack;
+        self.pending_changes = None;
     }
 }
 
 impl<'a> Drop for Transaction<'a> {
     fn drop(&mut self) {
         // Automatically rollback if transaction is still active
-        // Just mark as rolled back - no need to clear entries
         if matches!(self.state, TxState::Active) {
             self.state = TxState::RolledBack;
+            self.pending_changes = None;
         }
     }
 }
