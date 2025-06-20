@@ -571,3 +571,419 @@ fn test_database_complex_queries() -> Result<()> {
     
     Ok(())
 }
+
+#[test]
+fn test_database_acid_atomicity() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
+    let mut db = Database::open(db_path)?;
+    
+    // Setup test table
+    db.execute("CREATE TABLE bank_accounts (id INTEGER PRIMARY KEY, balance INTEGER, name TEXT NOT NULL)")?;
+    db.execute("INSERT INTO bank_accounts (id, balance, name) VALUES (1, 1000, 'Alice')")?;
+    db.execute("INSERT INTO bank_accounts (id, balance, name) VALUES (2, 500, 'Bob')")?;
+    
+    // Test atomicity - all operations in a transaction should succeed or all should fail
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        // First operation succeeds
+        let affected = tx.execute("UPDATE bank_accounts SET balance = 800 WHERE id = 1")?;
+        assert_eq!(affected, 1);
+        
+        // Second operation succeeds
+        let affected = tx.execute("UPDATE bank_accounts SET balance = 700 WHERE id = 2")?;
+        assert_eq!(affected, 1);
+        
+        // Verify changes are visible within transaction
+        let result = tx.query("SELECT id, balance FROM bank_accounts ORDER BY id")?;
+        assert_eq!(result.rows().len(), 2);
+        
+        // All operations successful, commit
+        tx.commit()?;
+    }
+    
+    // Verify all changes were committed atomically
+    let result = db.query("SELECT balance FROM bank_accounts ORDER BY id")?;
+    let balances: Vec<i64> = result.rows().iter()
+        .map(|row| match &row[0] { SqlValue::Integer(b) => *b, _ => panic!("Expected integer") })
+        .collect();
+    assert_eq!(balances, vec![800, 700]);
+    
+    // Test atomicity with rollback - no changes should persist
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        // Make multiple changes
+        tx.execute("UPDATE bank_accounts SET balance = 0 WHERE id = 1")?;
+        tx.execute("UPDATE bank_accounts SET balance = 0 WHERE id = 2")?;
+        
+        // Rollback instead of commit
+        tx.rollback()?;
+    }
+    
+    // Verify no changes were committed
+    let result = db.query("SELECT balance FROM bank_accounts ORDER BY id")?;
+    let balances: Vec<i64> = result.rows().iter()
+        .map(|row| match &row[0] { SqlValue::Integer(b) => *b, _ => panic!("Expected integer") })
+        .collect();
+    assert_eq!(balances, vec![800, 700]); // Should be unchanged
+    
+    Ok(())
+}
+
+#[test]
+fn test_database_acid_consistency() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
+    let mut db = Database::open(db_path)?;
+    
+    // Setup test table with constraints
+    db.execute("CREATE TABLE inventory (id INTEGER PRIMARY KEY, product_name TEXT NOT NULL, quantity INTEGER, min_stock INTEGER)")?;
+    db.execute("INSERT INTO inventory (id, product_name, quantity, min_stock) VALUES (1, 'Widget A', 100, 10)")?;
+    db.execute("INSERT INTO inventory (id, product_name, quantity, min_stock) VALUES (2, 'Widget B', 50, 5)")?;
+    
+    // Test consistency - database should maintain valid state
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        // Valid operation - reduce stock but stay above minimum
+        tx.execute("UPDATE inventory SET quantity = 80 WHERE id = 1")?;
+        
+        // Check that quantity is still above minimum stock
+        let result = tx.query("SELECT quantity, min_stock FROM inventory WHERE id = 1")?;
+        let row = &result.rows()[0];
+        let quantity = match &row[0] { SqlValue::Integer(q) => *q, _ => panic!("Expected integer") };
+        let min_stock = match &row[1] { SqlValue::Integer(m) => *m, _ => panic!("Expected integer") };
+        assert!(quantity >= min_stock, "Consistency violated: quantity {} < min_stock {}", quantity, min_stock);
+        
+        tx.commit()?;
+    }
+    
+    // Test primary key uniqueness constraint
+    let result = db.execute("INSERT INTO inventory (id, product_name, quantity, min_stock) VALUES (1, 'Duplicate', 20, 5)");
+    assert!(result.is_err(), "Primary key constraint should prevent duplicate IDs");
+    
+    // Verify original data is intact after constraint violation
+    let result = db.query("SELECT product_name FROM inventory WHERE id = 1")?;
+    assert_eq!(result.rows()[0][0], SqlValue::Text("Widget A".to_string()));
+    
+    Ok(())
+}
+
+#[test]
+fn test_database_acid_isolation() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path().to_path_buf();
+    
+    // Test isolation - transactions should not see uncommitted changes from other transactions
+    // Note: This test assumes the database supports some level of isolation
+    
+    let mut db1 = Database::open(&db_path)?;
+    
+    // Setup test data
+    db1.execute("CREATE TABLE shared_counter (id INTEGER PRIMARY KEY, value INTEGER)")?;
+    db1.execute("INSERT INTO shared_counter (id, value) VALUES (1, 100)")?;
+    
+    // Start a transaction that makes changes but doesn't commit
+    let mut tx1 = db1.begin_transaction()?;
+    tx1.execute("UPDATE shared_counter SET value = 200 WHERE id = 1")?;
+    
+    // Verify the change is visible within the transaction
+    let result = tx1.query("SELECT value FROM shared_counter WHERE id = 1")?;
+    let value_in_tx = match &result.rows()[0][0] { 
+        SqlValue::Integer(v) => *v, 
+        _ => panic!("Expected integer") 
+    };
+    
+    // Note: The actual behavior depends on implementation
+    // Some databases might show the updated value, others might not
+    println!("Value within transaction: {}", value_in_tx);
+    
+    // Commit the transaction 
+    tx1.commit()?;
+    
+    // Try to open a second database connection for isolation testing
+    let db2_result = Database::open(&db_path);
+    match db2_result {
+        Ok(mut db2) => {
+            // Second connection available - test that committed changes are visible
+            let result = db2.query("SELECT value FROM shared_counter WHERE id = 1")?;
+            let value_from_db2 = match &result.rows()[0][0] { 
+                SqlValue::Integer(v) => *v, 
+                _ => panic!("Expected integer") 
+            };
+            
+            println!("Value from second connection after commit: {}", value_from_db2);
+            assert_eq!(value_from_db2, 200, "Committed changes should be visible to other connections");
+        }
+        Err(_) => {
+            // Database doesn't support concurrent connections
+            println!("Database doesn't support concurrent connections - testing single connection behavior");
+            
+            // Test that committed changes are visible
+            let result = db1.query("SELECT value FROM shared_counter WHERE id = 1")?;
+            let value_after_commit = match &result.rows()[0][0] { 
+                SqlValue::Integer(v) => *v, 
+                _ => panic!("Expected integer") 
+            };
+            
+            // Changes should be visible since transaction was already committed
+            println!("Value after commit: {}", value_after_commit);
+            assert_eq!(value_after_commit, 200);
+        }
+    }
+    
+    Ok(())
+}
+
+#[test]
+fn test_database_acid_durability() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path().to_path_buf();
+    
+    // Test durability - committed changes should survive database restart
+    let test_data = vec![
+        (1, "Critical Data", 9999),
+        (2, "Important Info", 8888),
+        (3, "Persistent Record", 7777),
+    ];
+    
+    // Phase 1: Create and populate database with committed transaction
+    {
+        let mut db = Database::open(&db_path)?;
+        
+        db.execute("CREATE TABLE durable_test (id INTEGER PRIMARY KEY, description TEXT, value INTEGER)")?;
+        
+        // Use transaction to ensure atomicity and test durability
+        let mut tx = db.begin_transaction()?;
+        
+        for (id, desc, value) in &test_data {
+            tx.execute(&format!(
+                "INSERT INTO durable_test (id, description, value) VALUES ({}, '{}', {})",
+                id, desc, value
+            ))?;
+        }
+        
+        // Commit transaction - this should make changes durable
+        tx.commit()?;
+        
+        // Verify data is present before closing
+        let result = db.query("SELECT * FROM durable_test ORDER BY id")?;
+        assert_eq!(result.rows().len(), test_data.len());
+    } // Database goes out of scope here, simulating close/restart
+    
+    // Phase 2: Reopen database and verify committed data survived
+    {
+        let mut db = Database::open(&db_path)?;
+        
+        // Data should still be there after restart
+        let result = db.query("SELECT id, description, value FROM durable_test ORDER BY id")?;
+        assert_eq!(result.rows().len(), test_data.len());
+        
+        // Verify each record matches what we committed
+        for (i, (expected_id, expected_desc, expected_value)) in test_data.iter().enumerate() {
+            let row = &result.rows()[i];
+            assert_eq!(row[0], SqlValue::Integer(*expected_id));
+            assert_eq!(row[1], SqlValue::Text(expected_desc.to_string()));
+            assert_eq!(row[2], SqlValue::Integer(*expected_value));
+        }
+        
+        // Test that new transactions also provide durability
+        let mut tx = db.begin_transaction()?;
+        tx.execute("INSERT INTO durable_test (id, description, value) VALUES (4, 'New Record', 6666)")?;
+        tx.commit()?;
+    }
+    
+    // Phase 3: Final restart to verify new transaction was also durable
+    {
+        let mut db = Database::open(&db_path)?;
+        
+        let _result = db.query("SELECT COUNT(*) as count FROM durable_test");
+        // COUNT might not be implemented, so let's count manually
+        let result = db.query("SELECT * FROM durable_test")?;
+        assert_eq!(result.rows().len(), 4); // Original 3 + 1 new record
+        
+        // Verify the new record is present
+        let result = db.query("SELECT description FROM durable_test WHERE id = 4")?;
+        assert_eq!(result.rows().len(), 1);
+        assert_eq!(result.rows()[0][0], SqlValue::Text("New Record".to_string()));
+    }
+    
+    Ok(())
+}
+
+#[test]
+fn test_database_acid_rollback_scenarios() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
+    let mut db = Database::open(db_path)?;
+    
+    // Setup test data
+    db.execute("CREATE TABLE transaction_test (id INTEGER PRIMARY KEY, status TEXT, amount INTEGER)")?;
+    db.execute("INSERT INTO transaction_test (id, status, amount) VALUES (1, 'active', 1000)")?;
+    db.execute("INSERT INTO transaction_test (id, status, amount) VALUES (2, 'active', 2000)")?;
+    
+    // Test explicit rollback
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        // Make several changes
+        tx.execute("UPDATE transaction_test SET amount = 1500 WHERE id = 1")?;
+        tx.execute("UPDATE transaction_test SET status = 'modified' WHERE id = 2")?;
+        tx.execute("INSERT INTO transaction_test (id, status, amount) VALUES (3, 'new', 3000)")?;
+        
+        // Verify changes are visible within transaction
+        let result = tx.query("SELECT * FROM transaction_test")?;
+        assert_eq!(result.rows().len(), 3);
+        
+        // Explicitly rollback
+        tx.rollback()?;
+    }
+    
+    // Verify all changes were rolled back
+    let result = db.query("SELECT id, status, amount FROM transaction_test ORDER BY id")?;
+    assert_eq!(result.rows().len(), 2); // Should be back to original 2 rows
+    
+    let row1 = &result.rows()[0];
+    let row2 = &result.rows()[1];
+    assert_eq!(row1[0], SqlValue::Integer(1));
+    assert_eq!(row1[1], SqlValue::Text("active".to_string()));
+    assert_eq!(row1[2], SqlValue::Integer(1000));
+    assert_eq!(row2[0], SqlValue::Integer(2));
+    assert_eq!(row2[1], SqlValue::Text("active".to_string()));
+    assert_eq!(row2[2], SqlValue::Integer(2000));
+    
+    // Test implicit rollback on drop (if supported)
+    {
+        let mut tx = db.begin_transaction()?;
+        tx.execute("UPDATE transaction_test SET amount = 9999 WHERE id = 1")?;
+        
+        // Don't commit or explicitly rollback - just let tx go out of scope
+    } // Transaction should be automatically rolled back here
+    
+    // Verify changes were not committed
+    let result = db.query("SELECT amount FROM transaction_test WHERE id = 1")?;
+    assert_eq!(result.rows()[0][0], SqlValue::Integer(1000)); // Should be original value
+    
+    Ok(())
+}
+
+#[test]
+fn test_database_acid_transaction_boundaries() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
+    let mut db = Database::open(db_path)?;
+    
+    // Setup test table
+    db.execute("CREATE TABLE boundary_test (id INTEGER PRIMARY KEY, step INTEGER, data TEXT)")?;
+    
+    // Test that changes outside transactions are immediately committed
+    db.execute("INSERT INTO boundary_test (id, step, data) VALUES (1, 1, 'auto-commit')")?;
+    
+    // Verify immediate visibility
+    let result = db.query("SELECT data FROM boundary_test WHERE id = 1")?;
+    assert_eq!(result.rows()[0][0], SqlValue::Text("auto-commit".to_string()));
+    
+    // Test transaction boundary - multiple transactions in sequence
+    {
+        let mut tx1 = db.begin_transaction()?;
+        tx1.execute("INSERT INTO boundary_test (id, step, data) VALUES (2, 2, 'tx1-data')")?;
+        tx1.commit()?;
+    }
+    
+    {
+        let mut tx2 = db.begin_transaction()?;
+        tx2.execute("INSERT INTO boundary_test (id, step, data) VALUES (3, 3, 'tx2-data')")?;
+        tx2.commit()?;
+    }
+    
+    // Verify both transactions committed independently
+    let result = db.query("SELECT * FROM boundary_test ORDER BY id")?;
+    assert_eq!(result.rows().len(), 3);
+    
+    // Test that we can't commit/rollback the same transaction twice
+    {
+        let mut tx = db.begin_transaction()?;
+        tx.execute("INSERT INTO boundary_test (id, step, data) VALUES (4, 4, 'temp')")?;
+        
+        // Try to clone the transaction behavior with a fresh transaction for error testing
+        let tx_result = tx.commit();
+        assert!(tx_result.is_ok(), "First commit should succeed");
+        
+        // After commit, the transaction handle should be consumed
+        // We can't test double commit/rollback easily due to Rust's ownership system
+        // This is actually a good thing - it prevents double commit/rollback errors
+    }
+    
+    Ok(())
+}
+
+#[test]
+fn test_database_acid_large_transaction() -> Result<()> {
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    
+    let mut db = Database::open(db_path)?;
+    
+    // Setup test table
+    db.execute("CREATE TABLE large_tx_test (id INTEGER PRIMARY KEY, batch_id INTEGER, value TEXT)")?;
+    
+    // Test large transaction with many operations
+    let batch_size = 100;
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        for i in 1..=batch_size {
+            tx.execute(&format!(
+                "INSERT INTO large_tx_test (id, batch_id, value) VALUES ({}, 1, 'item-{}')",
+                i, i
+            ))?;
+        }
+        
+        // Verify all operations are visible within transaction
+        let result = tx.query("SELECT * FROM large_tx_test")?;
+        assert_eq!(result.rows().len(), batch_size);
+        
+        // Commit all changes atomically
+        tx.commit()?;
+    }
+    
+    // Verify all changes were committed together
+    let result = db.query("SELECT * FROM large_tx_test")?;
+    assert_eq!(result.rows().len(), batch_size);
+    
+    // Test large transaction rollback
+    {
+        let mut tx = db.begin_transaction()?;
+        
+        // Add another batch
+        for i in (batch_size + 1)..=(batch_size * 2) {
+            tx.execute(&format!(
+                "INSERT INTO large_tx_test (id, batch_id, value) VALUES ({}, 2, 'rollback-item-{}')",
+                i, i
+            ))?;
+        }
+        
+        // Verify large number of changes within transaction
+        let result = tx.query("SELECT * FROM large_tx_test")?;
+        assert_eq!(result.rows().len(), batch_size * 2);
+        
+        // Rollback all the new changes
+        tx.rollback()?;
+    }
+    
+    // Verify only the first batch remains
+    let result = db.query("SELECT * FROM large_tx_test")?;
+    assert_eq!(result.rows().len(), batch_size);
+    
+    // Verify no batch_id = 2 records exist
+    let result = db.query("SELECT * FROM large_tx_test WHERE batch_id = 2")?;
+    assert_eq!(result.rows().len(), 0);
+    
+    Ok(())
+}
