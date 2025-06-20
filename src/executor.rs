@@ -568,52 +568,14 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Serialize a row to bytes (simplified JSON-like format)
+    /// Serialize a row to bytes using efficient binary format
     fn serialize_row(&self, row_data: &HashMap<String, SqlValue>) -> Result<Vec<u8>> {
-        // Simple serialization format: column_name:value_type:value|...
-        let serialized = row_data
-            .iter()
-            .map(|(k, v)| match v {
-                SqlValue::Integer(i) => format!("{}:int:{}", k, i),
-                SqlValue::Real(r) => format!("{}:real:{}", k, r),
-                SqlValue::Text(s) => format!("{}:text:{}", k, s),
-                SqlValue::Null => format!("{}:null:", k),
-            })
-            .collect::<Vec<_>>()
-            .join("|");
-
-        Ok(serialized.into_bytes())
+        Ok(crate::serialization::BinaryRowSerializer::serialize(row_data))
     }
 
-    /// Deserialize a row from bytes
+    /// Deserialize a row from bytes using efficient binary format
     fn deserialize_row(&self, data: &[u8]) -> Result<HashMap<String, SqlValue>> {
-        let data_str = String::from_utf8_lossy(data);
-        let mut row_data = HashMap::new();
-
-        for part in data_str.split('|') {
-            if part.is_empty() {
-                continue;
-            }
-
-            let components: Vec<&str> = part.splitn(3, ':').collect();
-            if components.len() >= 3 {
-                let column_name = components[0].to_string();
-                let value_type = components[1];
-                let value_str = components[2];
-
-                let value = match value_type {
-                    "int" => SqlValue::Integer(value_str.parse().unwrap_or(0)),
-                    "real" => SqlValue::Real(value_str.parse().unwrap_or(0.0)),
-                    "text" => SqlValue::Text(value_str.to_string()),
-                    "null" => SqlValue::Null,
-                    _ => SqlValue::Null,
-                };
-
-                row_data.insert(column_name, value);
-            }
-        }
-
-        Ok(row_data)
+        crate::serialization::BinaryRowSerializer::deserialize(data)
     }
 
     /// Serialize table schema for storage

@@ -75,6 +75,11 @@ name = "database_vs_sqlite_benchmark"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "bottleneck_analysis"
+harness = false
+required-features = ["dev"]
+
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []

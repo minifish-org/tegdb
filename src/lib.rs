@@ -46,9 +46,10 @@
 //!
 //! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
 //! for direct engine manipulation.
-mod engine;
-mod error;
-mod database;
+pub mod engine;
+pub mod error;
+pub mod database;
+pub mod serialization;
 
 // Make these modules public when dev feature is enabled so tests can access them
 #[cfg(feature = "dev")]
