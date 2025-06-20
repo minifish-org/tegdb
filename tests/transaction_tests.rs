@@ -104,10 +104,12 @@ fn test_transaction_snapshot_isolation() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
     engine.set(b"k", b"v1".to_vec())?;
     engine.set(b"k", b"v2".to_vec())?;
-    let mut tx = engine.begin_transaction();
-    assert_eq!(tx.get(b"k"), Some(b"v2".to_vec()));
-    tx.set(b"k".to_vec(), b"v3".to_vec())?;
-    tx.commit()?;
+    {
+        let mut tx = engine.begin_transaction();
+        assert_eq!(tx.get(b"k"), Some(b"v2".to_vec()));
+        tx.set(b"k".to_vec(), b"v3".to_vec())?;
+        tx.commit()?;
+    }
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"v3".to_vec()));
     fs::remove_file(path)?;
     Ok(())
@@ -222,13 +224,15 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     let path = temp_db_path("tx_large");
     if path.exists() { fs::remove_file(&path)?; }
     let mut engine = Engine::new(path.clone())?;
-    let mut tx = engine.begin_transaction();
-    for i in 0..5000 {
-        let key = format!("key{}", i).into_bytes();
-        let value = format!("val{}", i).into_bytes();
-        tx.set(key, value)?;
+    {
+        let mut tx = engine.begin_transaction();
+        for i in 0..5000 {
+            let key = format!("key{}", i).into_bytes();
+            let value = format!("val{}", i).into_bytes();
+            tx.set(key, value)?;
+        }
+        tx.commit()?;
     }
-    tx.commit()?;
     assert_eq!(engine.len(), 5000);
     assert_eq!(engine.get(b"key0").map(|a| a.as_ref().to_vec()), Some(b"val0".to_vec()));
     assert_eq!(engine.get(b"key4999").map(|a| a.as_ref().to_vec()), Some(b"val4999".to_vec()));
@@ -304,14 +308,13 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     engine.set(b"a", b"1".to_vec())?;
     engine.set(b"b", b"2".to_vec())?;
     engine.set(b"c", b"3".to_vec())?;
-    let tx = {
+    let result = {
         let mut tx = engine.begin_transaction();
         tx.set(b"b".to_vec(), b"2_tx".to_vec())?;
         tx.delete(b"c".to_vec())?;
         tx.set(b"d".to_vec(), b"4".to_vec())?;
-        tx
+        tx.scan(b"a".to_vec()..b"z".to_vec())
     };
-    let result = tx.scan(b"a".to_vec()..b"z".to_vec());
     let expected = vec![
         (b"a".to_vec(), b"1".to_vec()),
         (b"b".to_vec(), b"2_tx".to_vec()),
@@ -371,11 +374,13 @@ fn test_transaction_key_size_limit() {
     let mut config = EngineConfig::default();
     config.max_key_size = 1;
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
-    let mut tx = engine.begin_transaction();
-    let err = tx.set(vec![0, 1], b"v".to_vec());
-    assert!(err.is_err());
-    tx.set(b"a".to_vec(), b"v".to_vec()).unwrap();
-    tx.commit().unwrap();
+    {
+        let mut tx = engine.begin_transaction();
+        let err = tx.set(vec![0, 1], b"v".to_vec());
+        assert!(err.is_err());
+        tx.set(b"a".to_vec(), b"v".to_vec()).unwrap();
+        tx.commit().unwrap();
+    }
     assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"v".to_vec()));
     fs::remove_file(path).unwrap();
 }
@@ -387,11 +392,13 @@ fn test_transaction_value_size_limit() {
     let mut config = EngineConfig::default();
     config.max_value_size = 1;
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
-    let mut tx = engine.begin_transaction();
-    let err = tx.set(b"k".to_vec(), vec![0, 1]);
-    assert!(err.is_err());
-    tx.set(b"k".to_vec(), vec![0]).unwrap();
-    tx.commit().unwrap();
+    {
+        let mut tx = engine.begin_transaction();
+        let err = tx.set(b"k".to_vec(), vec![0, 1]);
+        assert!(err.is_err());
+        tx.set(b"k".to_vec(), vec![0]).unwrap();
+        tx.commit().unwrap();
+    }
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(vec![0]));
     fs::remove_file(path).unwrap();
 }
@@ -403,12 +410,14 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     let mut config = EngineConfig::default();
     config.max_key_size = 1;
     let mut engine = Engine::with_config(path.clone(), config)?;
-    let mut tx = engine.begin_transaction();
-    tx.set(b"a".to_vec(), b"1".to_vec())?;
-    let err = tx.set(vec![0,1], b"2".to_vec());
-    assert!(err.is_err());
-    tx.set(b"b".to_vec(), b"3".to_vec())?;
-    tx.commit()?;
+    {
+        let mut tx = engine.begin_transaction();
+        tx.set(b"a".to_vec(), b"1".to_vec())?;
+        let err = tx.set(vec![0,1], b"2".to_vec());
+        assert!(err.is_err());
+        tx.set(b"b".to_vec(), b"3".to_vec())?;
+        tx.commit()?;
+    }
     assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
     assert_eq!(engine.get(b"b").map(|a| a.as_ref().to_vec()), Some(b"3".to_vec()));
     assert_eq!(engine.get(&vec![0,1]), None);

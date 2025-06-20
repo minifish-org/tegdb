@@ -72,7 +72,7 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         let mut db = Database::open(db_path)?;
         
         // Create a table
-        db.execute("CREATE TABLE users (id INTEGER, name TEXT)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")?;
         
         // Insert data
         db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
@@ -82,7 +82,7 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         assert_eq!(result.rows().len(), 1);
         
         // Create another table in the same database instance
-        db.execute("CREATE TABLE products (id INTEGER, name TEXT, price REAL)")?;
+        db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
         
         // Both tables should work
         let users_result = db.query("SELECT * FROM users")?;

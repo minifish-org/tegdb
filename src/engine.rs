@@ -265,11 +265,7 @@ impl<'a> Transaction<'a> {
     
     /// Inserts or updates a key-value pair in the transaction
     pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
-        // Optimized validation - avoid branching when possible
-        debug_assert!(key.len() <= self.engine.config.max_key_size, "Key too large");
-        debug_assert!(value.len() <= self.engine.config.max_value_size, "Value too large");
-        
-        // Only validate in release mode when sizes are suspicious
+        // Validate input sizes
         if key.len() > self.engine.config.max_key_size {
             return Err(Error::KeyTooLarge(key.len()));
         }
@@ -411,8 +407,9 @@ impl<'a> Transaction<'a> {
 
     /// Rolls back the transaction
     pub fn rollback(&mut self) {
-        // Fast rollback: just mark as rolled back, clear caches
+        // Fast rollback: just mark as rolled back, clear all changes
         self.state = TxState::RolledBack;
+        self.entries.clear();
         self.pending_changes = None;
     }
 }
@@ -422,6 +419,7 @@ impl<'a> Drop for Transaction<'a> {
         // Automatically rollback if transaction is still active
         if matches!(self.state, TxState::Active) {
             self.state = TxState::RolledBack;
+            self.entries.clear();
             self.pending_changes = None;
         }
     }

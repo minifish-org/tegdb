@@ -83,14 +83,78 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Create a new SQL executor with the given TegDB transaction (legacy method for tests)
-    /// Note: This loads schemas on each executor creation, which is less efficient than new_with_schemas
+    /// Create a new SQL executor with the given TegDB transaction and auto-load schemas
     pub fn new(transaction: crate::engine::Transaction<'a>) -> Self {
+        let table_schemas = Self::load_schemas_from_transaction(&transaction);
         Self {
             transaction,
-            table_schemas: HashMap::new(), // Start with empty schemas for test compatibility
+            table_schemas,
             in_transaction: false,
         }
+    }
+
+    /// Load all table schemas from the transaction by scanning for schema keys
+    fn load_schemas_from_transaction(transaction: &crate::engine::Transaction<'a>) -> HashMap<String, TableSchema> {
+        let mut schemas = HashMap::new();
+        
+        // Scan for schema keys (format: __schema__:{table_name})
+        let schema_range = b"__schema__:".to_vec()..b"__schema__~".to_vec();
+        let schema_entries = transaction.scan(schema_range);
+        
+        for (key, value) in schema_entries {
+            if let Ok(key_str) = std::str::from_utf8(&key) {
+                if let Some(table_name) = key_str.strip_prefix("__schema__:") {
+                    if let Ok(schema) = Self::deserialize_schema(&value) {
+                        schemas.insert(table_name.to_string(), schema);
+                    }
+                }
+            }
+        }
+        
+        schemas
+    }
+
+    /// Deserialize a schema from bytes
+    fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
+        let serialized = std::str::from_utf8(data)
+            .map_err(|_| crate::Error::Other("Invalid schema data encoding".to_string()))?;
+        
+        let mut columns = Vec::new();
+        
+        for column_data in serialized.split('|') {
+            let parts: Vec<&str> = column_data.split(':').collect();
+            if parts.len() != 3 {
+                continue;
+            }
+            
+            let name = parts[0].to_string();
+            let data_type = match parts[1] {
+                "INTEGER" => crate::parser::DataType::Integer,
+                "TEXT" => crate::parser::DataType::Text,
+                "REAL" => crate::parser::DataType::Real,
+                "BLOB" => crate::parser::DataType::Blob,
+                _ => continue,
+            };
+            
+            let constraints = if parts[2].is_empty() {
+                Vec::new()
+            } else {
+                parts[2].split(',').filter_map(|c| match c {
+                    "PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
+                    "NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
+                    "UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
+                    _ => None,
+                }).collect()
+            };
+            
+            columns.push(ColumnInfo {
+                name,
+                data_type,
+                constraints,
+            });
+        }
+        
+        Ok(TableSchema { columns })
     }
 
     /// Execute a parsed SQL statement with explicit transaction control
