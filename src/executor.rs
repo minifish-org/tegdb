@@ -84,6 +84,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Create a new SQL executor with the given TegDB transaction and auto-load schemas
+    #[allow(dead_code)]
     pub fn new(transaction: crate::engine::Transaction<'a>) -> Self {
         let table_schemas = Self::load_schemas_from_transaction(&transaction);
         Self {
@@ -305,7 +306,7 @@ impl<'a> Executor<'a> {
         let mut rows_affected = 0;
 
         // Prepare and apply each row operation directly to the transaction
-        for (_row_idx, values) in insert.values.iter().enumerate() {
+        for values in insert.values.iter() {
             // Create row data map
             let mut row_data = HashMap::new();
             for (col_idx, value) in values.iter().enumerate() {
@@ -647,6 +648,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Get the underlying transaction reference
+    #[allow(dead_code)]
     pub fn transaction(&self) -> &crate::engine::Transaction<'a> {
         &self.transaction
     }
@@ -714,6 +716,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Direct lookup by primary key (efficient IOT access)
+    #[allow(dead_code)]
     fn get_row_by_primary_key(&mut self, table_name: &str, pk_values: &HashMap<String, SqlValue>) -> Result<Option<HashMap<String, SqlValue>>> {
         let row_key = self.generate_row_key(table_name, pk_values)?;
         
@@ -725,6 +728,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Extract primary key values from a row for efficient operations
+    #[allow(dead_code)]
     fn extract_primary_key_values(&self, table_name: &str, row_data: &HashMap<String, SqlValue>) -> Result<HashMap<String, SqlValue>> {
         let pk_columns = self.get_primary_key_columns(table_name)?;
         let mut pk_values = HashMap::new();

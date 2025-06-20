@@ -220,7 +220,7 @@ pub struct Row<'a> {
     index: usize,
 }
 
-impl<'a> Row<'a> {
+impl Row<'_> {
     /// Get value by column name
     pub fn get(&self, column: &str) -> Option<&SqlValue> {
         self.columns.iter()

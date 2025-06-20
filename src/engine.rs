@@ -248,7 +248,7 @@ pub struct Transaction<'a> {
     state: TxState,
 }
 
-impl<'a> Transaction<'a> {
+impl Transaction<'_> {
     /// Threshold for when to build the pending changes cache
     const CACHE_THRESHOLD: usize = 10;
     
@@ -414,7 +414,7 @@ impl<'a> Transaction<'a> {
     }
 }
 
-impl<'a> Drop for Transaction<'a> {
+impl Drop for Transaction<'_> {
     fn drop(&mut self) {
         // Automatically rollback if transaction is still active
         if matches!(self.state, TxState::Active) {
