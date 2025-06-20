@@ -136,7 +136,7 @@ fn bench_repeated_parsing(c: &mut Criterion) {
                     for _ in 0..count {
                         for sql in &sql_statements {
                             let result = parse_sql(black_box(sql));
-                            black_box(result);
+                            let _ = black_box(result);
                         }
                     }
                 })
@@ -168,7 +168,7 @@ fn bench_statement_validation(c: &mut Criterion) {
         b.iter(|| {
             for sql in &valid_statements {
                 let result = parse_sql(black_box(sql));
-                black_box(result);
+                let _ = black_box(result);
             }
         })
     });
@@ -177,7 +177,7 @@ fn bench_statement_validation(c: &mut Criterion) {
         b.iter(|| {
             for sql in &invalid_statements {
                 let result = parse_sql(black_box(sql));
-                black_box(result);
+                let _ = black_box(result);
             }
         })
     });

@@ -12,6 +12,25 @@ use nom::{
     sequence::{delimited, pair, preceded, tuple},
     IResult,
 };
+use std::collections::HashMap;
+
+// String interning for common SQL keywords and identifiers
+thread_local! {
+    static STRING_CACHE: std::cell::RefCell<HashMap<String, String>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn intern_string(s: &str) -> String {
+    STRING_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(interned) = cache.get(s) {
+            interned.clone()
+        } else {
+            let owned = s.to_string();
+            cache.insert(owned.clone(), owned.clone());
+            owned
+        }
+    })
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -142,20 +161,23 @@ pub enum SqlValue {
     Null,
 }
 
-// Parser implementation
+// Parse main SQL statement with fast paths for common cases
 pub fn parse_sql(input: &str) -> IResult<&str, Statement> {
     delimited(
         multispace0,
         alt((
+            // Fast path for transaction commands (most common)
+            map(parse_begin, |_| Statement::Begin),
+            map(parse_commit, |_| Statement::Commit),
+            map(parse_rollback, |_| Statement::Rollback),
+            // Data manipulation commands
             map(parse_select, Statement::Select),
             map(parse_insert, Statement::Insert),
             map(parse_update, Statement::Update),
             map(parse_delete, Statement::Delete),
+            // DDL commands (least common)
             map(parse_create_table, Statement::CreateTable),
             map(parse_drop_table, Statement::DropTable),
-            map(parse_begin, |_| Statement::Begin),
-            map(parse_commit, |_| Statement::Commit),
-            map(parse_rollback, |_| Statement::Rollback),
         )),
         multispace0,
     )(input)
@@ -364,13 +386,20 @@ fn parse_rollback(input: &str) -> IResult<&str, ()> {
     Ok((input, ()))
 }
 
-// Parse column list (for SELECT)
+// Parse column list (for SELECT) - optimized version
 fn parse_column_list(input: &str) -> IResult<&str, Vec<String>> {
     alt((
         map(char('*'), |_| vec!["*".to_string()]),
-        separated_list1(
-            delimited(multispace0, char(','), multispace0),
-            parse_identifier,
+        map(
+            separated_list1(
+                delimited(multispace0, char(','), multispace0),
+                parse_identifier,
+            ),
+            |mut columns| {
+                // Pre-allocate capacity for better performance with large column lists
+                columns.shrink_to_fit();
+                columns
+            }
         ),
     ))(input)
 }
@@ -436,16 +465,18 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     ))
 }
 
-// Parse comparison operators
+// Parse comparison operators - optimized order for common cases
 fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
     alt((
-        map(tag("<="), |_| ComparisonOperator::LessThanOrEqual),
-        map(tag(">="), |_| ComparisonOperator::GreaterThanOrEqual),
-        map(tag("!="), |_| ComparisonOperator::NotEqual),
-        map(tag("<>"), |_| ComparisonOperator::NotEqual),
+        // Most common operators first
         map(tag("="), |_| ComparisonOperator::Equal),
         map(tag("<"), |_| ComparisonOperator::LessThan),
         map(tag(">"), |_| ComparisonOperator::GreaterThan),
+        map(tag("!="), |_| ComparisonOperator::NotEqual),
+        // Multi-character operators
+        map(tag("<="), |_| ComparisonOperator::LessThanOrEqual),
+        map(tag(">="), |_| ComparisonOperator::GreaterThanOrEqual),
+        map(tag("<>"), |_| ComparisonOperator::NotEqual),
         map(tag_no_case("LIKE"), |_| ComparisonOperator::Like),
     ))(input)
 }
@@ -558,23 +589,41 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
     ))(input)
 }
 
-// Parse string literal
+// Parse string literal - optimized version
 fn parse_string_literal(input: &str) -> IResult<&str, String> {
     delimited(
         char('\''),
         map(
             take_while1(|c| c != '\''),
-            |s: &str| s.to_string(),
+            |s: &str| {
+                // Fast path for small strings
+                if s.len() <= 32 && s.is_ascii() {
+                    intern_string(s)
+                } else {
+                    s.to_string()
+                }
+            },
         ),
         char('\''),
     )(input)
 }
 
-// Parse integer
+// Parse integer - optimized version
 fn parse_integer(input: &str) -> IResult<&str, i64> {
     map(
         recognize(pair(opt(char('-')), digit1)),
-        |s: &str| s.parse().unwrap(),
+        |s: &str| {
+            // Fast path for small positive integers
+            if s.len() <= 3 && !s.starts_with('-') {
+                let mut result = 0i64;
+                for byte in s.bytes() {
+                    result = result * 10 + (byte - b'0') as i64;
+                }
+                result
+            } else {
+                s.parse().unwrap()
+            }
+        },
     )(input)
 }
 
@@ -591,14 +640,21 @@ fn parse_real(input: &str) -> IResult<&str, f64> {
     )(input)
 }
 
-// Parse identifier
+// Parse identifier - optimized version
 fn parse_identifier(input: &str) -> IResult<&str, String> {
     map(
         recognize(pair(
             alt((alpha1, tag("_"))),
             many0(alt((alphanumeric1, tag("_")))),
         )),
-        |s: &str| s.to_string(),
+        |s: &str| {
+            // Use string interning for common identifiers
+            if s.len() <= 16 && s.chars().all(|c| c.is_ascii()) {
+                intern_string(s)
+            } else {
+                s.to_string()
+            }
+        },
     )(input)
 }
 

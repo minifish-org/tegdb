@@ -41,6 +41,11 @@ harness = false
 required-features = ["dev"]
 
 [[bench]]
+name = "parser_optimized_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
 name = "transaction_benchmark"
 harness = false
 required-features = ["dev"]
