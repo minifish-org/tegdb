@@ -104,7 +104,7 @@ fn test_explicit_transaction_rollback() {
         assert!(matches!(result, ResultSet::Rollback { .. }));
         
         // Actually rollback
-        executor.transaction_mut().rollback().unwrap();
+        executor.transaction_mut().rollback();
     }
 
     // Third transaction to verify rollback worked

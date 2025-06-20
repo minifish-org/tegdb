@@ -52,7 +52,7 @@ fn test_transaction_rollback() -> Result<()> {
         tx.set(b"x".to_vec(), b"beta".to_vec())?;
         tx.set(b"y".to_vec(), b"100".to_vec())?;
         tx.delete(b"x".to_vec())?;
-        tx.rollback()?;
+        tx.rollback();
     }
 
     // verify rollback restored original state
@@ -89,7 +89,7 @@ fn test_transaction_empty_rollback() -> Result<()> {
     {
         let mut tx = engine.begin_transaction();
         // no operations
-        tx.rollback()?;
+        tx.rollback();
     }
     // state unchanged
     assert_eq!(engine.get(b"b").map(|a| a.as_ref().to_vec()), Some(b"2".to_vec()));
@@ -178,7 +178,7 @@ fn test_commit_after_rollback_fails() -> Result<()> {
     {
         let mut tx = engine.begin_transaction();
         tx.set(b"a".to_vec(), b"1".to_vec())?;
-        tx.rollback()?;
+        tx.rollback();
         assert!(tx.commit().is_err());
     }
     fs::remove_file(path)?;
@@ -359,7 +359,7 @@ fn test_transaction_snapshot_after_rollback() -> Result<()> {
     let mut tx = engine.begin_transaction();
     tx.set(b"k".to_vec(), b"new".to_vec())?;
     tx.delete(b"k".to_vec())?;
-    tx.rollback()?;
+    tx.rollback();
     assert_eq!(tx.get(b"k"), Some(b"orig".to_vec()));
     let scan_res = tx.scan(b"k".to_vec()..vec![b'z']);
     assert_eq!(scan_res, vec![(b"k".to_vec(), b"orig".to_vec())]);

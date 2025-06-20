@@ -40,8 +40,9 @@ thread_local! {
 
 ### 3. Comparison Operator Parsing Optimization
 - **Problem**: Multi-character operators were checked before single-character ones
-- **Solution**: Reordered to check most common operators (`=`, `<`, `>`) first
+- **Solution**: Reordered to check multi-character operators first to avoid partial matches, then most common single-character operators
 - **Expected Impact**: 3-8% improvement for WHERE clause parsing
+- **Note**: Must maintain proper precedence - multi-character operators like `<=`, `>=`, `<>` must be parsed before `<`, `>` to avoid partial matches
 
 ### 4. Fast Integer Parsing
 - **Problem**: All integers went through string parsing
@@ -73,6 +74,26 @@ if s.len() <= 3 && !s.starts_with('-') {
 - **Problem**: All string literals created new allocations
 - **Solution**: String interning for small, ASCII string literals (≤32 chars)
 - **Expected Impact**: 5-15% improvement for INSERT statements with string values
+
+## Important Lessons Learned
+
+### Parser Ordering Considerations
+When optimizing parser combinators, **order matters critically**:
+
+1. **Multi-character tokens must be parsed before their single-character prefixes**
+   - `<=` and `>=` must come before `<` and `>`
+   - `<>` and `!=` must come before `<` and `=`
+   - Otherwise, the single-character parser will consume the first character and leave the rest unparsed
+
+2. **Test coverage is essential for parser modifications**
+   - The `<>` operator parsing bug was caught by comprehensive test cases
+   - Each operator variant should have explicit test coverage
+   - Parser optimizations require regression testing
+
+3. **Debugging parser issues**
+   - Check remaining input to identify where parsing stopped
+   - Use debug examples to isolate specific failing cases
+   - Parser combinators fail silently, making good tests crucial
 
 ## Additional Improvement Opportunities
 

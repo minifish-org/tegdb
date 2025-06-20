@@ -282,7 +282,7 @@ fn test_parse_where_clause_operators() {
         let (_, statement) = result.unwrap();
         match statement {
             Statement::Select(select) => {
-                assert!(select.where_clause.is_some());
+                assert!(select.where_clause.is_some(), "WHERE clause missing for: {}", sql);
                 let where_clause = select.where_clause.unwrap();
                 match where_clause.condition {
                     Condition::Comparison { operator, .. } => {

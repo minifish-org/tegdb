@@ -465,19 +465,19 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     ))
 }
 
-// Parse comparison operators - optimized order for common cases
+// Parse comparison operators - optimized order but multi-char first to avoid partial matches
 fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
     alt((
-        // Most common operators first
+        // Multi-character operators first to avoid partial matches
+        map(tag("<="), |_| ComparisonOperator::LessThanOrEqual),
+        map(tag(">="), |_| ComparisonOperator::GreaterThanOrEqual),
+        map(tag("!="), |_| ComparisonOperator::NotEqual),
+        map(tag("<>"), |_| ComparisonOperator::NotEqual),
+        map(tag_no_case("LIKE"), |_| ComparisonOperator::Like),
+        // Single-character operators last
         map(tag("="), |_| ComparisonOperator::Equal),
         map(tag("<"), |_| ComparisonOperator::LessThan),
         map(tag(">"), |_| ComparisonOperator::GreaterThan),
-        map(tag("!="), |_| ComparisonOperator::NotEqual),
-        // Multi-character operators
-        map(tag("<="), |_| ComparisonOperator::LessThanOrEqual),
-        map(tag(">="), |_| ComparisonOperator::GreaterThanOrEqual),
-        map(tag("<>"), |_| ComparisonOperator::NotEqual),
-        map(tag_no_case("LIKE"), |_| ComparisonOperator::Like),
     ))(input)
 }
 
@@ -589,16 +589,19 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
     ))(input)
 }
 
-// Parse string literal - optimized version
+// Parse string literal - optimized version with selective interning
 fn parse_string_literal(input: &str) -> IResult<&str, String> {
     delimited(
         char('\''),
         map(
             take_while1(|c| c != '\''),
             |s: &str| {
-                // Fast path for small strings
-                if s.len() <= 32 && s.is_ascii() {
-                    intern_string(s)
+                // Only intern very common, short strings to avoid overhead
+                if s.len() <= 16 && s.is_ascii() {
+                    match s {
+                        "active" | "inactive" | "pending" | "admin" | "user" | "guest" => intern_string(s),
+                        _ => s.to_string(),
+                    }
                 } else {
                     s.to_string()
                 }
@@ -640,7 +643,7 @@ fn parse_real(input: &str) -> IResult<&str, f64> {
     )(input)
 }
 
-// Parse identifier - optimized version
+// Parse identifier - optimized version with selective interning
 fn parse_identifier(input: &str) -> IResult<&str, String> {
     map(
         recognize(pair(
@@ -648,9 +651,12 @@ fn parse_identifier(input: &str) -> IResult<&str, String> {
             many0(alt((alphanumeric1, tag("_")))),
         )),
         |s: &str| {
-            // Use string interning for common identifiers
-            if s.len() <= 16 && s.chars().all(|c| c.is_ascii()) {
-                intern_string(s)
+            // Only intern very common, short identifiers to avoid overhead
+            if s.len() <= 8 && s.chars().all(|c| c.is_ascii()) {
+                match s {
+                    "id" | "name" | "age" | "email" | "user" | "users" | "data" | "table" => intern_string(s),
+                    _ => s.to_string(),
+                }
             } else {
                 s.to_string()
             }
