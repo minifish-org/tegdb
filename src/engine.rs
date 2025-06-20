@@ -82,9 +82,8 @@ impl Engine {
 
     /// Begins a new transaction
     pub fn begin_transaction(&mut self) -> Transaction<'_> {
-        let snapshot = self.key_map.clone();
         let entries = Vec::new();
-        Transaction { engine: self, entries, snapshot, state: TxState::Active }
+        Transaction { engine: self, entries, state: TxState::Active }
     }
 
     /// Retrieves a value by key (zero-copy refcounted Arc)
@@ -236,7 +235,6 @@ enum TxState {
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
     entries: Vec<Entry>,
-    snapshot: KeyMap,
     state: TxState,
 }
 
@@ -259,7 +257,7 @@ impl<'a> Transaction<'a> {
         Ok(())
     }
 
-    /// Retrieves a value within the transaction (snapshot + local changes)
+    /// Retrieves a value within the transaction (engine state + local changes)
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         // Check local changes first
         for entry in self.entries.iter().rev() {
@@ -267,14 +265,16 @@ impl<'a> Transaction<'a> {
                 return entry.value.clone();
             }
         }
-        // Fallback to snapshot
-        self.snapshot.get(key).map(|arc| arc.as_ref().to_vec())
+        // Fallback to engine's current state
+        self.engine.key_map.get(key).map(|arc| arc.as_ref().to_vec())
     }
 
     /// Scans a range of key-value pairs in the transaction context
     pub fn scan(&self, range: Range<Vec<u8>>) -> Vec<(Vec<u8>, Vec<u8>)> {
-        // Merge snapshot and pending entries
-        let mut merged = self.snapshot.clone();
+        // Start with engine's current state
+        let mut merged = self.engine.key_map.clone();
+        
+        // Apply pending entries
         for entry in &self.entries {
             if let Some(value) = &entry.value {
                 merged.insert(entry.key.clone(), Arc::from(value.clone().into_boxed_slice()));
@@ -282,6 +282,7 @@ impl<'a> Transaction<'a> {
                 merged.remove(&entry.key);
             }
         }
+        
         // Collect range results
         merged.range(range)
             .map(|(k, v)| (k.clone(), v.as_ref().to_vec()))
@@ -305,12 +306,18 @@ impl<'a> Transaction<'a> {
 
     /// Rolls back the transaction
     pub fn rollback(&mut self) {
-        if let TxState::Active = self.state {
-            // Discard any pending changes and restore snapshot view
-            self.entries.clear();
+        // Fast rollback: just mark as rolled back, entries will be ignored
+        self.state = TxState::RolledBack;
+    }
+}
+
+impl<'a> Drop for Transaction<'a> {
+    fn drop(&mut self) {
+        // Automatically rollback if transaction is still active
+        // Just mark as rolled back - no need to clear entries
+        if matches!(self.state, TxState::Active) {
             self.state = TxState::RolledBack;
         }
-        // Dropping Transaction or marking RolledBack discards pending operations
     }
 }
 

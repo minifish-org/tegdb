@@ -40,6 +40,26 @@ name = "parser_benchmark"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "transaction_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "transaction_begin_scaling"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "rollback_detailed"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "pure_rollback"
+harness = false
+required-features = ["dev"]
+
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []
