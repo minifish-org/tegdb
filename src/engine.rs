@@ -145,6 +145,11 @@ impl Engine {
 
     /// Performs multiple operations in a batch
     pub fn batch(&mut self, entries: Vec<Entry>) -> Result<()> {
+        // Fast path for empty batch
+        if entries.is_empty() {
+            return Ok(());
+        }
+        
         // Pre-validate all entries for size limits to ensure atomicity
         for entry in &entries {
             if entry.key.len() > self.config.max_key_size {
@@ -156,6 +161,8 @@ impl Engine {
                 }
             }
         }
+        
+        // Execute all operations
         for entry in entries {
             match entry.value {
                 Some(value) => self.set(&entry.key, value)?,
@@ -293,6 +300,12 @@ impl<'a> Transaction<'a> {
     pub fn commit(&mut self) -> Result<()> {
         match self.state {
             TxState::Active => {
+                // Fast path for empty transactions
+                if self.entries.is_empty() {
+                    self.state = TxState::Committed;
+                    return Ok(());
+                }
+                
                 let entries = std::mem::take(&mut self.entries);
                 let res = self.engine.batch(entries);
                 if res.is_ok() {
