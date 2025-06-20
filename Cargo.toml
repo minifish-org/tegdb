@@ -60,6 +60,11 @@ name = "pure_rollback"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "engine_vs_transaction_comparison"
+harness = false
+required-features = ["dev"]
+
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []
