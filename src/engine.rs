@@ -54,7 +54,7 @@ pub struct Engine {
 
 // Transaction commit marker key (same for all transactions)
 const TX_COMMIT_MARKER: &[u8] = b"__tx_commit__";
-// Transaction begin marker key (same for all transactions)  
+// Transaction begin marker key (written only on first write in transaction)  
 const TX_BEGIN_MARKER: &[u8] = b"__tx_begin__";
 
 // KeyMap maps keys to shared buffers instead of owned Vecs
@@ -92,15 +92,13 @@ impl Engine {
         let tx_id = self.next_tx_id;
         self.next_tx_id += 1;
         
-        // Write transaction begin marker
-        let tx_id_bytes = tx_id.to_be_bytes().to_vec();
-        let _ = self.set(TX_BEGIN_MARKER, tx_id_bytes); // Ignore errors during marker write
-        
+        // Don't write begin marker yet - only write it on first write operation
         Transaction { 
             engine: self, 
             tx_id,
             undo_log: Vec::new(),
-            state: TxState::Active 
+            state: TxState::Active,
+            has_written_begin_marker: false,
         }
     }
 
@@ -282,6 +280,7 @@ pub struct Transaction<'a> {
     tx_id: u64,
     undo_log: Vec<UndoEntry>,
     state: TxState,
+    has_written_begin_marker: bool,
 }
 
 impl Transaction<'_> {
@@ -295,8 +294,20 @@ impl Transaction<'_> {
         old_value
     }
     
+    /// Ensures begin marker is written before first write operation
+    fn ensure_begin_marker_written(&mut self) -> Result<()> {
+        if !self.has_written_begin_marker {
+            let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
+            self.engine.set(TX_BEGIN_MARKER, tx_id_bytes)?;
+            self.has_written_begin_marker = true;
+        }
+        Ok(())
+    }
+    
     /// Sets a key-value pair directly in the engine with undo logging
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<()> {
+        // Write begin marker on first write operation
+        self.ensure_begin_marker_written()?;
         // Validate input sizes
         if key.len() > self.engine.config.max_key_size {
             return Err(Error::KeyTooLarge(key.len()));
@@ -316,6 +327,8 @@ impl Transaction<'_> {
 
     /// Deletes a key directly in the engine with undo logging
     pub fn delete(&mut self, key: &[u8]) -> Result<()> {
+        // Write begin marker on first write operation
+        self.ensure_begin_marker_written()?;
         // Record undo information
         self.record_undo(key);
         
@@ -490,18 +503,7 @@ impl Log {
          if let Some((last_key, _last_value, _)) = entries.last() {
              if last_key == TX_COMMIT_MARKER {
                  // Last entry is a commit marker, all transactions are committed
-                 // Apply all entries normally, but exclude internal markers from key_map
-                 for (key, value, _) in entries {
-                     if key == TX_COMMIT_MARKER || key == TX_BEGIN_MARKER {
-                         continue; // Skip internal markers
-                     }
-                     if value.is_empty() {
-                         key_map.remove(&key);
-                     } else {
-                         let shared = Arc::from(value.into_boxed_slice());
-                         key_map.insert(key, shared);
-                     }
-                 }
+                 self.apply_all_entries(entries, &mut key_map)?;
              } else {
                  // Last entry is not a commit marker, need to rollback incomplete transaction
                  self.rollback_incomplete_transaction(entries, &mut key_map)?;
@@ -513,7 +515,25 @@ impl Log {
          Ok(key_map)
     }
     
-    /// Rollback incomplete transaction by finding the last transaction begin marker and ignoring entries after it
+    /// Apply all entries to key_map, skipping only begin markers
+    fn apply_all_entries(&self, entries: Vec<(Vec<u8>, Vec<u8>, u64)>, key_map: &mut KeyMap) -> Result<()> {
+        for (key, value, _) in entries {
+            // Skip only begin markers - commit markers should be preserved
+            if key == TX_BEGIN_MARKER {
+                continue;
+            }
+            
+            if value.is_empty() {
+                key_map.remove(&key);
+            } else {
+                let shared = Arc::from(value.into_boxed_slice());
+                key_map.insert(key, shared);
+            }
+        }
+        Ok(())
+    }
+
+    /// Rollback incomplete transaction by finding the last transaction begin marker and applying entries up to it
     fn rollback_incomplete_transaction(&self, entries: Vec<(Vec<u8>, Vec<u8>, u64)>, key_map: &mut KeyMap) -> Result<()> {
         // Find the last transaction begin marker
         let mut last_tx_begin_index = None;
@@ -552,13 +572,13 @@ impl Log {
             // No transaction begin marker, but there is a commit marker
             entries.len()
         } else {
-            // No markers at all, treat all as committed operations
+            // No markers at all, treat all as committed operations (direct engine operations)
             entries.len()
         };
         
         // Apply entries up to the determined point
         for (key, value, _pos) in entries.into_iter().take(apply_up_to) {
-            // Skip transaction begin markers as they're only for recovery
+            // Skip only begin markers - commit markers should be preserved
             if key == TX_BEGIN_MARKER {
                 continue;
             }

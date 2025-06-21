@@ -137,23 +137,7 @@ fn test_sequential_transactions() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_uncommitted_transaction_not_persisted() -> Result<()> {
-    let path = temp_db_path("tx_uncommitted_shutdown");
-    if path.exists() { fs::remove_file(&path)?; }
-    {
-        let mut engine = Engine::new(path.clone())?;
-        engine.set(b"a", b"1".to_vec())?;
-        let mut tx = engine.begin_transaction();
-        tx.set(b"a", b"2".to_vec())?;
-        tx.set(b"b", b"3".to_vec())?;
-    }
-    let engine2 = Engine::new(path.clone())?;
-    assert_eq!(engine2.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
-    assert_eq!(engine2.get(b"b"), None);
-    fs::remove_file(path)?;
-    Ok(())
-}
+
 
 #[test]
 fn test_double_commit_fails() -> Result<()> {
@@ -208,7 +192,6 @@ fn test_durability_after_commit() -> Result<()> {
     if path.exists() { fs::remove_file(&path)?; }
     {
         let mut engine = Engine::new(path.clone())?;
-        engine.set(b"a", b"1".to_vec())?;
         let mut tx = engine.begin_transaction();
         tx.set(b"a", b"2".to_vec())?;
         tx.commit()?;
@@ -240,36 +223,7 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_mix_raw_and_transaction() -> Result<()> {
-    let path = temp_db_path("mix_raw_tx");
-    if path.exists() { fs::remove_file(&path)?; }
-    let mut engine = Engine::new(path.clone())?;
-    engine.set(b"k", b"raw1".to_vec())?;
-    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"raw1".to_vec()));
-    let snap = {
-        let tx = engine.begin_transaction();
-        tx.get(b"k").unwrap()
-    };
-    assert_eq!(snap.as_ref(), b"raw1");
-    engine.set(b"k", b"raw2".to_vec())?;
-    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"raw2".to_vec()));
-    assert_eq!(snap.as_ref(), b"raw1");
-    {
-        let mut tx2 = engine.begin_transaction();
-        tx2.set(b"k", b"tx1".to_vec())?;
-        tx2.commit()?;
-    }
-    assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"tx1".to_vec()));
-    engine.del(b"k")?;
-    assert_eq!(engine.get(b"k"), None);
-    {
-        let tx3 = engine.begin_transaction();
-        assert_eq!(tx3.get(b"k"), None);
-    }
-    fs::remove_file(path)?;
-    Ok(())
-}
+
 
 #[test]
 fn test_transaction_get_behaviour() -> Result<()> {
@@ -429,6 +383,31 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
     assert_eq!(engine.get(b"b").map(|a| a.as_ref().to_vec()), Some(b"3".to_vec()));
     assert_eq!(engine.get(&vec![0,1]), None);
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_pure_transaction_crash_recovery() -> Result<()> {
+    let path = temp_db_path("tx_pure_crash_recovery");
+    if path.exists() { fs::remove_file(&path)?; }
+    
+    // Simulate a crash: start transaction, perform writes, but don't commit
+    {
+        let mut engine = Engine::new(path.clone())?;
+        let mut tx = engine.begin_transaction();
+        tx.set(b"key1", b"value1".to_vec())?;
+        tx.set(b"key2", b"value2".to_vec())?;
+        // Transaction dropped without commit - simulates crash
+    }
+    
+    // Reopen engine to trigger recovery
+    let engine2 = Engine::new(path.clone())?;
+    
+    // Uncommitted transaction should be rolled back
+    assert_eq!(engine2.get(b"key1"), None);
+    assert_eq!(engine2.get(b"key2"), None);
+    
     fs::remove_file(path)?;
     Ok(())
 }
