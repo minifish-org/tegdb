@@ -68,7 +68,7 @@ pub use database::{Database, QueryResult, Row, Transaction as DbTransaction};
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
-pub use engine::{Engine, EngineConfig, Entry, Transaction};
+pub use engine::{Engine, EngineConfig, Transaction};
 #[cfg(feature = "dev")]
 pub use executor::{Executor, ResultSet};
 #[cfg(feature = "dev")]
@@ -86,7 +86,7 @@ pub use parser::SqlValue;
 // For backward compatibility, also expose via modules when dev feature is enabled
 #[cfg(feature = "dev")]
 pub mod low_level {
-    pub use crate::engine::{Engine, Transaction as EngineTransaction, Entry, EngineConfig};
+    pub use crate::engine::{Engine, Transaction as EngineTransaction, EngineConfig};
     pub use crate::executor::{Executor, ResultSet};
     pub use crate::parser::{parse_sql, Statement, SqlValue};
 }

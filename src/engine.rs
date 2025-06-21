@@ -32,17 +32,7 @@ impl Default for EngineConfig {
     }
 }
 
-/// Entry type for batch operations
-pub struct Entry {
-    pub key: Vec<u8>,
-    pub value: Option<Vec<u8>>,
-}
 
-impl Entry {
-    pub fn new(key: Vec<u8>, value: Option<Vec<u8>>) -> Self {
-        Self { key, value }
-    }
-}
 
 /// The main database engine
 pub struct Engine {
@@ -161,41 +151,6 @@ impl Engine {
             // clone key Vec (small) and clone Arc (cheap refcount increment)
             .map(|(key, value)| (key.clone(), Arc::clone(value)));
         Ok(Box::new(iter))
-    }
-
-    /// Performs multiple operations in a batch
-    pub fn batch(&mut self, entries: Vec<Entry>) -> Result<()> {
-        // Fast path for empty batch
-        if entries.is_empty() {
-            return Ok(());
-        }
-        
-        // Pre-validate all entries for size limits to ensure atomicity
-        for entry in &entries {
-            if entry.key.len() > self.config.max_key_size {
-                return Err(Error::KeyTooLarge(entry.key.len()));
-            }
-            if let Some(ref value) = entry.value {
-                if value.len() > self.config.max_value_size {
-                    return Err(Error::ValueTooLarge(value.len()));
-                }
-            }
-        }
-        
-        // Execute all operations
-        for entry in entries {
-            match entry.value {
-                Some(value) => self.set(&entry.key, value)?,
-                None => self.del(&entry.key)?,
-            }
-        }
-        
-        // Force a sync if batch operations
-        if !self.config.sync_on_write {
-            self.flush()?;
-        }
-        
-        Ok(())
     }
 
     /// Explicitly flushes data to disk
