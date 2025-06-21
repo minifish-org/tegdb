@@ -22,9 +22,9 @@ fn test_transaction_commit() -> Result<()> {
     // begin transaction and apply operations
     {
         let mut tx = engine.begin_transaction();
-        tx.set(b"a".to_vec(), b"10".to_vec())?;
-        tx.delete(b"b".to_vec())?;
-        tx.set(b"c".to_vec(), b"3".to_vec())?;
+        tx.set(b"a", b"10".to_vec())?;
+        tx.delete(b"b")?;
+        tx.set(b"c", b"3".to_vec())?;
         tx.commit()?;
     }
 
@@ -49,10 +49,10 @@ fn test_transaction_rollback() -> Result<()> {
     // begin transaction and perform operations without commit
     {
         let mut tx = engine.begin_transaction();
-        tx.set(b"x".to_vec(), b"beta".to_vec())?;
-        tx.set(b"y".to_vec(), b"100".to_vec())?;
-        tx.delete(b"x".to_vec())?;
-        tx.rollback();
+        tx.set(b"x", b"beta".to_vec())?;
+        tx.set(b"y", b"100".to_vec())?;
+        tx.delete(b"x")?;
+        tx.rollback()?;
     }
 
     // verify rollback restored original state
@@ -89,7 +89,7 @@ fn test_transaction_empty_rollback() -> Result<()> {
     {
         let mut tx = engine.begin_transaction();
         // no operations
-        tx.rollback();
+        tx.rollback()?;
     }
     // state unchanged
     assert_eq!(engine.get(b"b").map(|a| a.as_ref().to_vec()), Some(b"2".to_vec()));
@@ -106,8 +106,8 @@ fn test_transaction_snapshot_isolation() -> Result<()> {
     engine.set(b"k", b"v2".to_vec())?;
     {
         let mut tx = engine.begin_transaction();
-        assert_eq!(tx.get(b"k"), Some(b"v2".to_vec()));
-        tx.set(b"k".to_vec(), b"v3".to_vec())?;
+        assert_eq!(tx.get(b"k").as_deref(), Some(b"v2" as &[u8]));
+        tx.set(b"k", b"v3".to_vec())?;
         tx.commit()?;
     }
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"v3".to_vec()));
@@ -123,13 +123,13 @@ fn test_sequential_transactions() -> Result<()> {
     engine.set(b"x", b"1".to_vec())?;
     {
         let mut tx1 = engine.begin_transaction();
-        tx1.set(b"x".to_vec(), b"10".to_vec())?;
+        tx1.set(b"x", b"10".to_vec())?;
         tx1.commit()?;
     }
     assert_eq!(engine.get(b"x").map(|a| a.as_ref().to_vec()), Some(b"10".to_vec()));
     {
         let mut tx2 = engine.begin_transaction();
-        tx2.delete(b"x".to_vec())?;
+        tx2.delete(b"x")?;
         tx2.commit()?;
     }
     assert_eq!(engine.get(b"x"), None);
@@ -145,8 +145,8 @@ fn test_uncommitted_transaction_not_persisted() -> Result<()> {
         let mut engine = Engine::new(path.clone())?;
         engine.set(b"a", b"1".to_vec())?;
         let mut tx = engine.begin_transaction();
-        tx.set(b"a".to_vec(), b"2".to_vec())?;
-        tx.set(b"b".to_vec(), b"3".to_vec())?;
+        tx.set(b"a", b"2".to_vec())?;
+        tx.set(b"b", b"3".to_vec())?;
     }
     let engine2 = Engine::new(path.clone())?;
     assert_eq!(engine2.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));
@@ -162,7 +162,7 @@ fn test_double_commit_fails() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
     {
         let mut tx = engine.begin_transaction();
-        tx.set(b"k".to_vec(), b"v".to_vec())?;
+        tx.set(b"k", b"v".to_vec())?;
         tx.commit()?;
         assert!(tx.commit().is_err());
     }
@@ -177,8 +177,8 @@ fn test_commit_after_rollback_fails() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
     {
         let mut tx = engine.begin_transaction();
-        tx.set(b"a".to_vec(), b"1".to_vec())?;
-        tx.rollback();
+        tx.set(b"a", b"1".to_vec())?;
+        tx.rollback()?;
         assert!(tx.commit().is_err());
     }
     fs::remove_file(path)?;
@@ -193,8 +193,8 @@ fn test_delete_then_set_in_transaction() -> Result<()> {
     engine.set(b"x", b"old".to_vec())?;
     {
         let mut tx = engine.begin_transaction();
-        tx.delete(b"x".to_vec())?;
-        tx.set(b"x".to_vec(), b"new".to_vec())?;
+        tx.delete(b"x")?;
+        tx.set(b"x", b"new".to_vec())?;
         tx.commit()?;
     }
     assert_eq!(engine.get(b"x").map(|a| a.as_ref().to_vec()), Some(b"new".to_vec()));
@@ -210,7 +210,7 @@ fn test_durability_after_commit() -> Result<()> {
         let mut engine = Engine::new(path.clone())?;
         engine.set(b"a", b"1".to_vec())?;
         let mut tx = engine.begin_transaction();
-        tx.set(b"a".to_vec(), b"2".to_vec())?;
+        tx.set(b"a", b"2".to_vec())?;
         tx.commit()?;
     }
     let engine2 = Engine::new(path.clone())?;
@@ -229,7 +229,7 @@ fn test_large_transaction_memory_usage() -> Result<()> {
         for i in 0..5000 {
             let key = format!("key{}", i).into_bytes();
             let value = format!("val{}", i).into_bytes();
-            tx.set(key, value)?;
+            tx.set(&key, value)?;
         }
         tx.commit()?;
     }
@@ -251,13 +251,13 @@ fn test_mix_raw_and_transaction() -> Result<()> {
         let tx = engine.begin_transaction();
         tx.get(b"k").unwrap()
     };
-    assert_eq!(snap, b"raw1".to_vec());
+    assert_eq!(snap.as_ref(), b"raw1");
     engine.set(b"k", b"raw2".to_vec())?;
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"raw2".to_vec()));
-    assert_eq!(snap, b"raw1".to_vec());
+    assert_eq!(snap.as_ref(), b"raw1");
     {
         let mut tx2 = engine.begin_transaction();
-        tx2.set(b"k".to_vec(), b"tx1".to_vec())?;
+        tx2.set(b"k", b"tx1".to_vec())?;
         tx2.commit()?;
     }
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(b"tx1".to_vec()));
@@ -281,15 +281,15 @@ fn test_transaction_get_behaviour() -> Result<()> {
     engine.set(b"k3", b"v3".to_vec())?;
     {
         let mut tx = engine.begin_transaction();
-        assert_eq!(tx.get(b"k1"), Some(b"v1".to_vec()));
-        assert_eq!(tx.get(b"k2"), Some(b"v2".to_vec()));
-        tx.set(b"k1".to_vec(), b"v1_tx".to_vec())?;
-        tx.delete(b"k2".to_vec())?;
-        tx.set(b"k4".to_vec(), b"v4".to_vec())?;
-        assert_eq!(tx.get(b"k1"), Some(b"v1_tx".to_vec()));
+        assert_eq!(tx.get(b"k1").as_deref(), Some(b"v1" as &[u8]));
+        assert_eq!(tx.get(b"k2").as_deref(), Some(b"v2" as &[u8]));
+        tx.set(b"k1", b"v1_tx".to_vec())?;
+        tx.delete(b"k2")?;
+        tx.set(b"k4", b"v4".to_vec())?;
+        assert_eq!(tx.get(b"k1").as_deref(), Some(b"v1_tx" as &[u8]));
         assert_eq!(tx.get(b"k2"), None);
-        assert_eq!(tx.get(b"k3"), Some(b"v3".to_vec()));
-        assert_eq!(tx.get(b"k4"), Some(b"v4".to_vec()));
+        assert_eq!(tx.get(b"k3").as_deref(), Some(b"v3" as &[u8]));
+        assert_eq!(tx.get(b"k4").as_deref(), Some(b"v4" as &[u8]));
         tx.commit()?;
     }
     assert_eq!(engine.get(b"k1").map(|a| a.as_ref().to_vec()), Some(b"v1_tx".to_vec()));
@@ -308,19 +308,24 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     engine.set(b"a", b"1".to_vec())?;
     engine.set(b"b", b"2".to_vec())?;
     engine.set(b"c", b"3".to_vec())?;
-    let result = {
-        let mut tx = engine.begin_transaction();
-        tx.set(b"b".to_vec(), b"2_tx".to_vec())?;
-        tx.delete(b"c".to_vec())?;
-        tx.set(b"d".to_vec(), b"4".to_vec())?;
-        tx.scan(b"a".to_vec()..b"z".to_vec())
-    };
+    let mut tx = engine.begin_transaction();
+    tx.set(b"b", b"2_tx".to_vec())?;
+    tx.delete(b"c")?;
+    tx.set(b"d", b"4".to_vec())?;
+    let result = tx.scan(b"a".to_vec()..b"z".to_vec())?;
+    let result: Vec<_> = result.collect();
+    drop(tx); // Drop the transaction to release the mutable borrow
+    
     let expected = vec![
         (b"a".to_vec(), b"1".to_vec()),
         (b"b".to_vec(), b"2_tx".to_vec()),
         (b"d".to_vec(), b"4".to_vec()),
     ];
-    assert_eq!(result, expected);
+    assert_eq!(result.len(), expected.len());
+    for (i, (actual, expected)) in result.iter().zip(expected.iter()).enumerate() {
+        assert_eq!(actual.0, expected.0, "Key mismatch at index {}", i);
+        assert_eq!(actual.1.as_ref(), expected.1.as_slice(), "Value mismatch at index {}", i);
+    }
     let base = engine.scan(b"a".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
     let base_expected = vec![
         (b"a".to_vec(), b"1".to_vec()),
@@ -357,12 +362,15 @@ fn test_transaction_snapshot_after_rollback() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
     engine.set(b"k", b"orig".to_vec())?;
     let mut tx = engine.begin_transaction();
-    tx.set(b"k".to_vec(), b"new".to_vec())?;
-    tx.delete(b"k".to_vec())?;
-    tx.rollback();
-    assert_eq!(tx.get(b"k"), Some(b"orig".to_vec()));
-    let scan_res = tx.scan(b"k".to_vec()..vec![b'z']);
-    assert_eq!(scan_res, vec![(b"k".to_vec(), b"orig".to_vec())]);
+    tx.set(b"k", b"new".to_vec())?;
+    tx.delete(b"k")?;
+    tx.rollback()?;
+    assert_eq!(tx.get(b"k").as_deref(), Some(b"orig" as &[u8]));
+    let scan_res = tx.scan(b"k".to_vec()..vec![b'z'])?;
+    let scan_res: Vec<_> = scan_res.collect();
+    assert_eq!(scan_res.len(), 1);
+    assert_eq!(scan_res[0].0, b"k".to_vec());
+    assert_eq!(scan_res[0].1.as_ref(), b"orig");
     fs::remove_file(path)?;
     Ok(())
 }
@@ -376,9 +384,9 @@ fn test_transaction_key_size_limit() {
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
-        let err = tx.set(vec![0, 1], b"v".to_vec());
+        let err = tx.set(&[0, 1], b"v".to_vec());
         assert!(err.is_err());
-        tx.set(b"a".to_vec(), b"v".to_vec()).unwrap();
+        tx.set(b"a", b"v".to_vec()).unwrap();
         tx.commit().unwrap();
     }
     assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"v".to_vec()));
@@ -394,9 +402,9 @@ fn test_transaction_value_size_limit() {
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
-        let err = tx.set(b"k".to_vec(), vec![0, 1]);
+        let err = tx.set(b"k", vec![0, 1]);
         assert!(err.is_err());
-        tx.set(b"k".to_vec(), vec![0]).unwrap();
+        tx.set(b"k", vec![0]).unwrap();
         tx.commit().unwrap();
     }
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(vec![0]));
@@ -412,10 +420,10 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     let mut engine = Engine::with_config(path.clone(), config)?;
     {
         let mut tx = engine.begin_transaction();
-        tx.set(b"a".to_vec(), b"1".to_vec())?;
-        let err = tx.set(vec![0,1], b"2".to_vec());
+        tx.set(b"a", b"1".to_vec())?;
+        let err = tx.set(&[0,1], b"2".to_vec());
         assert!(err.is_err());
-        tx.set(b"b".to_vec(), b"3".to_vec())?;
+        tx.set(b"b", b"3".to_vec())?;
         tx.commit()?;
     }
     assert_eq!(engine.get(b"a").map(|a| a.as_ref().to_vec()), Some(b"1".to_vec()));

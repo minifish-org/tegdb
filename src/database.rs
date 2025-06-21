@@ -42,7 +42,7 @@ impl Database {
         let schema_prefix = "__schema__:".as_bytes().to_vec();
         let schema_end = "__schema__~".as_bytes().to_vec(); // '~' comes after ':'
         
-        let schema_entries = transaction.scan(schema_prefix..schema_end);
+        let schema_entries = transaction.scan(schema_prefix..schema_end)?;
         
         for (key, value) in schema_entries {
             // Extract table name from key
@@ -295,7 +295,7 @@ impl<'a> Transaction<'a> {
     pub fn rollback(mut self) -> Result<()> {
         self.executor.execute(crate::parser::Statement::Rollback)?;
         // Actually rollback the underlying engine transaction
-        self.executor.transaction_mut().rollback();
+        let _ = self.executor.transaction_mut().rollback();
         Ok(())
     }
     

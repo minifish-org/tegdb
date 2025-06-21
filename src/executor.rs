@@ -100,7 +100,10 @@ impl<'a> Executor<'a> {
         
         // Scan for schema keys (format: __schema__:{table_name})
         let schema_range = b"__schema__:".to_vec()..b"__schema__~".to_vec();
-        let schema_entries = transaction.scan(schema_range);
+        let schema_entries = match transaction.scan(schema_range) {
+            Ok(entries) => entries,
+            Err(_) => return schemas, // Return empty schema map if scan fails
+        };
         
         for (key, value) in schema_entries {
             if let Ok(key_str) = std::str::from_utf8(&key) {
@@ -248,7 +251,7 @@ impl<'a> Executor<'a> {
         let end_key = format!("{}~", select.table).as_bytes().to_vec(); // '~' comes after ':'
         
         // The transaction's scan method already includes pending operations
-        let scan_results = self.transaction.scan(start_key..end_key);
+        let scan_results = self.transaction.scan(start_key..end_key)?;
         
         // Process the scan results
         for (_key, value) in scan_results {
@@ -328,7 +331,7 @@ impl<'a> Executor<'a> {
 
             // Serialize the row and store with primary key as the actual storage key
             let serialized_row = self.serialize_row(&row_data)?;
-            self.transaction.set(row_key.as_bytes().to_vec(), serialized_row)?;
+            self.transaction.set(row_key.as_bytes(), serialized_row)?;
             rows_affected += 1;
         }
 
@@ -344,7 +347,8 @@ impl<'a> Executor<'a> {
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", update.table).as_bytes().to_vec();
         
-        let current_data = self.transaction.scan(start_key..end_key);
+        let current_data = self.transaction.scan(start_key..end_key)?;
+        let current_data: Vec<_> = current_data.collect(); // Collect to avoid borrow conflicts
         
         // Process each row
         for (key, value) in current_data {
@@ -364,7 +368,7 @@ impl<'a> Executor<'a> {
                     
                     // Serialize updated row and apply directly to transaction
                     let serialized_row = self.serialize_row(&row_data)?;
-                    self.transaction.set(key, serialized_row)?;
+                    self.transaction.set(&key, serialized_row)?;
                     rows_affected += 1;
                 }
             }
@@ -382,7 +386,8 @@ impl<'a> Executor<'a> {
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", delete.table).as_bytes().to_vec();
         
-        let current_data = self.transaction.scan(start_key..end_key);
+        let current_data = self.transaction.scan(start_key..end_key)?;
+        let current_data: Vec<_> = current_data.collect(); // Collect to avoid borrow conflicts
         
         // Find rows to delete
         for (key, value) in current_data {
@@ -396,7 +401,7 @@ impl<'a> Executor<'a> {
                 
                 if should_delete {
                     // Apply deletion directly to transaction
-                    self.transaction.delete(key)?;
+                    self.transaction.delete(&key)?;
                     rows_affected += 1;
                 }
             }
@@ -434,7 +439,7 @@ impl<'a> Executor<'a> {
         // Store the schema in the database using the transaction
         let schema_key = format!("__schema__:{}", create.table);
         let serialized_schema = self.serialize_schema(&create)?;
-        self.transaction.set(schema_key.as_bytes().to_vec(), serialized_schema)?;
+        self.transaction.set(schema_key.as_bytes(), serialized_schema)?;
 
         Ok(ResultSet::CreateTable { 
             table_name: create.table 
@@ -466,7 +471,7 @@ impl<'a> Executor<'a> {
         }
 
         // Remove the table schema from storage
-        self.transaction.delete(schema_key.as_bytes().to_vec())?;
+        self.transaction.delete(schema_key.as_bytes())?;
         
         // Remove the table schema from memory
         self.table_schemas.remove(&drop.table);
@@ -492,14 +497,14 @@ impl<'a> Executor<'a> {
         }
 
         // Scan for all keys with the table prefix
-        let scan_results = self.transaction.scan(start_key..end_key);
+        let scan_results = self.transaction.scan(start_key..end_key)?;
         for (key, _) in scan_results {
             keys_to_delete.push(key);
         }
 
         // Delete all found keys
         for key in keys_to_delete {
-            self.transaction.delete(key)?;
+            self.transaction.delete(&key)?;
         }
 
         Ok(ResultSet::DropTable { 

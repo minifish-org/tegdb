@@ -2,7 +2,7 @@
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use fs2::FileExt;  // For file locking
 
@@ -49,7 +49,13 @@ pub struct Engine {
     log: Log,
     key_map: KeyMap,
     config: EngineConfig,
+    next_tx_id: u64,
 }
+
+// Transaction commit marker key (same for all transactions)
+const TX_COMMIT_MARKER: &[u8] = b"__tx_commit__";
+// Transaction begin marker key (same for all transactions)  
+const TX_BEGIN_MARKER: &[u8] = b"__tx_begin__";
 
 // KeyMap maps keys to shared buffers instead of owned Vecs
 type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
@@ -71,6 +77,7 @@ impl Engine {
             log,
             key_map,
             config,
+            next_tx_id: 1,
         };
         
         if engine.config.auto_compact {
@@ -80,11 +87,21 @@ impl Engine {
         Ok(engine)
     }
 
-    /// Begins a new transaction
+    /// Begins a new write-through transaction
     pub fn begin_transaction(&mut self) -> Transaction<'_> {
-        let entries = Vec::new();
-        let pending_changes = None; // Start without HashMap for better performance
-        Transaction { engine: self, entries, pending_changes, state: TxState::Active }
+        let tx_id = self.next_tx_id;
+        self.next_tx_id += 1;
+        
+        // Write transaction begin marker
+        let tx_id_bytes = tx_id.to_be_bytes().to_vec();
+        let _ = self.set(TX_BEGIN_MARKER, tx_id_bytes); // Ignore errors during marker write
+        
+        Transaction { 
+            engine: self, 
+            tx_id,
+            undo_log: Vec::new(),
+            state: TxState::Active 
+        }
     }
 
     /// Retrieves a value by key (zero-copy refcounted Arc)
@@ -94,11 +111,16 @@ impl Engine {
 
     /// Sets a key-value pair
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<()> {
-        if key.len() > self.config.max_key_size {
-            return Err(Error::KeyTooLarge(key.len()));
-        }
-        if value.len() > self.config.max_value_size {
-            return Err(Error::ValueTooLarge(value.len()));
+        // Skip size validation for internal markers
+        let is_internal_marker = key == TX_COMMIT_MARKER || key == TX_BEGIN_MARKER;
+        
+        if !is_internal_marker {
+            if key.len() > self.config.max_key_size {
+                return Err(Error::KeyTooLarge(key.len()));
+            }
+            if value.len() > self.config.max_value_size {
+                return Err(Error::ValueTooLarge(value.len()));
+            }
         }
 
         if value.is_empty() {
@@ -139,6 +161,8 @@ impl Engine {
         range: Range<Vec<u8>>,
     ) -> Result<ScanResult<'_>> {
         let iter = self.key_map.range(range)
+            // Filter out internal markers
+            .filter(|(key, _)| **key != TX_COMMIT_MARKER && **key != TX_BEGIN_MARKER)
             // clone key Vec (small) and clone Arc (cheap refcount increment)
             .map(|(key, value)| (key.clone(), Arc::clone(value)));
         Ok(Box::new(iter))
@@ -201,9 +225,16 @@ impl Engine {
         Ok(())
     }
 
-    /// Returns the number of key-value pairs in the database
+    /// Returns the number of key-value pairs in the database (excluding internal markers)
     pub fn len(&self) -> usize {
-        self.key_map.len()
+        let mut count = self.key_map.len();
+        if self.key_map.contains_key(TX_COMMIT_MARKER) {
+            count -= 1;
+        }
+        if self.key_map.contains_key(TX_BEGIN_MARKER) {
+            count -= 1;
+        }
+        count
     }
 
     /// Returns true if the database is empty
@@ -239,32 +270,33 @@ enum TxState {
     RolledBack,
 }
 
-/// Transactional context for multi-key ACID operations
+/// Undo log entry for rollback
+struct UndoEntry {
+    key: Vec<u8>,
+    old_value: Option<Arc<[u8]>>, // None means key didn't exist
+}
+
+/// Write-through transactional context for ACID operations
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
-    entries: Vec<Entry>,
-    // Fast lookup cache for pending changes - only populated when beneficial
-    pending_changes: Option<HashMap<Vec<u8>, usize>>,
+    tx_id: u64,
+    undo_log: Vec<UndoEntry>,
     state: TxState,
 }
 
 impl Transaction<'_> {
-    /// Threshold for when to build the pending changes cache
-    const CACHE_THRESHOLD: usize = 10;
-    
-    /// Ensures pending_changes HashMap is built if we have enough entries
-    fn ensure_cache_if_beneficial(&mut self) {
-        if self.pending_changes.is_none() && self.entries.len() >= Self::CACHE_THRESHOLD {
-            let mut cache = HashMap::with_capacity(self.entries.len());
-            for (index, entry) in self.entries.iter().enumerate() {
-                cache.insert(entry.key.clone(), index);
-            }
-            self.pending_changes = Some(cache);
-        }
+    /// Records the current state for potential rollback and returns the old value
+    fn record_undo(&mut self, key: &[u8]) -> Option<Arc<[u8]>> {
+        let old_value = self.engine.key_map.get(key).cloned();
+        self.undo_log.push(UndoEntry {
+            key: key.to_vec(),
+            old_value: old_value.clone(),
+        });
+        old_value
     }
     
-    /// Inserts or updates a key-value pair in the transaction
-    pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
+    /// Sets a key-value pair directly in the engine with undo logging
+    pub fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<()> {
         // Validate input sizes
         if key.len() > self.engine.config.max_key_size {
             return Err(Error::KeyTooLarge(key.len()));
@@ -273,144 +305,80 @@ impl Transaction<'_> {
             return Err(Error::ValueTooLarge(value.len()));
         }
         
-        let index = self.entries.len();
+        // Record undo information
+        self.record_undo(key);
         
-        // Update cache if it exists
-        if let Some(ref mut cache) = self.pending_changes {
-            cache.insert(key.clone(), index);
-        }
+        // Write-through: directly modify engine state
+        self.engine.set(key, value)?;
         
-        self.entries.push(Entry::new(key, Some(value)));
-        
-        // Check if we should build cache for future operations
-        self.ensure_cache_if_beneficial();
         Ok(())
     }
 
-    /// Deletes a key in the transaction
-    pub fn delete(&mut self, key: Vec<u8>) -> Result<()> {
-        let index = self.entries.len();
+    /// Deletes a key directly in the engine with undo logging
+    pub fn delete(&mut self, key: &[u8]) -> Result<()> {
+        // Record undo information
+        self.record_undo(key);
         
-        // Update cache if it exists
-        if let Some(ref mut cache) = self.pending_changes {
-            cache.insert(key.clone(), index);
-        }
+        // Write-through: directly modify engine state
+        self.engine.del(key)?;
         
-        self.entries.push(Entry::new(key, None));
-        
-        // Check if we should build cache for future operations
-        self.ensure_cache_if_beneficial();
         Ok(())
     }
 
-    /// Retrieves a value within the transaction (engine state + local changes)
-    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-        // Use cache if available for fast O(1) lookup
-        if let Some(ref cache) = self.pending_changes {
-            if let Some(&index) = cache.get(key) {
-                if let Some(entry) = self.entries.get(index) {
-                    return entry.value.clone();
-                }
-            }
-        } else {
-            // Fallback to linear search for small transactions
-            for entry in self.entries.iter().rev() {
-                if entry.key == key {
-                    return entry.value.clone();
-                }
-            }
-        }
-        // Fallback to engine's current state
-        self.engine.key_map.get(key).map(|arc| arc.as_ref().to_vec())
+    /// Retrieves a value directly from the engine (no transaction-local state)
+    pub fn get(&self, key: &[u8]) -> Option<Arc<[u8]>> {
+        self.engine.get(key)
     }
 
-    /// Scans a range of key-value pairs in the transaction context
-    pub fn scan(&self, range: Range<Vec<u8>>) -> Vec<(Vec<u8>, Vec<u8>)> {
-        // Always build cache for scanning since it's more efficient than cloning
-        let cache = if let Some(ref existing_cache) = self.pending_changes {
-            existing_cache
-        } else {
-            // Build temporary cache for this scan
-            let mut temp_cache = HashMap::with_capacity(self.entries.len());
-            for (index, entry) in self.entries.iter().enumerate() {
-                temp_cache.insert(entry.key.clone(), index);
-            }
-            // We can't update self.pending_changes here since we're in a &self method
-            // So we'll use the temporary cache
-            return self.scan_with_cache(&temp_cache, range);
-        };
-        
-        self.scan_with_cache(cache, range)
-    }
-    
-    /// Helper method for scanning with a given cache
-    fn scan_with_cache(&self, cache: &HashMap<Vec<u8>, usize>, range: Range<Vec<u8>>) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let mut result = Vec::new();
-        
-        // Step 1: Get base data from engine within range
-        for (key, value) in self.engine.key_map.range(range.clone()) {
-            // Check if this key is overridden in pending changes
-            if let Some(&index) = cache.get(key) {
-                if let Some(entry) = self.entries.get(index) {
-                    // Only include if not deleted (value is Some)
-                    if let Some(ref pending_value) = entry.value {
-                        result.push((key.clone(), pending_value.clone()));
-                    }
-                    // If deleted (value is None), skip this key
-                }
-            } else {
-                // No pending change, use engine value
-                result.push((key.clone(), value.as_ref().to_vec()));
-            }
-        }
-        
-        // Step 2: Add new keys from pending changes that fall within range
-        for (key, &index) in cache {
-            if key >= &range.start && key < &range.end {
-                // Only add if this key wasn't already in the engine's key_map
-                if !self.engine.key_map.contains_key(key) {
-                    if let Some(entry) = self.entries.get(index) {
-                        if let Some(ref value) = entry.value {
-                            result.push((key.clone(), value.clone()));
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Step 3: Sort the result to maintain order (since we might have added out-of-order)
-        result.sort_by(|a, b| a.0.cmp(&b.0));
-        result
+    /// Scans a range directly from the engine (no transaction-local state)
+    pub fn scan(&self, range: Range<Vec<u8>>) -> Result<ScanResult<'_>> {
+        self.engine.scan(range)
     }
 
-    /// Commits the transaction atomically
+    /// Commits the transaction by writing commit marker
     pub fn commit(&mut self) -> Result<()> {
         match self.state {
             TxState::Active => {
-                // Fast path for empty transactions
-                if self.entries.is_empty() {
-                    self.state = TxState::Committed;
-                    return Ok(());
-                }
+                // Write transaction commit marker to engine using the transaction ID as value
+                let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
+                self.engine.set(TX_COMMIT_MARKER, tx_id_bytes)?;
                 
-                let entries = std::mem::take(&mut self.entries);
-                self.pending_changes = None; // Clear the cache after taking entries
-                let res = self.engine.batch(entries);
-                if res.is_ok() {
-                    self.state = TxState::Committed;
-                }
-                res
+                // Force sync to ensure commit is durable
+                self.engine.flush()?;
+                
+                self.state = TxState::Committed;
+                self.undo_log.clear(); // No longer needed
+                Ok(())
             }
             _ => Err(Error::Other("Transaction already finalized".to_string())),
         }
     }
 
-    /// Rolls back the transaction
-    pub fn rollback(&mut self) {
-        // Fast rollback: just mark as rolled back, clear all changes
-        self.state = TxState::RolledBack;
-        self.entries.clear();
-        self.pending_changes = None;
+    /// Rolls back the transaction by restoring original values
+    pub fn rollback(&mut self) -> Result<()> {
+        match self.state {
+            TxState::Active => {
+                // Restore original values in reverse order
+                for undo_entry in self.undo_log.drain(..).rev() {
+                    match undo_entry.old_value {
+                        Some(old_value) => {
+                            // Restore the old value directly to the key_map and log
+                            self.engine.log.write_entry(&undo_entry.key, old_value.as_ref(), false)?;
+                            self.engine.key_map.insert(undo_entry.key, old_value);
+                        }
+                        None => {
+                            // Key didn't exist, remove it from both log and key_map
+                            self.engine.log.write_entry(&undo_entry.key, &[], false)?;
+                            self.engine.key_map.remove(&undo_entry.key);
+                        }
+                    }
+                }
+                
+                self.state = TxState::RolledBack;
+                Ok(())
+            }
+            _ => Err(Error::Other("Transaction already finalized".to_string())),
+        }
     }
 }
 
@@ -418,9 +386,7 @@ impl Drop for Transaction<'_> {
     fn drop(&mut self) {
         // Automatically rollback if transaction is still active
         if matches!(self.state, TxState::Active) {
-            self.state = TxState::RolledBack;
-            self.entries.clear();
-            self.pending_changes = None;
+            let _ = self.rollback(); // Ignore errors during drop
         }
     }
 }
@@ -459,6 +425,7 @@ impl Log {
          let file_len = self.file.metadata()?.len();
          let mut reader = BufReader::new(&mut self.file);
          let mut pos = reader.seek(SeekFrom::Start(0))?;
+         let mut entries = Vec::new(); // Track all entries for crash recovery
 
          while pos < file_len {
             // Read key length
@@ -513,18 +480,98 @@ impl Log {
                 ))),
             }
 
-            if value_len == 0 {
-                key_map.remove(&key);
-            } else {
-                // wrap in Arc for cheap clones on get()
-                let shared = Arc::from(value.into_boxed_slice());
-                key_map.insert(key, shared);
-            }
-             
-             pos = value_pos + value_len as u64;
+            // Store entry for crash recovery analysis
+            entries.push((key.clone(), value.clone(), pos));
+
+            pos = value_pos + value_len as u64;
+         }
+         
+         // Crash recovery: check if last entry is a commit marker
+         if let Some((last_key, _last_value, _)) = entries.last() {
+             if last_key == TX_COMMIT_MARKER {
+                 // Last entry is a commit marker, all transactions are committed
+                 // Apply all entries normally, but exclude internal markers from key_map
+                 for (key, value, _) in entries {
+                     if key == TX_COMMIT_MARKER || key == TX_BEGIN_MARKER {
+                         continue; // Skip internal markers
+                     }
+                     if value.is_empty() {
+                         key_map.remove(&key);
+                     } else {
+                         let shared = Arc::from(value.into_boxed_slice());
+                         key_map.insert(key, shared);
+                     }
+                 }
+             } else {
+                 // Last entry is not a commit marker, need to rollback incomplete transaction
+                 self.rollback_incomplete_transaction(entries, &mut key_map)?;
+             }
+         } else {
+             // Empty file, no recovery needed
          }
          
          Ok(key_map)
+    }
+    
+    /// Rollback incomplete transaction by finding the last transaction begin marker and ignoring entries after it
+    fn rollback_incomplete_transaction(&self, entries: Vec<(Vec<u8>, Vec<u8>, u64)>, key_map: &mut KeyMap) -> Result<()> {
+        // Find the last transaction begin marker
+        let mut last_tx_begin_index = None;
+        for (index, (key, _value, _pos)) in entries.iter().enumerate().rev() {
+            if key == TX_BEGIN_MARKER {
+                last_tx_begin_index = Some(index);
+                break;
+            }
+        }
+        
+        // Find the last commit marker  
+        let mut last_commit_index = None;
+        for (index, (key, _value, _pos)) in entries.iter().enumerate().rev() {
+            if key == TX_COMMIT_MARKER {
+                last_commit_index = Some(index);
+                break;
+            }
+        }
+        
+        // Determine what to apply based on markers
+        let apply_up_to = if let Some(tx_begin_idx) = last_tx_begin_index {
+            // If there's a transaction begin marker, check if it's after the last commit
+            match last_commit_index {
+                Some(commit_idx) if commit_idx > tx_begin_idx => {
+                    // Commit marker is after begin marker, transaction was committed
+                    entries.len()
+                }
+                _ => {
+                    // No commit after the begin marker, rollback the incomplete transaction
+                    eprintln!("Warning: Found incomplete transaction, rolling back {} entries", 
+                             entries.len() - tx_begin_idx);
+                    tx_begin_idx
+                }
+            }
+        } else if last_commit_index.is_some() {
+            // No transaction begin marker, but there is a commit marker
+            entries.len()
+        } else {
+            // No markers at all, treat all as committed operations
+            entries.len()
+        };
+        
+        // Apply entries up to the determined point
+        for (key, value, _pos) in entries.into_iter().take(apply_up_to) {
+            // Skip transaction begin markers as they're only for recovery
+            if key == TX_BEGIN_MARKER {
+                continue;
+            }
+            
+            if value.is_empty() {
+                key_map.remove(&key);
+            } else {
+                let shared = Arc::from(value.into_boxed_slice());
+                key_map.insert(key, shared);
+            }
+        }
+        
+        Ok(())
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8], sync: bool) -> Result<()> {
