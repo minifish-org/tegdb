@@ -23,9 +23,9 @@ fn pure_rollback_benchmark(c: &mut Criterion) {
             let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
             let mut tx = engine.begin_transaction();
             // Add minimal operation to have something to rollback
-            tx.set(b"k".to_vec(), b"v".to_vec()).unwrap();
+            tx.set(b"k", b"v".to_vec()).unwrap();
             // Benchmark just the rollback
-            black_box(tx.rollback());
+            let _ = black_box(tx.rollback());
         })
     });
 

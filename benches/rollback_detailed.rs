@@ -30,11 +30,11 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
                 for i in 0..size {
                     let key = format!("pending_key{}", i);
                     let value = format!("pending_value{}", i);
-                    tx.set(black_box(key.into_bytes()), black_box(value.into_bytes())).unwrap();
+                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
                 }
                 
                 // Now benchmark the rollback
-                black_box(tx.rollback());
+                let _ = black_box(tx.rollback());
             })
         });
     }
@@ -44,7 +44,7 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
             // Don't add any operations, just rollback
-            black_box(tx.rollback());
+            let _ = black_box(tx.rollback());
         })
     });
     
@@ -53,7 +53,7 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
             // Add one operation
-            tx.set(b"key".to_vec(), b"value".to_vec()).unwrap();
+            tx.set(b"key", b"value".to_vec()).unwrap();
             // Drop without explicit rollback - should auto-rollback
             black_box(drop(tx));
         })

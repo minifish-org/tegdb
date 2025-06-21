@@ -37,8 +37,8 @@ fn transaction_basic_operations(c: &mut Criterion) {
             let mut tx = engine.begin_transaction();
             let key = b"tx_key";
             let value = b"tx_value";
-            tx.set(black_box(key.to_vec()), black_box(value.to_vec())).unwrap();
-            tx.rollback(); // Clean up
+            tx.set(black_box(key), black_box(value.to_vec())).unwrap();
+            let _ = tx.rollback(); // Clean up
         })
     });
 
@@ -54,8 +54,8 @@ fn transaction_basic_operations(c: &mut Criterion) {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
             let key = b"tx_key";
-            tx.delete(black_box(key.to_vec())).unwrap();
-            tx.rollback(); // Clean up
+            tx.delete(black_box(key)).unwrap();
+            let _ = tx.rollback(); // Clean up
         })
     });
 
@@ -65,7 +65,7 @@ fn transaction_basic_operations(c: &mut Criterion) {
             let start = b"key0".to_vec();
             let end = b"key9".to_vec();
             let results = black_box(tx.scan(black_box(start..end)));
-            black_box(results);
+            let _ = black_box(results);
         })
     });
 
@@ -81,8 +81,8 @@ fn transaction_basic_operations(c: &mut Criterion) {
             let mut tx = engine.begin_transaction();
             let key = b"tx_key";
             let value = b"tx_value";
-            tx.set(key.to_vec(), value.to_vec()).unwrap();
-            black_box(tx.rollback());
+            tx.set(key, value.to_vec()).unwrap();
+            let _ = black_box(tx.rollback());
         })
     });
 
@@ -105,7 +105,7 @@ fn transaction_batch_operations(c: &mut Criterion) {
             for i in 0..10 {
                 let key = format!("small_key{}", i);
                 let value = format!("small_value{}", i);
-                tx.set(black_box(key.into_bytes()), black_box(value.into_bytes())).unwrap();
+                tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
             }
             tx.commit().unwrap();
         })
@@ -118,7 +118,7 @@ fn transaction_batch_operations(c: &mut Criterion) {
             for i in 0..100 {
                 let key = format!("medium_key{}", i);
                 let value = format!("medium_value{}", i);
-                tx.set(black_box(key.into_bytes()), black_box(value.into_bytes())).unwrap();
+                tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
             }
             tx.commit().unwrap();
         })
@@ -131,7 +131,7 @@ fn transaction_batch_operations(c: &mut Criterion) {
             for i in 0..1000 {
                 let key = format!("large_key{}", i);
                 let value = format!("large_value{}", i);
-                tx.set(black_box(key.into_bytes()), black_box(value.into_bytes())).unwrap();
+                tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
             }
             tx.commit().unwrap();
         })
@@ -168,7 +168,7 @@ fn transaction_mixed_operations(c: &mut Criterion) {
                 // Set new key
                 let new_key = format!("new_key{}_{}", counter, i);
                 let new_value = format!("new_value{}_{}", counter, i);
-                tx.set(black_box(new_key.into_bytes()), black_box(new_value.into_bytes())).unwrap();
+                tx.set(black_box(new_key.as_bytes()), black_box(new_value.into_bytes())).unwrap();
                 
                 // Get existing key
                 let existing_key = format!("existing_key{}", idx);
@@ -177,7 +177,7 @@ fn transaction_mixed_operations(c: &mut Criterion) {
                 // Delete every 4th iteration
                 if i % 4 == 0 {
                     let delete_key = format!("existing_key{}", idx);
-                    tx.delete(black_box(delete_key.into_bytes())).unwrap();
+                    tx.delete(black_box(delete_key.as_bytes())).unwrap();
                 }
             }
             
@@ -219,7 +219,7 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
             for i in 0..10 {
                 let key = format!("conflict_key{}", i % 100);
                 let value = format!("updated_value{}_{}", counter, i);
-                tx.set(black_box(key.into_bytes()), black_box(value.into_bytes())).unwrap();
+                tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
             }
             
             tx.commit().unwrap();
@@ -246,7 +246,7 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
                     format!("new_value_{}", counter)
                 };
                 
-                tx.set(black_box(key.into_bytes()), black_box(new_value.into_bytes())).unwrap();
+                tx.set(black_box(key.as_bytes()), black_box(new_value.into_bytes())).unwrap();
             }
             
             tx.commit().unwrap();

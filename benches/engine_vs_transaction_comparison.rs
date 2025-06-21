@@ -38,16 +38,16 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
     c.bench_function("transaction set (no commit)", |b| {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
-            tx.set(black_box(key.to_vec()), black_box(value.to_vec())).unwrap();
+            tx.set(black_box(key), black_box(value.to_vec())).unwrap();
             // Note: not committing to isolate just the set operation
-            tx.rollback();
+            let _ = tx.rollback();
         })
     });
 
     c.bench_function("transaction set + commit", |b| {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
-            tx.set(black_box(key.to_vec()), black_box(value.to_vec())).unwrap();
+            tx.set(black_box(key), black_box(value.to_vec())).unwrap();
             tx.commit().unwrap();
         })
     });
@@ -76,16 +76,16 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
     c.bench_function("transaction delete (no commit)", |b| {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
-            tx.delete(black_box(key.to_vec())).unwrap();
+            tx.delete(black_box(key)).unwrap();
             // Note: not committing to isolate just the delete operation
-            tx.rollback();
+            let _ = tx.rollback();
         })
     });
 
     c.bench_function("transaction delete + commit", |b| {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
-            tx.delete(black_box(key.to_vec())).unwrap();
+            tx.delete(black_box(key)).unwrap();
             tx.commit().unwrap();
         })
     });
@@ -107,7 +107,7 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
             let start_key = b"key0".to_vec();
             let end_key = b"key9".to_vec();
             let results = black_box(tx.scan(black_box(start_key..end_key)));
-            black_box(results);
+            let _ = black_box(results);
         })
     });
 
@@ -143,7 +143,7 @@ fn batch_operations_comparison(c: &mut Criterion) {
                 for i in 0..size {
                     let key = format!("batch_key{}", i);
                     let value = format!("batch_value{}", i);
-                    tx.set(black_box(key.into_bytes()), black_box(value.into_bytes())).unwrap();
+                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
                 }
                 tx.commit().unwrap();
             })
@@ -187,9 +187,9 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
     c.bench_function("isolated: transaction set only", |b| {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
-            tx.set(b"isolated_key".to_vec(), b"isolated_value".to_vec()).unwrap();
+            tx.set(b"isolated_key", b"isolated_value".to_vec()).unwrap();
             // Don't commit, just measure the set operation in transaction context
-            tx.rollback();
+            let _ = tx.rollback();
         })
     });
 
