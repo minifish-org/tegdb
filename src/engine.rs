@@ -320,18 +320,16 @@ impl Transaction<'_> {
             return Ok(());
         }
         
-        // Restore original values in reverse order
+        // Restore original values in reverse order using engine's set/del methods
         for undo_entry in self.undo_log.drain(..).rev() {
             match undo_entry.old_value {
                 Some(old_value) => {
-                    // Restore the old value directly to the key_map and log
-                    self.engine.log.write_entry(&undo_entry.key, old_value.as_ref(), false)?;
-                    self.engine.key_map.insert(undo_entry.key, old_value);
+                    // Restore the old value using engine's set method
+                    self.engine.set(&undo_entry.key, old_value.to_vec())?;
                 }
                 None => {
-                    // Key didn't exist, remove it from both log and key_map
-                    self.engine.log.write_entry(&undo_entry.key, &[], false)?;
-                    self.engine.key_map.remove(&undo_entry.key);
+                    // Key didn't exist, remove it using engine's del method
+                    self.engine.del(&undo_entry.key)?;
                 }
             }
         }
