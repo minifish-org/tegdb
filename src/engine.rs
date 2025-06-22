@@ -84,7 +84,7 @@ impl Engine {
         Transaction { 
             engine: self, 
             tx_id,
-            undo_log: Vec::new(),
+            undo_log: None, // Lazy initialization
             finalized: false,
         }
     }
@@ -220,7 +220,7 @@ struct UndoEntry {
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
     tx_id: u64,
-    undo_log: Vec<UndoEntry>,
+    undo_log: Option<Vec<UndoEntry>>, // Lazy initialization
     finalized: bool, // Track if transaction has been committed or rolled back
 }
 
@@ -228,7 +228,13 @@ impl Transaction<'_> {
     /// Records the current state for potential rollback and returns the old value
     fn record_undo(&mut self, key: &[u8]) -> Option<Arc<[u8]>> {
         let old_value = self.engine.key_map.get(key).cloned();
-        self.undo_log.push(UndoEntry {
+        
+        // Lazy initialization of undo_log
+        if self.undo_log.is_none() {
+            self.undo_log = Some(Vec::new());
+        }
+        
+        self.undo_log.as_mut().unwrap().push(UndoEntry {
             key: key.to_vec(),
             old_value: old_value.clone(),
         });
@@ -277,12 +283,12 @@ impl Transaction<'_> {
 
     /// Returns true if the transaction has pending operations (i.e., uncommitted changes)
     pub fn has_pending_operations(&self) -> bool {
-        !self.finalized && !self.undo_log.is_empty()
+        !self.finalized && self.undo_log.as_ref().map_or(false, |log| !log.is_empty())
     }
     
     /// Returns true if the transaction is clean (no pending operations)
     pub fn is_clean(&self) -> bool {
-        self.finalized || self.undo_log.is_empty()
+        self.finalized || self.undo_log.as_ref().map_or(true, |log| log.is_empty())
     }
     
     /// Returns true if the transaction has been finalized (committed or rolled back)
@@ -303,7 +309,10 @@ impl Transaction<'_> {
         // Force sync to ensure commit is durable
         self.engine.flush()?;
         
-        self.undo_log.clear(); // Transaction is now committed
+        // Clear the undo log if it exists
+        if let Some(ref mut log) = self.undo_log {
+            log.clear();
+        }
         self.finalized = true;
         Ok(())
     }
@@ -314,22 +323,26 @@ impl Transaction<'_> {
             return Err(Error::Other("Transaction already finalized".to_string()));
         }
         
-        if self.undo_log.is_empty() {
+        // Check if there's anything to rollback
+        let has_operations = self.undo_log.as_ref().map_or(false, |log| !log.is_empty());
+        if !has_operations {
             // No operations performed, nothing to rollback
             self.finalized = true;
             return Ok(());
         }
         
         // Restore original values in reverse order using engine's set/del methods
-        for undo_entry in self.undo_log.drain(..).rev() {
-            match undo_entry.old_value {
-                Some(old_value) => {
-                    // Restore the old value using engine's set method
-                    self.engine.set(&undo_entry.key, old_value.to_vec())?;
-                }
-                None => {
-                    // Key didn't exist, remove it using engine's del method
-                    self.engine.del(&undo_entry.key)?;
+        if let Some(ref mut log) = self.undo_log {
+            for undo_entry in log.drain(..).rev() {
+                match undo_entry.old_value {
+                    Some(old_value) => {
+                        // Restore the old value using engine's set method
+                        self.engine.set(&undo_entry.key, old_value.to_vec())?;
+                    }
+                    None => {
+                        // Key didn't exist, remove it using engine's del method
+                        self.engine.del(&undo_entry.key)?;
+                    }
                 }
             }
         }
