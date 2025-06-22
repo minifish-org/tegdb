@@ -85,7 +85,7 @@ impl Engine {
             engine: self, 
             tx_id,
             undo_log: Vec::new(),
-            state: TxState::Active,
+            finalized: false,
         }
     }
 
@@ -210,13 +210,6 @@ impl Drop for Engine {
     }
 }
 
-/// Transaction state
-enum TxState {
-    Active,
-    Committed,
-    RolledBack,
-}
-
 /// Undo log entry for rollback
 struct UndoEntry {
     key: Vec<u8>,
@@ -228,7 +221,7 @@ pub struct Transaction<'a> {
     engine: &'a mut Engine,
     tx_id: u64,
     undo_log: Vec<UndoEntry>,
-    state: TxState,
+    finalized: bool, // Track if transaction has been committed or rolled back
 }
 
 impl Transaction<'_> {
@@ -282,57 +275,77 @@ impl Transaction<'_> {
         self.engine.scan(range)
     }
 
+    /// Returns true if the transaction has pending operations (i.e., uncommitted changes)
+    pub fn has_pending_operations(&self) -> bool {
+        !self.finalized && !self.undo_log.is_empty()
+    }
+    
+    /// Returns true if the transaction is clean (no pending operations)
+    pub fn is_clean(&self) -> bool {
+        self.finalized || self.undo_log.is_empty()
+    }
+    
+    /// Returns true if the transaction has been finalized (committed or rolled back)
+    pub fn is_finalized(&self) -> bool {
+        self.finalized
+    }
+
     /// Commits the transaction by writing commit marker
     pub fn commit(&mut self) -> Result<()> {
-        match self.state {
-            TxState::Active => {
-                // Write transaction commit marker to engine using the transaction ID as value
-                let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
-                self.engine.set(TX_COMMIT_MARKER, tx_id_bytes)?;
-                
-                // Force sync to ensure commit is durable
-                self.engine.flush()?;
-                
-                self.state = TxState::Committed;
-                self.undo_log.clear(); // No longer needed
-                Ok(())
-            }
-            _ => Err(Error::Other("Transaction already finalized".to_string())),
+        if self.finalized {
+            return Err(Error::Other("Transaction already finalized".to_string()));
         }
+        
+        // Always write transaction commit marker to ensure durability
+        let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
+        self.engine.set(TX_COMMIT_MARKER, tx_id_bytes)?;
+        
+        // Force sync to ensure commit is durable
+        self.engine.flush()?;
+        
+        self.undo_log.clear(); // Transaction is now committed
+        self.finalized = true;
+        Ok(())
     }
 
     /// Rolls back the transaction by restoring original values
     pub fn rollback(&mut self) -> Result<()> {
-        match self.state {
-            TxState::Active => {
-                // Restore original values in reverse order
-                for undo_entry in self.undo_log.drain(..).rev() {
-                    match undo_entry.old_value {
-                        Some(old_value) => {
-                            // Restore the old value directly to the key_map and log
-                            self.engine.log.write_entry(&undo_entry.key, old_value.as_ref(), false)?;
-                            self.engine.key_map.insert(undo_entry.key, old_value);
-                        }
-                        None => {
-                            // Key didn't exist, remove it from both log and key_map
-                            self.engine.log.write_entry(&undo_entry.key, &[], false)?;
-                            self.engine.key_map.remove(&undo_entry.key);
-                        }
-                    }
-                }
-                
-                self.state = TxState::RolledBack;
-                Ok(())
-            }
-            _ => Err(Error::Other("Transaction already finalized".to_string())),
+        if self.finalized {
+            return Err(Error::Other("Transaction already finalized".to_string()));
         }
+        
+        if self.undo_log.is_empty() {
+            // No operations performed, nothing to rollback
+            self.finalized = true;
+            return Ok(());
+        }
+        
+        // Restore original values in reverse order
+        for undo_entry in self.undo_log.drain(..).rev() {
+            match undo_entry.old_value {
+                Some(old_value) => {
+                    // Restore the old value directly to the key_map and log
+                    self.engine.log.write_entry(&undo_entry.key, old_value.as_ref(), false)?;
+                    self.engine.key_map.insert(undo_entry.key, old_value);
+                }
+                None => {
+                    // Key didn't exist, remove it from both log and key_map
+                    self.engine.log.write_entry(&undo_entry.key, &[], false)?;
+                    self.engine.key_map.remove(&undo_entry.key);
+                }
+            }
+        }
+        
+        // undo_log is now empty, transaction is rolled back
+        self.finalized = true;
+        Ok(())
     }
 }
 
 impl Drop for Transaction<'_> {
     fn drop(&mut self) {
-        // Automatically rollback if transaction is still active
-        if matches!(self.state, TxState::Active) {
+        // Automatically rollback if transaction has uncommitted operations
+        if !self.finalized {
             let _ = self.rollback(); // Ignore errors during drop
         }
     }
