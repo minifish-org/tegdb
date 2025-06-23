@@ -107,20 +107,12 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
         c.bench_function("engine delete", |b| {
             b.iter(|| {
                 // Ensure key exists before deleting
-                raw_engine.set(black_box(key), black_box(value.to_vec())).unwrap();
                 raw_engine.del(black_box(key)).unwrap();
             })
         });
 
         c.bench_function("transaction delete (no commit)", |b| {
             b.iter(|| {
-                // Ensure key exists before deleting - create fresh transaction each time
-                {
-                    let mut prep_tx = tx_engine.begin_transaction();
-                    prep_tx.set(black_box(key), black_box(value.to_vec())).unwrap();
-                    prep_tx.commit().unwrap();
-                }
-                
                 let mut tx = tx_engine.begin_transaction();
                 tx.delete(black_box(key)).unwrap();
                 // Note: not committing to isolate just the delete operation
@@ -130,13 +122,6 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
 
         c.bench_function("transaction delete + commit", |b| {
             b.iter(|| {
-                // Ensure key exists before deleting - create fresh transaction each time
-                {
-                    let mut prep_tx = tx_engine.begin_transaction();
-                    prep_tx.set(black_box(key), black_box(value.to_vec())).unwrap();
-                    prep_tx.commit().unwrap();
-                }
-                
                 let mut tx = tx_engine.begin_transaction();
                 tx.delete(black_box(key)).unwrap();
                 tx.commit().unwrap();
