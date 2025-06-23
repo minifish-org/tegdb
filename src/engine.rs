@@ -26,7 +26,7 @@ impl Default for EngineConfig {
         Self {
             max_key_size: 1024,
             max_value_size: 256 * 1024,
-            sync_on_write: false,
+            sync_on_write: true,
             auto_compact: true,
         }
     }
@@ -299,9 +299,6 @@ impl Transaction<'_> {
             // Write transaction commit marker directly to log (not to keymap)
             let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
             self.engine.log.write_tx_marker(&tx_id_bytes)?;
-            
-            // Force sync to ensure commit is durable
-            self.engine.flush()?;
             
             // Clear the undo log
             if let Some(ref mut log) = self.undo_log {
