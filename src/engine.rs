@@ -241,7 +241,19 @@ impl Transaction<'_> {
             return Err(Error::ValueTooLarge(value.len()));
         }
         
-        // Record undo information
+        // Check if the value would actually change (same logic as engine.set())
+        if value.is_empty() {
+            return self.delete(key);
+        }
+        
+        // Check if value hasn't changed - if so, no undo recording needed
+        if let Some(existing) = self.engine.key_map.get(key) {
+            if existing.as_ref() == value.as_slice() {
+                return Ok(());
+            }
+        }
+        
+        // Record undo information only when we're about to make a real change
         self.record_undo(key);
         
         // Write-through: directly modify engine state
@@ -252,7 +264,12 @@ impl Transaction<'_> {
 
     /// Deletes a key directly in the engine with undo logging
     pub fn delete(&mut self, key: &[u8]) -> Result<()> {
-        // Record undo information
+        // Check if key exists - if not, no undo recording needed (same logic as engine.del())
+        if !self.engine.key_map.contains_key(key) {
+            return Ok(());
+        }
+        
+        // Record undo information only when we're about to make a real change
         self.record_undo(key);
         
         // Write-through: directly modify engine state
