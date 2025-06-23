@@ -292,17 +292,24 @@ impl Transaction<'_> {
             return Err(Error::Other("Transaction already finalized".to_string()));
         }
         
-        // Write transaction commit marker directly to log (not to keymap)
-        let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
-        self.engine.log.write_tx_marker(&tx_id_bytes)?;
+        // Check if this is a read-only transaction (no write operations)
+        let has_writes = self.undo_log.as_ref().map_or(false, |log| !log.is_empty());
         
-        // Force sync to ensure commit is durable
-        self.engine.flush()?;
-        
-        // Clear the undo log if it exists
-        if let Some(ref mut log) = self.undo_log {
-            log.clear();
+        if has_writes {
+            // Write transaction commit marker directly to log (not to keymap)
+            let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
+            self.engine.log.write_tx_marker(&tx_id_bytes)?;
+            
+            // Force sync to ensure commit is durable
+            self.engine.flush()?;
+            
+            // Clear the undo log
+            if let Some(ref mut log) = self.undo_log {
+                log.clear();
+            }
         }
+        // For read-only transactions, no commit marker or sync needed
+        
         self.finalized = true;
         Ok(())
     }
