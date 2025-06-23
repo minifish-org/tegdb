@@ -102,7 +102,6 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
         let mut tx_engine = create_and_populate_tx_engine(&tx_path);
         
         let key = b"benchmark_key";
-        let value = b"benchmark_value";
         
         c.bench_function("engine delete", |b| {
             b.iter(|| {
@@ -377,40 +376,9 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
         })
     });
 
-    // ===== Compare write operations with full lifecycle =====
-    let test_key = b"lifecycle_key";
-    let test_value = b"lifecycle_value";
-
-    c.bench_function("engine set lifecycle", |b| {
-        b.iter(|| {
-            raw_engine.set(black_box(test_key), black_box(test_value.to_vec())).unwrap();
-        })
-    });
-
-    c.bench_function("transaction set lifecycle", |b| {
-        b.iter(|| {
-            let mut tx = tx_engine.begin_transaction();
-            tx.set(black_box(test_key), black_box(test_value.to_vec())).unwrap();
-            tx.commit().unwrap();
-        })
-    });
-
-    // ===== Rollback vs commit comparison =====
-    c.bench_function("transaction rollback after set", |b| {
-        b.iter(|| {
-            let mut tx = tx_engine.begin_transaction();
-            tx.set(black_box(test_key), black_box(test_value.to_vec())).unwrap();
-            let _ = tx.rollback();
-        })
-    });
-
-    c.bench_function("transaction commit after set", |b| {
-        b.iter(|| {
-            let mut tx = tx_engine.begin_transaction();
-            tx.set(black_box(test_key), black_box(test_value.to_vec())).unwrap();
-            tx.commit().unwrap();
-        })
-    });
+    // Note: SET operation benchmarks are already covered in engine_vs_transaction_comparison function
+    // Removed duplicated "engine set lifecycle", "transaction set lifecycle", 
+    // "transaction rollback after set", and "transaction commit after set" benchmarks
 
     // Clean up test files
     drop(raw_engine);
