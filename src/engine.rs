@@ -42,8 +42,8 @@ pub struct Engine {
     next_tx_id: u64,
 }
 
-// Transaction commit marker key (same for all transactions)
-const TX_COMMIT_MARKER: &[u8] = b"__tx_commit__";
+// Transaction commit marker - special marker that won't be part of keymap
+const TX_COMMIT_MARKER: &[u8] = b"__TX_COMMIT__";
 
 // KeyMap maps keys to shared buffers instead of owned Vecs
 type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
@@ -96,16 +96,12 @@ impl Engine {
 
     /// Sets a key-value pair
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<()> {
-        // Skip size validation for internal markers
-        let is_internal_marker = key == TX_COMMIT_MARKER;
-        
-        if !is_internal_marker {
-            if key.len() > self.config.max_key_size {
-                return Err(Error::KeyTooLarge(key.len()));
-            }
-            if value.len() > self.config.max_value_size {
-                return Err(Error::ValueTooLarge(value.len()));
-            }
+        // Validate input sizes
+        if key.len() > self.config.max_key_size {
+            return Err(Error::KeyTooLarge(key.len()));
+        }
+        if value.len() > self.config.max_value_size {
+            return Err(Error::ValueTooLarge(value.len()));
         }
 
         if value.is_empty() {
@@ -146,8 +142,6 @@ impl Engine {
         range: Range<Vec<u8>>,
     ) -> Result<ScanResult<'_>> {
         let iter = self.key_map.range(range)
-            // Filter out internal markers
-            .filter(|(key, _)| **key != TX_COMMIT_MARKER)
             // clone key Vec (small) and clone Arc (cheap refcount increment)
             .map(|(key, value)| (key.clone(), Arc::clone(value)));
         Ok(Box::new(iter))
@@ -175,13 +169,9 @@ impl Engine {
         Ok(())
     }
 
-    /// Returns the number of key-value pairs in the database (excluding internal markers)
+    /// Returns the number of key-value pairs in the database
     pub fn len(&self) -> usize {
-        let mut count = self.key_map.len();
-        if self.key_map.contains_key(TX_COMMIT_MARKER) {
-            count -= 1;
-        }
-        count
+        self.key_map.len()
     }
 
     /// Returns true if the database is empty
@@ -302,9 +292,9 @@ impl Transaction<'_> {
             return Err(Error::Other("Transaction already finalized".to_string()));
         }
         
-        // Always write transaction commit marker to ensure durability
+        // Write transaction commit marker directly to log (not to keymap)
         let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
-        self.engine.set(TX_COMMIT_MARKER, tx_id_bytes)?;
+        self.engine.log.write_tx_marker(&tx_id_bytes)?;
         
         // Force sync to ensure commit is durable
         self.engine.flush()?;
@@ -396,17 +386,16 @@ impl Log {
          let file_len = self.file.metadata()?.len();
          let mut reader = BufReader::new(&mut self.file);
          let mut pos = reader.seek(SeekFrom::Start(0))?;
-         let mut entries = Vec::new(); // Track all entries for crash recovery
+         let mut last_commit_pos = 0; // Track position of last commit marker
 
+         // First pass: find the last commit marker
          while pos < file_len {
             // Read key length
             match reader.read_exact(&mut len_buf) {
                 Ok(()) => {},
                 Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    // Detected corrupted or incomplete file
-                    return Err(Error::Corrupted(format!(
-                        "Unexpected EOF while reading key length at position {}", pos
-                    )));
+                    // Corrupted file, stop processing
+                    break;
                 },
                 Err(e) => return Err(e.into()),
             }
@@ -416,114 +405,93 @@ impl Log {
             // Read value length
             match reader.read_exact(&mut len_buf) {
                 Ok(()) => {},
-                Err(e) => return Err(Error::Corrupted(format!(
-                    "Failed to read value length at position {}: {}", pos + 4, e
-                ))),
+                Err(_) => break, // Corrupted file, stop processing
             }
             
             let value_len = u32::from_be_bytes(len_buf);
-            let value_pos = pos + 4 + 4 + key_len as u64;
 
-            // Validate sizes
-            if key_len > 1024 {
-                return Err(Error::Corrupted(format!("Key length too large: {}", key_len)));
-            }
-            
-            if value_len > 256 * 1024 {
-                return Err(Error::Corrupted(format!("Value length too large: {}", value_len)));
+            // Validate sizes to prevent memory allocation attacks
+            if key_len > 1024 || value_len > 256 * 1024 {
+                break; // Invalid sizes, stop processing
             }
 
             // Read key
             let mut key = vec![0; key_len as usize];
             match reader.read_exact(&mut key) {
                 Ok(()) => {},
-                Err(e) => return Err(Error::Corrupted(format!(
-                    "Failed to read key at position {}: {}", pos + 8, e
-                ))),
+                Err(_) => break, // Corrupted file, stop processing
+            }
+
+            // Check if this is a commit marker
+            if key == TX_COMMIT_MARKER {
+                // This is a commit marker, update last commit position
+                last_commit_pos = pos + 4 + 4 + key_len as u64 + value_len as u64;
+            }
+
+            // Skip value and move to next entry
+            let value_pos = pos + 4 + 4 + key_len as u64;
+            pos = value_pos + value_len as u64;
+            reader.seek(SeekFrom::Start(pos))?;
+         }
+         
+         // If no commit markers found, recover all data (for non-transactional operations)
+         let recovery_end = if last_commit_pos == 0 { file_len } else { last_commit_pos };
+         
+         // Second pass: build keymap up to recovery end
+         reader.seek(SeekFrom::Start(0))?;
+         pos = 0;
+         
+         while pos < recovery_end {
+            // Read key length
+            if reader.read_exact(&mut len_buf).is_err() {
+                break;
+            }
+            let key_len = u32::from_be_bytes(len_buf);
+            
+            // Read value length
+            if reader.read_exact(&mut len_buf).is_err() {
+                break;
+            }
+            let value_len = u32::from_be_bytes(len_buf);
+
+            // Read key
+            let mut key = vec![0; key_len as usize];
+            if reader.read_exact(&mut key).is_err() {
+                break;
+            }
+
+            // Skip commit markers in keymap building
+            if key == TX_COMMIT_MARKER {
+                // Skip value and continue
+                reader.seek(SeekFrom::Current(value_len as i64))?;
+                pos = pos + 4 + 4 + key_len as u64 + value_len as u64;
+                continue;
             }
 
             // Read value
             let mut value = vec![0; value_len as usize];
-            match reader.read_exact(&mut value) {
-                Ok(()) => {},
-                Err(e) => return Err(Error::Corrupted(format!(
-                    "Failed to read value at position {}: {}", value_pos, e
-                ))),
+            if reader.read_exact(&mut value).is_err() {
+                break;
             }
 
-            // Store entry for crash recovery analysis
-            entries.push((key.clone(), value.clone(), pos));
+            // Apply to keymap
+            if value.is_empty() {
+                key_map.remove(&key);
+            } else {
+                let shared = Arc::from(value.into_boxed_slice());
+                key_map.insert(key, shared);
+            }
 
-            pos = value_pos + value_len as u64;
-         }
-         
-         // Crash recovery: check if last entry is a commit marker
-         if let Some((last_key, _last_value, _)) = entries.last() {
-             if last_key == TX_COMMIT_MARKER {
-                 // Last entry is a commit marker, all transactions are committed
-                 self.apply_all_entries(entries, &mut key_map)?;
-             } else {
-                 // Last entry is not a commit marker, need to rollback incomplete transaction
-                 self.rollback_incomplete_transaction(entries, &mut key_map)?;
-             }
-         } else {
-             // Empty file, no recovery needed
+            pos = pos + 4 + 4 + key_len as u64 + value_len as u64;
          }
          
          Ok(key_map)
     }
     
-    /// Apply all entries to key_map (no begin markers to skip anymore)
-    fn apply_all_entries(&self, entries: Vec<(Vec<u8>, Vec<u8>, u64)>, key_map: &mut KeyMap) -> Result<()> {
-        for (key, value, _) in entries {
-            if value.is_empty() {
-                key_map.remove(&key);
-            } else {
-                let shared = Arc::from(value.into_boxed_slice());
-                key_map.insert(key, shared);
-            }
-        }
-        Ok(())
-    }
-
-    /// Rollback incomplete transaction by finding the last commit marker and applying entries up to it
-    fn rollback_incomplete_transaction(&self, entries: Vec<(Vec<u8>, Vec<u8>, u64)>, key_map: &mut KeyMap) -> Result<()> {
-        // Find the last commit marker  
-        let mut last_commit_index = None;
-        for (index, (key, _value, _pos)) in entries.iter().enumerate().rev() {
-            if key == TX_COMMIT_MARKER {
-                last_commit_index = Some(index);
-                break;
-            }
-        }
-        
-        // Determine what to apply based on commit marker
-        let apply_up_to = if let Some(commit_idx) = last_commit_index {
-            // Found a commit marker, apply all entries up to and including it
-            commit_idx + 1
-        } else {
-            // No commit marker found
-            // Since we removed mixed usage, this could be:
-            // 1. All direct engine operations (should all be applied)
-            // 2. All incomplete transaction operations (should be rolled back)
-            // Without begin marker, we assume all are direct operations unless we can prove otherwise
-            // The key insight: if this function is called, it means the last entry was NOT a commit marker
-            // If there were any successful transactions, there would be commit markers in the log
-            // So if there are no commit markers at all, these are likely all direct operations
-            entries.len() // Apply all - assume direct operations
-        };
-        
-        // Apply entries up to the determined point
-        for (key, value, _pos) in entries.into_iter().take(apply_up_to) {
-            if value.is_empty() {
-                key_map.remove(&key);
-            } else {
-                let shared = Arc::from(value.into_boxed_slice());
-                key_map.insert(key, shared);
-            }
-        }
-        
-        Ok(())
+    
+    fn write_tx_marker(&mut self, tx_id_bytes: &[u8]) -> Result<()> {
+        // Write commit marker entry using the same format as regular entries
+        self.write_entry(TX_COMMIT_MARKER, tx_id_bytes, true)
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8], sync: bool) -> Result<()> {

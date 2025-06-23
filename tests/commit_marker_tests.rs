@@ -43,8 +43,8 @@ mod commit_marker_tests {
             // Check that uncommitted data was rolled back
             assert_eq!(engine.get(b"key3"), None);
             
-            // Verify the commit marker is present
-            assert!(engine.get(b"__tx_commit__").is_some());
+            // Commit markers are no longer accessible as data - they're internal recovery markers
+            // Just verify that the committed data is present and uncommitted data is absent
         }
         
         // Clean up
@@ -77,10 +77,12 @@ mod commit_marker_tests {
                 tx.commit().unwrap();
             }
             
-            // Verify commit marker contains the latest transaction ID
-            let commit_marker = engine.get(b"__tx_commit__").unwrap();
-            let tx_id = u64::from_be_bytes(commit_marker.as_ref().try_into().unwrap());
-            assert_eq!(tx_id, 2); // Second transaction
+            // Verify that both transactions were committed by checking their data
+            assert_eq!(engine.get(b"tx1_key").as_deref(), Some(b"tx1_value" as &[u8]));
+            assert_eq!(engine.get(b"tx2_key").as_deref(), Some(b"tx2_value" as &[u8]));
+            
+            // Commit markers are no longer accessible as data - they're internal recovery markers
+            // The presence of both committed values confirms the recovery process worked correctly
         }
         
         // Clean up
