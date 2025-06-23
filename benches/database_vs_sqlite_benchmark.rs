@@ -97,7 +97,17 @@ fn database_benchmark(c: &mut Criterion) {
 }
 
 fn sqlite_sql_benchmark(c: &mut Criterion) {
-    let conn = Connection::open_in_memory().unwrap();
+    let path = temp_db_path("sqlite");
+    if path.exists() {
+        fs::remove_file(&path).expect("Failed to remove existing test file");
+    }
+    
+    let conn = Connection::open(&path).unwrap();
+    
+    // Configure SQLite for durability (similar to TegDB's sync_on_write: true)
+    conn.pragma_update(None, "synchronous", "FULL").unwrap(); // Ensure full fsync on every write
+    conn.pragma_update(None, "journal_mode", "WAL").unwrap(); // Use WAL mode for better performance
+    
     conn.execute(
         "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)",
         [],
@@ -187,6 +197,10 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
             black_box(affected);
         })
     });
+    
+    // Clean up
+    drop(conn);
+    let _ = fs::remove_file(&path);
 }
 
 criterion_group!(
