@@ -26,7 +26,7 @@ impl Default for EngineConfig {
         Self {
             max_key_size: 1024,
             max_value_size: 256 * 1024,
-            sync_on_write: true,
+            sync_on_write: false, // Changed: only sync on explicit commits, not every write
             auto_compact: true,
         }
     }
@@ -313,7 +313,7 @@ impl Transaction<'_> {
         let has_writes = self.undo_log.as_ref().map_or(false, |log| !log.is_empty());
         
         if has_writes {
-            // Write transaction commit marker directly to log (not to keymap)
+            // Write transaction commit marker directly to log (not to keymap) and always sync on commit
             let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
             self.engine.log.write_tx_marker(&tx_id_bytes)?;
             
@@ -511,7 +511,7 @@ impl Log {
     
     
     fn write_tx_marker(&mut self, tx_id_bytes: &[u8]) -> Result<()> {
-        // Write commit marker entry using the same format as regular entries
+        // Write commit marker entry using the same format as regular entries, always sync on commit
         self.write_entry(TX_COMMIT_MARKER, tx_id_bytes, true)
     }
 

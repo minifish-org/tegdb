@@ -22,21 +22,26 @@ fn database_benchmark(c: &mut Criterion) {
     // Setup table for benchmarking
     db.execute("CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")
         .expect("Failed to create table");
+    
+    // Insert some initial data for SELECT operations
+    db.execute("INSERT INTO benchmark_test (id, name, value) VALUES (1, 'test', 100)")
+        .expect("Failed to insert initial data");
 
     // Benchmark INSERT operations
     c.bench_function("database insert", |b| {
         b.iter(|| {
-            // Use a timestamp-based ID to ensure uniqueness
+            // Use timestamp-based ID to ensure uniqueness across all benchmarks
             let id = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as u64;
-            db.execute(&format!(
+            let sql = format!(
                 "INSERT INTO benchmark_test (id, name, value) VALUES ({}, 'test_{}', {})",
                 black_box(id),
                 black_box(id),
                 black_box((id % 1000) * 10)
-            )).unwrap();
+            );
+            db.execute(&sql).unwrap();
         })
     });
 
@@ -67,18 +72,19 @@ fn database_benchmark(c: &mut Criterion) {
     // Benchmark transaction operations
     c.bench_function("database transaction", |b| {
         b.iter(|| {
-            // Use a timestamp-based ID to ensure uniqueness  
+            // Use timestamp-based ID to ensure uniqueness across all benchmarks
             let id = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as u64;
             let mut tx = db.begin_transaction().unwrap();
-            tx.execute(&format!(
+            let sql = format!(
                 "INSERT INTO benchmark_test (id, name, value) VALUES ({}, 'tx_test_{}', {})",
                 black_box(id),
                 black_box(id),
                 black_box((id % 1000) * 5)
-            )).unwrap();
+            );
+            tx.execute(&sql).unwrap();
             tx.commit().unwrap();
         })
     });
@@ -112,11 +118,14 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
         "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)",
         [],
     ).unwrap();
+    
+    // Insert some initial data for SELECT operations
+    conn.execute("INSERT INTO benchmark_test (id, name, value) VALUES (1, 'test', 100)", []).unwrap();
 
     // Benchmark INSERT operations
     c.bench_function("sqlite sql insert", |b| {
         b.iter(|| {
-            // Use a timestamp-based ID to ensure uniqueness
+            // Use timestamp-based ID to ensure uniqueness across all benchmarks
             let id = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -173,7 +182,7 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
     // Benchmark transaction operations
     c.bench_function("sqlite sql transaction", |b| {
         b.iter(|| {
-            // Use a timestamp-based ID to ensure uniqueness
+            // Use timestamp-based ID to ensure uniqueness across all benchmarks
             let id = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
