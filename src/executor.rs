@@ -12,9 +12,13 @@ use crate::Result;
 use std::collections::HashMap;
 
 /// A SQL executor that can execute parsed SQL statements against a TegDB engine
+/// 
+/// This executor receives pre-cached table schemas from the Database level
+/// to avoid repeated schema loading from disk. The schemas are kept in sync
+/// at the database level when DDL operations are performed.
 pub struct Executor<'a> {
     transaction: crate::engine::Transaction<'a>,
-    /// Metadata about tables (simple schema storage)
+    /// Table schemas provided by the database-level cache
     table_schemas: HashMap<String, TableSchema>,
     /// Track if we're in an explicit transaction
     in_transaction: bool,
@@ -71,7 +75,8 @@ pub enum ResultSet {
 }
 
 impl<'a> Executor<'a> {
-    /// Create a new SQL executor with pre-loaded schemas (more efficient)
+    /// Create a new SQL executor with pre-loaded schemas
+    /// Schemas should be provided from a database-level cache for efficiency
     pub fn new_with_schemas(
         transaction: crate::engine::Transaction<'a>,
         table_schemas: HashMap<String, TableSchema>
@@ -83,8 +88,9 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Create a new SQL executor with the given TegDB transaction and auto-load schemas
-    #[allow(dead_code)]
+    /// Create a new SQL executor and load schemas from the transaction
+    /// Note: This method loads schemas from disk on every call.
+    /// For better performance, use Database::open() which caches schemas.
     pub fn new(transaction: crate::engine::Transaction<'a>) -> Self {
         let table_schemas = Self::load_schemas_from_transaction(&transaction);
         Self {
@@ -92,99 +98,6 @@ impl<'a> Executor<'a> {
             table_schemas,
             in_transaction: false,
         }
-    }
-
-    /// Load all table schemas from the transaction by scanning for schema keys
-    fn load_schemas_from_transaction(transaction: &crate::engine::Transaction<'a>) -> HashMap<String, TableSchema> {
-        let mut schemas = HashMap::new();
-        
-        // Scan for schema keys (format: __schema__:{table_name})
-        let schema_range = b"__schema__:".to_vec()..b"__schema__~".to_vec();
-        let schema_entries = match transaction.scan(schema_range) {
-            Ok(entries) => entries,
-            Err(_) => return schemas, // Return empty schema map if scan fails
-        };
-        
-        for (key, value) in schema_entries {
-            if let Ok(key_str) = std::str::from_utf8(&key) {
-                if let Some(table_name) = key_str.strip_prefix("__schema__:") {
-                    if let Ok(schema) = Self::deserialize_schema(&value) {
-                        schemas.insert(table_name.to_string(), schema);
-                    }
-                }
-            }
-        }
-        
-        schemas
-    }
-
-    /// Deserialize a schema from bytes with proper error handling
-    fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
-        let serialized = std::str::from_utf8(data)
-            .map_err(|e| crate::Error::Other(format!("Invalid schema data encoding: {}", e)))?;
-        
-        if serialized.is_empty() {
-            return Err(crate::Error::Other("Empty schema data".to_string()));
-        }
-        
-        let mut columns = Vec::new();
-        
-        for (idx, column_data) in serialized.split('|').enumerate() {
-            let parts: Vec<&str> = column_data.split(':').collect();
-            if parts.len() != 3 {
-                return Err(crate::Error::Other(format!(
-                    "Invalid schema format at column {}: expected 3 parts separated by ':', got {}", 
-                    idx, parts.len()
-                )));
-            }
-            
-            let name = parts[0].trim().to_string();
-            if name.is_empty() {
-                return Err(crate::Error::Other(format!(
-                    "Empty column name at column {}", idx
-                )));
-            }
-            
-            let data_type = match parts[1].trim() {
-                "INTEGER" => crate::parser::DataType::Integer,
-                "TEXT" => crate::parser::DataType::Text,
-                "REAL" => crate::parser::DataType::Real,
-                "BLOB" => crate::parser::DataType::Blob,
-                unknown => return Err(crate::Error::Other(format!(
-                    "Unknown data type '{}' for column '{}'", unknown, name
-                ))),
-            };
-            
-            let constraints = if parts[2].trim().is_empty() {
-                Vec::new()
-            } else {
-                let mut parsed_constraints = Vec::new();
-                for constraint in parts[2].split(',') {
-                    match constraint.trim() {
-                        "PRIMARY_KEY" => parsed_constraints.push(crate::parser::ColumnConstraint::PrimaryKey),
-                        "NOT_NULL" => parsed_constraints.push(crate::parser::ColumnConstraint::NotNull),
-                        "UNIQUE" => parsed_constraints.push(crate::parser::ColumnConstraint::Unique),
-                        unknown if !unknown.is_empty() => return Err(crate::Error::Other(format!(
-                            "Unknown constraint '{}' for column '{}'", unknown, name
-                        ))),
-                        _ => {} // Skip empty constraints
-                    }
-                }
-                parsed_constraints
-            };
-            
-            columns.push(ColumnInfo {
-                name,
-                data_type,
-                constraints,
-            });
-        }
-        
-        if columns.is_empty() {
-            return Err(crate::Error::Other("Schema must have at least one column".to_string()));
-        }
-        
-        Ok(TableSchema { columns })
     }
 
     /// Execute a parsed SQL statement with explicit transaction control
@@ -651,6 +564,102 @@ impl<'a> Executor<'a> {
             .join("|");
 
         Ok(serialized.into_bytes())
+    }
+
+    /// Load all table schemas from the transaction by scanning for schema keys
+    /// Note: This method is provided for backward compatibility with tests.
+    /// The Database struct provides better schema caching.
+    fn load_schemas_from_transaction(transaction: &crate::engine::Transaction<'a>) -> HashMap<String, TableSchema> {
+        let mut schemas = HashMap::new();
+        
+        // Scan for schema keys (format: __schema__:{table_name})
+        let schema_range = b"__schema__:".to_vec()..b"__schema__~".to_vec();
+        let schema_entries = match transaction.scan(schema_range) {
+            Ok(entries) => entries,
+            Err(_) => return schemas, // Return empty schema map if scan fails
+        };
+        
+        for (key, value) in schema_entries {
+            if let Ok(key_str) = std::str::from_utf8(&key) {
+                if let Some(table_name) = key_str.strip_prefix("__schema__:") {
+                    if let Ok(schema) = Self::deserialize_schema(&value) {
+                        schemas.insert(table_name.to_string(), schema);
+                    }
+                }
+            }
+        }
+        
+        schemas
+    }
+
+    /// Deserialize a schema from bytes with proper error handling
+    /// Note: This method duplicates logic from Database for backward compatibility
+    fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
+        let serialized = std::str::from_utf8(data)
+            .map_err(|e| crate::Error::Other(format!("Invalid schema data encoding: {}", e)))?;
+        
+        if serialized.is_empty() {
+            return Err(crate::Error::Other("Empty schema data".to_string()));
+        }
+        
+        let mut columns = Vec::new();
+        
+        for (idx, column_data) in serialized.split('|').enumerate() {
+            let parts: Vec<&str> = column_data.split(':').collect();
+            if parts.len() != 3 {
+                return Err(crate::Error::Other(format!(
+                    "Invalid schema format at column {}: expected 3 parts separated by ':', got {}", 
+                    idx, parts.len()
+                )));
+            }
+            
+            let name = parts[0].trim().to_string();
+            if name.is_empty() {
+                return Err(crate::Error::Other(format!(
+                    "Empty column name at column {}", idx
+                )));
+            }
+            
+            let data_type = match parts[1].trim() {
+                "INTEGER" => crate::parser::DataType::Integer,
+                "TEXT" => crate::parser::DataType::Text,
+                "REAL" => crate::parser::DataType::Real,
+                "BLOB" => crate::parser::DataType::Blob,
+                unknown => return Err(crate::Error::Other(format!(
+                    "Unknown data type '{}' for column '{}'", unknown, name
+                ))),
+            };
+            
+            let constraints = if parts[2].trim().is_empty() {
+                Vec::new()
+            } else {
+                let mut parsed_constraints = Vec::new();
+                for constraint in parts[2].split(',') {
+                    match constraint.trim() {
+                        "PRIMARY_KEY" => parsed_constraints.push(crate::parser::ColumnConstraint::PrimaryKey),
+                        "NOT_NULL" => parsed_constraints.push(crate::parser::ColumnConstraint::NotNull),
+                        "UNIQUE" => parsed_constraints.push(crate::parser::ColumnConstraint::Unique),
+                        unknown if !unknown.is_empty() => return Err(crate::Error::Other(format!(
+                            "Unknown constraint '{}' for column '{}'", unknown, name
+                        ))),
+                        _ => {} // Skip empty constraints
+                    }
+                }
+                parsed_constraints
+            };
+            
+            columns.push(ColumnInfo {
+                name,
+                data_type,
+                constraints,
+            });
+        }
+        
+        if columns.is_empty() {
+            return Err(crate::Error::Other("Schema must have at least one column".to_string()));
+        }
+        
+        Ok(TableSchema { columns })
     }
 
     /// Get the underlying transaction reference

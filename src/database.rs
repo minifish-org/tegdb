@@ -7,9 +7,15 @@ use crate::{engine::Engine, executor::{Executor, TableSchema}, parser::{parse_sq
 use std::{path::Path, collections::HashMap, sync::{Arc, RwLock}};
 
 /// Database connection, similar to sqlite::Connection
+/// 
+/// This struct maintains a schema cache at the database level to avoid
+/// repeated schema loading from disk for every executor creation.
+/// Schemas are loaded once when the database is opened and kept in sync
+/// with DDL operations (CREATE TABLE, DROP TABLE).
 pub struct Database {
     engine: Engine,
-    /// Shared table schemas, loaded once and shared across executors
+    /// Shared table schemas cache, loaded once and shared across executors
+    /// Uses Arc<RwLock<>> for thread-safe access with multiple readers
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
 }
 
@@ -124,16 +130,23 @@ impl Database {
         let result = executor.execute(statement.clone())?;
         executor.execute(crate::parser::Statement::Commit)?;
         
-        // If this was a CREATE TABLE, update our shared schemas
-        if let crate::parser::Statement::CreateTable(ref create_table) = statement {
-            let schema = crate::executor::TableSchema {
-                columns: create_table.columns.iter().map(|col| crate::executor::ColumnInfo {
-                    name: col.name.clone(),
-                    data_type: col.data_type.clone(),
-                    constraints: col.constraints.clone(),
-                }).collect(),
-            };
-            self.table_schemas.write().unwrap().insert(create_table.table.clone(), schema);
+        // Update our shared schemas cache for DDL operations
+        match &statement {
+            crate::parser::Statement::CreateTable(create_table) => {
+                let schema = crate::executor::TableSchema {
+                    columns: create_table.columns.iter().map(|col| crate::executor::ColumnInfo {
+                        name: col.name.clone(),
+                        data_type: col.data_type.clone(),
+                        constraints: col.constraints.clone(),
+                    }).collect(),
+                };
+                self.table_schemas.write().unwrap().insert(create_table.table.clone(), schema);
+            }
+            crate::parser::Statement::DropTable(drop_table) => {
+                // Remove table schema from cache when table is dropped
+                self.table_schemas.write().unwrap().remove(&drop_table.table);
+            }
+            _ => {} // No schema changes for other statements
         }
         
         // Actually commit the engine transaction
@@ -180,6 +193,29 @@ impl Database {
         let tx = self.engine.begin_transaction();
         let schemas = self.table_schemas.read().unwrap().clone();
         Ok(Transaction::new_with_schemas(tx, schemas))
+    }
+    
+    /// Refresh schema cache from database storage
+    /// This can be useful if the database was modified externally
+    pub fn refresh_schema_cache(&mut self) -> Result<()> {
+        let mut schemas = HashMap::new();
+        
+        // Use a temporary transaction to reload schemas
+        {
+            let temp_transaction = self.engine.begin_transaction();
+            Self::load_schemas_from_transaction(&temp_transaction, &mut schemas)?;
+        }
+        
+        // Update the shared cache
+        *self.table_schemas.write().unwrap() = schemas;
+        
+        Ok(())
+    }
+    
+    /// Get a copy of all cached table schemas
+    /// Useful for debugging or introspection
+    pub fn get_table_schemas(&self) -> HashMap<String, TableSchema> {
+        self.table_schemas.read().unwrap().clone()
     }
 }
 
