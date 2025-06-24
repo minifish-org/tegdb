@@ -180,8 +180,128 @@ impl<'a> Executor<'a> {
         Ok(ResultSet::Rollback)
     }
 
-    /// Execute a SELECT statement with memory optimization
+    /// Execute a SELECT statement with query optimization
     fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
+        // Try to optimize the query using the planner
+        if let Some(ref where_clause) = select.where_clause {
+            if let Some(optimized_result) = self.try_optimize_select(&select, &where_clause.condition)? {
+                return Ok(optimized_result);
+            }
+        }
+
+        // Fall back to full table scan if optimization isn't possible
+        self.execute_select_scan(&select)
+    }
+
+    /// Try to optimize a SELECT query using direct primary key lookup
+    fn try_optimize_select(&mut self, select: &SelectStatement, condition: &Condition) -> Result<Option<ResultSet>> {
+        // Try to extract primary key equality conditions
+        if let Some(pk_values) = self.extract_pk_equality_conditions(&select.table, condition)? {
+            // We can use direct PK lookup!
+            if let Some(row_data) = self.get_row_by_primary_key(&select.table, &pk_values)? {
+                // We found exactly one row, now apply any additional filtering and column selection
+                let matching_rows = if let Some(ref where_clause) = select.where_clause {
+                    if self.evaluate_condition(&where_clause.condition, &row_data) {
+                        vec![row_data]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![row_data]
+                };
+
+                // Apply column selection
+                let result_columns = if select.columns.len() == 1 && select.columns[0] == "*" {
+                    if let Some(first_row) = matching_rows.first() {
+                        let mut cols: Vec<_> = first_row.keys().cloned().collect();
+                        cols.sort(); // Ensure consistent column ordering
+                        cols
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    select.columns.clone()
+                };
+
+                // Extract selected columns from matching rows
+                let mut result_rows = Vec::with_capacity(matching_rows.len());
+                for row in matching_rows {
+                    let mut result_row = Vec::with_capacity(result_columns.len());
+                    for col in &result_columns {
+                        result_row.push(row.get(col).cloned().unwrap_or(SqlValue::Null));
+                    }
+                    result_rows.push(result_row);
+                }
+
+                return Ok(Some(ResultSet::Select {
+                    columns: result_columns,
+                    rows: result_rows,
+                }));
+            } else {
+                // PK not found, return empty result
+                let result_columns = if select.columns.len() == 1 && select.columns[0] == "*" {
+                    // Get column names from schema for empty result
+                    if let Some(schema) = self.table_schemas.get(&select.table) {
+                        let mut cols: Vec<_> = schema.columns.iter().map(|c| c.name.clone()).collect();
+                        cols.sort();
+                        cols
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    select.columns.clone()
+                };
+
+                return Ok(Some(ResultSet::Select {
+                    columns: result_columns,
+                    rows: vec![],
+                }));
+            }
+        }
+
+        Ok(None) // Cannot optimize, fall back to scan
+    }
+
+    /// Extract primary key equality conditions from a WHERE clause for optimization
+    fn extract_pk_equality_conditions(&self, table_name: &str, condition: &Condition) -> Result<Option<HashMap<String, SqlValue>>> {
+        let pk_columns = self.get_primary_key_columns(table_name)?;
+        let mut pk_values = HashMap::new();
+
+        // Try to extract all primary key values from equality conditions
+        self.collect_pk_equality_values(condition, &pk_columns, &mut pk_values);
+
+        // Check if we have values for ALL primary key columns
+        if pk_values.len() == pk_columns.len() {
+            Ok(Some(pk_values))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Recursively collect primary key equality values from conditions
+    fn collect_pk_equality_values(&self, condition: &Condition, pk_columns: &[String], pk_values: &mut HashMap<String, SqlValue>) {
+        match condition {
+            Condition::Comparison { left, operator, right } => {
+                if let ComparisonOperator::Equal = operator {
+                    if pk_columns.contains(left) && !pk_values.contains_key(left) {
+                        pk_values.insert(left.clone(), right.clone());
+                    }
+                }
+            }
+            Condition::And(left_cond, right_cond) => {
+                // For AND conditions, collect from both sides
+                self.collect_pk_equality_values(left_cond, pk_columns, pk_values);
+                self.collect_pk_equality_values(right_cond, pk_columns, pk_values);
+            }
+            Condition::Or(_, _) => {
+                // For OR conditions, we cannot optimize with PK lookup since we'd need multiple lookups
+                // Leave pk_values unchanged (empty or partial)
+            }
+        }
+    }
+
+    /// Execute a SELECT statement using full table scan (fallback method)
+    fn execute_select_scan(&mut self, select: &SelectStatement) -> Result<ResultSet> {
         let table_key_prefix = format!("{}:", select.table);
         let mut matching_rows: Vec<HashMap<String, SqlValue>> = Vec::new();
         
@@ -224,7 +344,7 @@ impl<'a> Executor<'a> {
                 vec![]
             }
         } else {
-            select.columns
+            select.columns.clone()
         };
 
         // Extract selected columns from matching rows with memory efficiency
@@ -802,7 +922,6 @@ impl<'a> Executor<'a> {
     }
 
     /// Direct lookup by primary key (efficient IOT access)
-    #[allow(dead_code)]
     fn get_row_by_primary_key(&mut self, table_name: &str, pk_values: &HashMap<String, SqlValue>) -> Result<Option<HashMap<String, SqlValue>>> {
         let row_key = self.generate_row_key(table_name, pk_values)?;
         
