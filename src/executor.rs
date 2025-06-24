@@ -194,12 +194,12 @@ impl<'a> Executor<'a> {
         let mut processed_count = 0;
         let limit = select.limit.unwrap_or(u64::MAX) as usize;
         
-        for (_key, value) in scan_results {
+        for (key, value) in scan_results {
             if processed_count >= limit {
                 break; // Early termination for LIMIT
             }
             
-            if let Ok(row_data) = self.deserialize_row(&value) {
+            if let Ok(row_data) = self.deserialize_row(&select.table, &key, &value) {
                 // Apply WHERE clause if present (predicate pushdown)
                 let matches = if let Some(ref where_clause) = select.where_clause {
                     self.evaluate_condition(&where_clause.condition, &row_data)
@@ -275,7 +275,7 @@ impl<'a> Executor<'a> {
             self.validate_unique_constraints(&insert.table, &row_data, None)?;
 
             // Serialize the row and store with primary key as the actual storage key
-            let serialized_row = self.serialize_row(&row_data)?;
+            let serialized_row = self.serialize_row(&insert.table, &row_data)?;
             self.transaction.set(row_key.as_bytes(), serialized_row)?;
             rows_affected += 1;
         }
@@ -297,7 +297,7 @@ impl<'a> Executor<'a> {
         
         // Process each row
         for (key, value) in current_data {
-            if let Ok(row_data) = self.deserialize_row(&value) {
+            if let Ok(row_data) = self.deserialize_row(&update.table, &key, &value) {
                 // Check if row matches WHERE clause
                 let matches = if let Some(ref where_clause) = update.where_clause {
                     self.evaluate_condition(&where_clause.condition, &row_data)
@@ -319,7 +319,7 @@ impl<'a> Executor<'a> {
                     self.validate_unique_constraints(&update.table, &updated_row, Some(&key))?;
                     
                     // Serialize updated row and apply directly to transaction
-                    let serialized_row = self.serialize_row(&updated_row)?;
+                    let serialized_row = self.serialize_row(&update.table, &updated_row)?;
                     self.transaction.set(&key, serialized_row)?;
                     rows_affected += 1;
                 }
@@ -343,7 +343,7 @@ impl<'a> Executor<'a> {
         
         // Find rows to delete
         for (key, value) in current_data {
-            if let Ok(row_data) = self.deserialize_row(&value) {
+            if let Ok(row_data) = self.deserialize_row(&delete.table, &key, &value) {
                 // Check if row matches WHERE clause
                 let should_delete = if let Some(ref where_clause) = delete.where_clause {
                     self.evaluate_condition(&where_clause.condition, &row_data)
@@ -525,14 +525,85 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Serialize a row to bytes using efficient binary format
-    fn serialize_row(&self, row_data: &HashMap<String, SqlValue>) -> Result<Vec<u8>> {
-        Ok(crate::serialization::BinaryRowSerializer::serialize(row_data))
+    /// Serialize a row to bytes using efficient binary format (IOT optimized)
+    /// Only stores non-primary key columns in the value, since primary keys are in the storage key
+    fn serialize_row(&self, table_name: &str, row_data: &HashMap<String, SqlValue>) -> Result<Vec<u8>> {
+        // Get primary key columns to exclude from serialization
+        let pk_columns = self.get_primary_key_columns(table_name)?;
+        
+        // Create a new map excluding primary key columns (IOT optimization)
+        let mut non_pk_data = HashMap::new();
+        for (col_name, value) in row_data {
+            if !pk_columns.contains(col_name) {
+                non_pk_data.insert(col_name.clone(), value.clone());
+            }
+        }
+        
+        Ok(crate::serialization::BinaryRowSerializer::serialize(&non_pk_data))
     }
 
-    /// Deserialize a row from bytes using efficient binary format
-    fn deserialize_row(&self, data: &[u8]) -> Result<HashMap<String, SqlValue>> {
-        crate::serialization::BinaryRowSerializer::deserialize(data)
+    /// Deserialize a row from bytes and reconstruct full row with primary key values
+    /// Combines stored non-PK columns with PK values extracted from the storage key
+    fn deserialize_row(&self, table_name: &str, key: &[u8], data: &[u8]) -> Result<HashMap<String, SqlValue>> {
+        // Deserialize non-primary key columns from stored data
+        let mut row_data = crate::serialization::BinaryRowSerializer::deserialize(data)?;
+        
+        // Extract and add primary key values from the storage key
+        let key_str = std::str::from_utf8(key)
+            .map_err(|e| crate::Error::Other(format!("Invalid key encoding: {}", e)))?;
+        
+        // Parse key format: "table_name:pk_value1:pk_value2:..."
+        if let Some(key_suffix) = key_str.strip_prefix(&format!("{}:", table_name)) {
+            let pk_columns = self.get_primary_key_columns(table_name)?;
+            let pk_values_str: Vec<&str> = key_suffix.split(':').collect();
+            
+            if pk_values_str.len() != pk_columns.len() {
+                return Err(crate::Error::Other(format!(
+                    "Key format mismatch: expected {} PK values, got {}", 
+                    pk_columns.len(), pk_values_str.len()
+                )));
+            }
+            
+            // Get schema to determine data types for primary key columns
+            let schema = self.table_schemas.get(table_name)
+                .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table_name)))?;
+            
+            // Reconstruct primary key values with correct types
+            for (pk_col, pk_value_str) in pk_columns.iter().zip(pk_values_str.iter()) {
+                // Find the column info to get the data type
+                let col_info = schema.columns.iter()
+                    .find(|col| &col.name == pk_col)
+                    .ok_or_else(|| crate::Error::Other(format!("Primary key column '{}' not found in schema", pk_col)))?;
+                
+                // Parse the value according to its data type
+                let parsed_value = match col_info.data_type {
+                    crate::parser::DataType::Integer => {
+                        // Remove zero padding and parse
+                        let cleaned = pk_value_str.trim_start_matches('0');
+                        let cleaned = if cleaned.is_empty() { "0" } else { cleaned };
+                        SqlValue::Integer(cleaned.parse::<i64>()
+                            .map_err(|e| crate::Error::Other(format!("Failed to parse integer PK value '{}': {}", pk_value_str, e)))?)
+                    },
+                    crate::parser::DataType::Text => {
+                        SqlValue::Text(pk_value_str.to_string())
+                    },
+                    crate::parser::DataType::Real => {
+                        SqlValue::Real(pk_value_str.parse::<f64>()
+                            .map_err(|e| crate::Error::Other(format!("Failed to parse real PK value '{}': {}", pk_value_str, e)))?)
+                    },
+                    crate::parser::DataType::Blob => {
+                        // For now, treat BLOB as text in primary keys
+                        SqlValue::Text(pk_value_str.to_string())
+                    },
+                };
+                
+                row_data.insert(pk_col.clone(), parsed_value);
+            }
+        } else {
+            return Err(crate::Error::Other(format!("Invalid key format for table '{}'", table_name)));
+        }
+        
+        Ok(row_data)
     }
 
     /// Serialize table schema for storage
@@ -736,7 +807,7 @@ impl<'a> Executor<'a> {
         let row_key = self.generate_row_key(table_name, pk_values)?;
         
         if let Some(value) = self.transaction.get(row_key.as_bytes()) {
-            Ok(Some(self.deserialize_row(&value)?))
+            Ok(Some(self.deserialize_row(table_name, row_key.as_bytes(), &value)?))
         } else {
             Ok(None)
         }
@@ -870,7 +941,7 @@ impl<'a> Executor<'a> {
                 }
             }
             
-            if let Ok(existing_row) = self.deserialize_row(&existing_value) {
+            if let Ok(existing_row) = self.deserialize_row(table_name, &existing_key, &existing_value) {
                 // Check each UNIQUE column
                 for unique_col in &unique_columns {
                     if let (Some(new_val), Some(existing_val)) = (
