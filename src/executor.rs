@@ -118,37 +118,59 @@ impl<'a> Executor<'a> {
         schemas
     }
 
-    /// Deserialize a schema from bytes
+    /// Deserialize a schema from bytes with proper error handling
     fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
         let serialized = std::str::from_utf8(data)
-            .map_err(|_| crate::Error::Other("Invalid schema data encoding".to_string()))?;
+            .map_err(|e| crate::Error::Other(format!("Invalid schema data encoding: {}", e)))?;
+        
+        if serialized.is_empty() {
+            return Err(crate::Error::Other("Empty schema data".to_string()));
+        }
         
         let mut columns = Vec::new();
         
-        for column_data in serialized.split('|') {
+        for (idx, column_data) in serialized.split('|').enumerate() {
             let parts: Vec<&str> = column_data.split(':').collect();
             if parts.len() != 3 {
-                continue;
+                return Err(crate::Error::Other(format!(
+                    "Invalid schema format at column {}: expected 3 parts separated by ':', got {}", 
+                    idx, parts.len()
+                )));
             }
             
-            let name = parts[0].to_string();
-            let data_type = match parts[1] {
+            let name = parts[0].trim().to_string();
+            if name.is_empty() {
+                return Err(crate::Error::Other(format!(
+                    "Empty column name at column {}", idx
+                )));
+            }
+            
+            let data_type = match parts[1].trim() {
                 "INTEGER" => crate::parser::DataType::Integer,
                 "TEXT" => crate::parser::DataType::Text,
                 "REAL" => crate::parser::DataType::Real,
                 "BLOB" => crate::parser::DataType::Blob,
-                _ => continue,
+                unknown => return Err(crate::Error::Other(format!(
+                    "Unknown data type '{}' for column '{}'", unknown, name
+                ))),
             };
             
-            let constraints = if parts[2].is_empty() {
+            let constraints = if parts[2].trim().is_empty() {
                 Vec::new()
             } else {
-                parts[2].split(',').filter_map(|c| match c {
-                    "PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
-                    "NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
-                    "UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
-                    _ => None,
-                }).collect()
+                let mut parsed_constraints = Vec::new();
+                for constraint in parts[2].split(',') {
+                    match constraint.trim() {
+                        "PRIMARY_KEY" => parsed_constraints.push(crate::parser::ColumnConstraint::PrimaryKey),
+                        "NOT_NULL" => parsed_constraints.push(crate::parser::ColumnConstraint::NotNull),
+                        "UNIQUE" => parsed_constraints.push(crate::parser::ColumnConstraint::Unique),
+                        unknown if !unknown.is_empty() => return Err(crate::Error::Other(format!(
+                            "Unknown constraint '{}' for column '{}'", unknown, name
+                        ))),
+                        _ => {} // Skip empty constraints
+                    }
+                }
+                parsed_constraints
             };
             
             columns.push(ColumnInfo {
@@ -156,6 +178,10 @@ impl<'a> Executor<'a> {
                 data_type,
                 constraints,
             });
+        }
+        
+        if columns.is_empty() {
+            return Err(crate::Error::Other("Schema must have at least one column".to_string()));
         }
         
         Ok(TableSchema { columns })
@@ -241,38 +267,46 @@ impl<'a> Executor<'a> {
         Ok(ResultSet::Rollback)
     }
 
-    /// Execute a SELECT statement within a transaction
+    /// Execute a SELECT statement with memory optimization
     fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
-        // Get data from the transaction (includes committed data + pending operations)
         let table_key_prefix = format!("{}:", select.table);
         let mut matching_rows: Vec<HashMap<String, SqlValue>> = Vec::new();
         
         let start_key = table_key_prefix.as_bytes().to_vec();
-        let end_key = format!("{}~", select.table).as_bytes().to_vec(); // '~' comes after ':'
+        let end_key = format!("{}~", select.table).as_bytes().to_vec();
         
-        // The transaction's scan method already includes pending operations
         let scan_results = self.transaction.scan(start_key..end_key)?;
         
-        // Process the scan results
+        // Process with early termination for LIMIT to save memory
+        let mut processed_count = 0;
+        let limit = select.limit.unwrap_or(u64::MAX) as usize;
+        
         for (_key, value) in scan_results {
-            // Deserialize the row data
+            if processed_count >= limit {
+                break; // Early termination for LIMIT
+            }
+            
             if let Ok(row_data) = self.deserialize_row(&value) {
-                // Apply WHERE clause if present
-                if let Some(ref where_clause) = select.where_clause {
-                    if self.evaluate_condition(&where_clause.condition, &row_data) {
-                        matching_rows.push(row_data);
-                    }
+                // Apply WHERE clause if present (predicate pushdown)
+                let matches = if let Some(ref where_clause) = select.where_clause {
+                    self.evaluate_condition(&where_clause.condition, &row_data)
                 } else {
+                    true
+                };
+                
+                if matches {
                     matching_rows.push(row_data);
+                    processed_count += 1;
                 }
             }
         }
 
         // Apply column selection
         let result_columns = if select.columns.len() == 1 && select.columns[0] == "*" {
-            // Return all columns - for simplicity, we'll use the first row's keys
             if let Some(first_row) = matching_rows.first() {
-                first_row.keys().cloned().collect()
+                let mut cols: Vec<_> = first_row.keys().cloned().collect();
+                cols.sort(); // Ensure consistent column ordering
+                cols
             } else {
                 vec![]
             }
@@ -280,27 +314,19 @@ impl<'a> Executor<'a> {
             select.columns
         };
 
-        // Extract selected columns from matching rows
-        let result_rows: Vec<Vec<SqlValue>> = matching_rows
-            .into_iter()
-            .map(|row| {
-                result_columns
-                    .iter()
-                    .map(|col| row.get(col).cloned().unwrap_or(SqlValue::Null))
-                    .collect()
-            })
-            .collect();
-
-        // Apply LIMIT if present
-        let limited_rows = if let Some(limit) = select.limit {
-            result_rows.into_iter().take(limit as usize).collect()
-        } else {
-            result_rows
-        };
+        // Extract selected columns from matching rows with memory efficiency
+        let mut result_rows = Vec::with_capacity(matching_rows.len());
+        for row in matching_rows {
+            let mut result_row = Vec::with_capacity(result_columns.len());
+            for col in &result_columns {
+                result_row.push(row.get(col).cloned().unwrap_or(SqlValue::Null));
+            }
+            result_rows.push(result_row);
+        }
 
         Ok(ResultSet::Select {
             columns: result_columns,
-            rows: limited_rows,
+            rows: result_rows,
         })
     }
 
@@ -318,6 +344,9 @@ impl<'a> Executor<'a> {
                 }
             }
 
+            // Validate row data against schema
+            self.validate_row_data(&insert.table, &row_data)?;
+
             // Generate row key based on primary key values (IOT approach)
             let row_key = self.generate_row_key(&insert.table, &row_data)?;
             
@@ -328,6 +357,9 @@ impl<'a> Executor<'a> {
                     insert.table
                 )));
             }
+
+            // Check UNIQUE constraints
+            self.validate_unique_constraints(&insert.table, &row_data, None)?;
 
             // Serialize the row and store with primary key as the actual storage key
             let serialized_row = self.serialize_row(&row_data)?;
@@ -352,7 +384,7 @@ impl<'a> Executor<'a> {
         
         // Process each row
         for (key, value) in current_data {
-            if let Ok(mut row_data) = self.deserialize_row(&value) {
+            if let Ok(row_data) = self.deserialize_row(&value) {
                 // Check if row matches WHERE clause
                 let matches = if let Some(ref where_clause) = update.where_clause {
                     self.evaluate_condition(&where_clause.condition, &row_data)
@@ -361,13 +393,20 @@ impl<'a> Executor<'a> {
                 };
                 
                 if matches {
-                    // Apply updates
+                    // Apply updates to a copy first for validation
+                    let mut updated_row = row_data.clone();
                     for assignment in &update.assignments {
-                        row_data.insert(assignment.column.clone(), assignment.value.clone());
+                        updated_row.insert(assignment.column.clone(), assignment.value.clone());
                     }
                     
+                    // Validate updated row data
+                    self.validate_row_data(&update.table, &updated_row)?;
+                    
+                    // Check UNIQUE constraints (excluding current row)
+                    self.validate_unique_constraints(&update.table, &updated_row, Some(&key))?;
+                    
                     // Serialize updated row and apply directly to transaction
-                    let serialized_row = self.serialize_row(&row_data)?;
+                    let serialized_row = self.serialize_row(&updated_row)?;
                     self.transaction.set(&key, serialized_row)?;
                     rows_affected += 1;
                 }
@@ -711,5 +750,135 @@ impl<'a> Executor<'a> {
         }
         
         Ok(pk_values)
+    }
+    
+    /// Validate data against table schema constraints
+    fn validate_row_data(&self, table_name: &str, row_data: &HashMap<String, SqlValue>) -> Result<()> {
+        let schema = self.table_schemas.get(table_name)
+            .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table_name)))?;
+        
+        // Check for required columns and data type compatibility
+        for column in &schema.columns {
+            if let Some(value) = row_data.get(&column.name) {
+                // Validate data type compatibility
+                self.validate_data_type(value, &column.data_type, &column.name)?;
+                
+                // Check NOT NULL constraint
+                if column.constraints.contains(&crate::parser::ColumnConstraint::NotNull) && *value == SqlValue::Null {
+                    return Err(crate::Error::Other(format!(
+                        "Column '{}' cannot be NULL", column.name
+                    )));
+                }
+            } else {
+                // Column is missing - check if it's required
+                if column.constraints.contains(&crate::parser::ColumnConstraint::NotNull) ||
+                   column.constraints.contains(&crate::parser::ColumnConstraint::PrimaryKey) {
+                    return Err(crate::Error::Other(format!(
+                        "Required column '{}' is missing", column.name
+                    )));
+                }
+            }
+        }
+        
+        // Check for unknown columns
+        for column_name in row_data.keys() {
+            if !schema.columns.iter().any(|col| col.name == *column_name) {
+                return Err(crate::Error::Other(format!(
+                    "Unknown column '{}' for table '{}'", column_name, table_name
+                )));
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Validate that a value matches the expected data type
+    fn validate_data_type(&self, value: &SqlValue, expected_type: &crate::parser::DataType, column_name: &str) -> Result<()> {
+        use crate::parser::DataType;
+        use SqlValue::*;
+        
+        let is_valid = match (value, expected_type) {
+            (Null, _) => true, // NULL is valid for any type (NOT NULL constraint checked separately)
+            (Integer(_), DataType::Integer) => true,
+            (Text(_), DataType::Text) => true,
+            (Real(_), DataType::Real) => true,
+            // Allow implicit conversions
+            (Integer(_), DataType::Real) => true, // Integer can be converted to Real
+            (Integer(_), DataType::Text) => true, // Integer can be converted to Text
+            (Real(_), DataType::Text) => true, // Real can be converted to Text
+            // For BLOB, we'll accept any type since SqlValue doesn't have Blob variant yet
+            (_, DataType::Blob) => true,
+            _ => false,
+        };
+        
+        if !is_valid {
+            return Err(crate::Error::Other(format!(
+                "Type mismatch for column '{}': expected {:?}, got {:?}", 
+                column_name, expected_type, self.get_value_type(value)
+            )));
+        }
+        
+        Ok(())
+    }
+    
+    /// Get the type name of a SqlValue for error messages
+    fn get_value_type(&self, value: &SqlValue) -> &'static str {
+        match value {
+            SqlValue::Null => "NULL",
+            SqlValue::Integer(_) => "INTEGER",
+            SqlValue::Real(_) => "REAL", 
+            SqlValue::Text(_) => "TEXT",
+        }
+    }
+    
+    /// Validate UNIQUE constraints for a table
+    fn validate_unique_constraints(&mut self, table_name: &str, row_data: &HashMap<String, SqlValue>, exclude_key: Option<&[u8]>) -> Result<()> {
+        let schema = self.table_schemas.get(table_name)
+            .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table_name)))?;
+        
+        // Get columns with UNIQUE constraints
+        let unique_columns: Vec<&ColumnInfo> = schema.columns
+            .iter()
+            .filter(|col| col.constraints.contains(&crate::parser::ColumnConstraint::Unique))
+            .collect();
+        
+        if unique_columns.is_empty() {
+            return Ok(()); // No UNIQUE constraints to check
+        }
+        
+        // Scan existing rows to check for duplicates
+        let table_key_prefix = format!("{}:", table_name);
+        let start_key = table_key_prefix.as_bytes().to_vec();
+        let end_key = format!("{}~", table_name).as_bytes().to_vec();
+        
+        let scan_results = self.transaction.scan(start_key..end_key)?;
+        
+        for (existing_key, existing_value) in scan_results {
+            // Skip the row we're updating (if any)
+            if let Some(exclude) = exclude_key {
+                if existing_key == exclude {
+                    continue;
+                }
+            }
+            
+            if let Ok(existing_row) = self.deserialize_row(&existing_value) {
+                // Check each UNIQUE column
+                for unique_col in &unique_columns {
+                    if let (Some(new_val), Some(existing_val)) = (
+                        row_data.get(&unique_col.name),
+                        existing_row.get(&unique_col.name)
+                    ) {
+                        if new_val != &SqlValue::Null && existing_val != &SqlValue::Null && new_val == existing_val {
+                            return Err(crate::Error::Other(format!(
+                                "UNIQUE constraint violation: duplicate value for column '{}'", 
+                                unique_col.name
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
 }
