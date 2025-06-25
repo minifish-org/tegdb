@@ -16,6 +16,7 @@ pub struct EngineConfig {
     /// Maximum value size in bytes (default: 256KB)
     pub max_value_size: usize,
     /// Whether to sync to disk after every write (default: false)
+    /// Note: TegDB prioritizes performance over durability - latest commits may not persist on crash
     pub sync_on_write: bool,
     /// Whether to automatically compact on open (default: true)
     pub auto_compact: bool,
@@ -116,7 +117,7 @@ impl Engine {
         }
 
         // write to log, then store shared buffer
-        self.log.write_entry(key, &value, self.config.sync_on_write)?;
+        self.log.write_entry(key, &value)?;
         // store as shared buffer for cheap cloning on get
         let shared = Arc::from(value.into_boxed_slice());
         self.key_map.insert(key.to_vec(), shared);
@@ -130,7 +131,7 @@ impl Engine {
             return Ok(());
         }
 
-        self.log.write_entry(key, &[], self.config.sync_on_write)?;
+        self.log.write_entry(key, &[])?;
         self.key_map.remove(key);
         
         Ok(())
@@ -185,7 +186,7 @@ impl Engine {
         let mut new_log = Log::new(path)?;
         new_log.file.set_len(0)?;
         for (key, value) in &self.key_map {
-            new_log.write_entry(key, value.as_ref(), true)?;
+            new_log.write_entry(key, value.as_ref())?;
             new_key_map.insert(key.clone(), value.clone());
         }
          
@@ -511,11 +512,11 @@ impl Log {
     
     
     fn write_tx_marker(&mut self, tx_id_bytes: &[u8]) -> Result<()> {
-        // Write commit marker entry using the same format as regular entries, always sync on commit
-        self.write_entry(TX_COMMIT_MARKER, tx_id_bytes, true)
+        // Write commit marker entry using the same format as regular entries
+        self.write_entry(TX_COMMIT_MARKER, tx_id_bytes)
     }
 
-    fn write_entry(&mut self, key: &[u8], value: &[u8], sync: bool) -> Result<()> {
+    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         if key.len() > 1024 || value.len() > 256 * 1024 {
             return Err(Error::Other(format!(
                 "Key or value length exceeds limits: key_len={}, value_len={}", 
@@ -543,10 +544,7 @@ impl Log {
             writer.flush()?;
         }
         
-        // Sync to disk if requested
-        //if sync {
-        //    self.file.sync_all()?;
-        //}
+        // Note: No fsync for performance - latest commits may not persist on crash
         
         Ok(())
     }
