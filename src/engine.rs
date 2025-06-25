@@ -544,9 +544,9 @@ impl Log {
         }
         
         // Sync to disk if requested
-        if sync {
-            self.file.sync_all()?;
-        }
+        //if sync {
+        //    self.file.sync_all()?;
+        //}
         
         Ok(())
     }

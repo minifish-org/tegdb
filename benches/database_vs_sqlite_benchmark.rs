@@ -45,6 +45,9 @@ fn database_benchmark(c: &mut Criterion) {
         })
     });
 
+    // Clean up accumulated data before next benchmark
+    let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
+
     // Benchmark SELECT operations
     c.bench_function("database select", |b| {
         b.iter(|| {
@@ -52,6 +55,9 @@ fn database_benchmark(c: &mut Criterion) {
             black_box(result);
         })
     });
+
+    // Clean up accumulated data before next benchmark
+    let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
     // Benchmark SELECT with WHERE clause
     c.bench_function("database select where", |b| {
@@ -61,6 +67,9 @@ fn database_benchmark(c: &mut Criterion) {
         })
     });
 
+    // Clean up accumulated data before next benchmark
+    let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
+
     // Benchmark UPDATE operations
     c.bench_function("database update", |b| {
         b.iter(|| {
@@ -68,6 +77,9 @@ fn database_benchmark(c: &mut Criterion) {
             black_box(affected);
         })
     });
+
+    // Clean up accumulated data before next benchmark
+    let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
     // Benchmark transaction operations
     c.bench_function("database transaction", |b| {
@@ -88,6 +100,9 @@ fn database_benchmark(c: &mut Criterion) {
             tx.commit().unwrap();
         })
     });
+
+    // Clean up accumulated data before next benchmark
+    let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
     // Benchmark DELETE operations
     c.bench_function("database delete", |b| {
@@ -137,6 +152,9 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
         })
     });
 
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
+
     // Benchmark SELECT operations
     c.bench_function("sqlite sql select", |b| {
         b.iter(|| {
@@ -151,6 +169,9 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
             }
         })
     });
+
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
 
     // Benchmark SELECT with WHERE clause
     c.bench_function("sqlite sql select where", |b| {
@@ -168,6 +189,9 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
         })
     });
 
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
+
     // Benchmark UPDATE operations
     c.bench_function("sqlite sql update", |b| {
         b.iter(|| {
@@ -178,6 +202,9 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
             black_box(affected);
         })
     });
+
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
 
     // Benchmark transaction operations
     c.bench_function("sqlite sql transaction", |b| {
@@ -195,6 +222,9 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
             tx.commit().unwrap();
         })
     });
+
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
 
     // Benchmark DELETE operations
     c.bench_function("sqlite sql delete", |b| {
