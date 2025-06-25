@@ -1,294 +1,326 @@
 # TegDB
 
-TegDB aims to address common database problems, including inadequate null handling and unintended type conversions. [^1]
+TegDB is a lightweight, embedded database engine with a SQL-like interface designed for simplicity, performance, and reliability. It provides ACID transactions, crash recovery, and efficient key-value storage.
 
-The name TegridyDB (short for TegDB) is inspired by Tegridy Farm in South Park.
+> **Design Philosophy**: TegDB prioritizes simplicity and reliability over complexity. It uses a single-threaded design to eliminate concurrency bugs, reduce memory overhead, and provide predictable performance - making it ideal for embedded systems and applications where resource efficiency matters more than parallel processing.
 
-> **Design Note**: TegDB is specifically designed as a single-threaded database to optimize for resource-constrained environments like embedded systems and to maintain code simplicity. While modern databases often emphasize concurrent operations, TegDB prioritizes reliability, simplicity, and minimal resource usage for scenarios where these qualities are more important than parallel processing capabilities.
+## Architecture Overview
 
-## Design
+TegDB implements a clean layered architecture with four distinct layers:
 
-TegDB is a straightforward key-value store optimized for speed, reliability, and resource efficiency. Its architecture consists of two layers:
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    Database API                             │
+│        (SQLite-like interface with schema caching)         │
+├─────────────────────────────────────────────────────────────┤
+│                    SQL Executor                            │
+│    (Query optimization and statement execution)            │
+├─────────────────────────────────────────────────────────────┤
+│                    SQL Parser                              │
+│         (nom-based SQL parsing to AST)                     │
+├─────────────────────────────────────────────────────────────┤
+│                    Storage Engine                          │
+│  (Key-value store with WAL and transaction support)        │
+└─────────────────────────────────────────────────────────────┘
+```
 
-- In-memory layer: A single-threaded B-Tree offering fast operations with minimal memory overhead.
-- Disk layer: A log file guaranteeing persistent, efficient writes.
+### Core Components
 
-It provides two core APIs:
+- **Storage Engine**: BTreeMap-based in-memory storage with append-only log persistence
+- **Transaction System**: Write-through transactions with undo logging and commit markers
+- **SQL Support**: Full SQL parser and executor supporting DDL and DML operations
+- **Index-Organized Tables**: Primary key optimization with direct key lookups
+- **Schema Caching**: Database-level schema caching for improved performance
+- **Crash Recovery**: WAL-based recovery using transaction commit markers
 
-- Engine API: A raw key-value interface.
-- Database API: A transactional interface with serializable isolation.
+## Key Features
 
-Key components include Write-Ahead Logging, Snapshot Isolation, and automated log compaction with garbage collection.
+### 🚀 **Performance**
+- Zero-copy value sharing with Arc<[u8]>
+- Primary key optimized queries (O(log n) lookups)
+- Streaming query processing with early LIMIT termination
+- Efficient binary serialization
 
-Below is an architectural overview:
+### 🔒 **ACID Transactions**
+- Atomicity: All-or-nothing transaction execution
+- Consistency: Schema validation and constraint enforcement  
+- Isolation: Write-through with snapshot-like behavior
+- Durability: Write-ahead logging with commit markers
 
-````text
-        +----------------+
-        |  Database API  |
-        +-------+--------+
-                |
-                v
-        +----------------+
-        |   Engine API   |
-        +---+-------+----+
-            |       |
-            v       v
-+----------------+  +-------------------+
-| Log File (Disk)|  | B-Tree            |
-| (Persistent)   |  | (In-Memory)       |
-+----------------+  +-------------------+
-````
+### 🛡️ **Reliability**
+- Crash recovery from write-ahead log
+- File locking prevents concurrent access corruption
+- Graceful handling of partial writes and corruption
+- Automatic rollback on transaction drop
 
-Its transaction isolation level is serializable, ensuring robust consistency. To guarantee this, TegDB employs Write-Ahead Logging (WAL) to record every change and uses Snapshot Isolation to deliver consistent database views.
+### 📦 **Simple Design**
+- Single-threaded architecture eliminates race conditions
+- Minimal dependencies (only `fs2` for file locking)
+- Clean separation of concerns across layers
+- Extensive test coverage including ACID compliance
 
-When a transaction is committed, its changes are written to the log file and applied to memory; if aborted, the changes are discarded. Readers can capture a snapshot of the current memory state, ensuring consistency with the database at that moment.
+## Quick Start
 
-Each transaction operates on a unique snapshot, providing clear visibility and a definitive commit history.
-
-Upon startup, the database recovers its state by:
-
-1. Checking the log file.
-2. Continuing from the last assigned transaction ID to avoid duplicate IDs.
-3. Rolling back any uncommitted transactions systematically.
-4. Discarding uncommitted transactions during reads after checking transaction IDs and statuses.
-
-If a transaction encounters an abort error, subsequent operations report an error and a rollback is required. The rollback process efficiently reverses changes made during the transaction using the raw KV Engine API.
-
-### Detailed Rollback Process
-
-Upon startup, the database recovers its state by checking the log file and continuing from the last assigned transaction ID to avoid duplicated ID assignment. Any uncommitted transactions are systematically rolled back to guarantee a consistent starting point. Uncommitted transactions are discarded during reads after checking transaction IDs and statuses.
-
-If a transaction encounters an abort error, subsequent operations report an error and a rollback is required. For efficiency, changes are recorded incrementally during the transaction. The commit operation simply marks completion, and rollback has a similar approach. The rollback process is designed to be efficient, as it only needs to reverse the changes made during the transaction, rather than restoring the entire database state.
-
-To roll back a transaction, the raw KV Engine API is used to reverse its changes, with markers to identify delete, update, and insert operations.
-
-On demanding log compaction when shutting down the Engine to reduce storage overhead.
-
-## Features
-
-- **Transaction Support**: ACID-compatible transactions with robust isolation guarantees
-- **Write-Ahead Logging (WAL)**: Guarantees durability and aids crash recovery
-- **Async Support**: Efficient asynchronous operations
-- **Benchmarking**: Includes tests comparing performance with other databases (sled, redb, SQLite)
-- **Resource Efficiency**: Single-threaded design optimized for embedded systems and devices with limited resources
-
-## Getting Started
-
-To start using TegDB in your project, add the following dependency to your `Cargo.toml`:
+Add TegDB to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 tegdb = "0.2.0"
 ```
 
-## Usage Example
-
-The following example demonstrates how to create a new database, start a transaction, perform operations, and commit the transaction using the single-threaded design.
+### Basic Usage
 
 ```rust
-use tegdb::Database;
-use std::path::PathBuf;
+use tegdb::{Database, Result};
 
-#[tokio::main]
-async fn main() {
-    // Create database with thread-local reference
-    let path = PathBuf::from("path/to/db");
-    let db_ref = Database::new_ref(path).await;
+fn main() -> Result<()> {
+    // Open or create a database
+    let mut db = Database::open("my_app.db")?;
     
-    // Start a transaction
-    let mut tx = {
-        let db = db_ref.borrow();
-        db.begin().await
-    };
+    // Create a table
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
     
-    // Perform operations
-    tx.put("key", "value").await.unwrap();
+    // Insert data
+    db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
+    db.execute("INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")?;
     
-    // Commit the transaction
-    tx.commit().await.unwrap();
+    // Query data
+    let result = db.query("SELECT name, age FROM users WHERE age > 25")?;
+    
+    for row in result.iter() {
+        let name = row.get("name").unwrap();
+        let age = row.get("age").unwrap();
+        println!("User: {:?}, Age: {:?}", name, age);
+    }
+    
+    Ok(())
 }
+```
+
+### Transaction Example
+
+```rust
+use tegdb::{Database, Result};
+
+fn transfer_funds(db: &mut Database, from_id: i64, to_id: i64, amount: i64) -> Result<()> {
+    // Begin explicit transaction
+    let mut tx = db.begin_transaction()?;
+    
+    // Debit from source account
+    tx.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?")?;
+    
+    // Credit to destination account  
+    tx.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?")?;
+    
+    // Commit the transaction (or it will auto-rollback on drop)
+    tx.commit()?;
+    
+    Ok(())
+}
+```
+
+## SQL Support
+
+TegDB supports a comprehensive subset of SQL:
+
+### Data Definition Language (DDL)
+```sql
+-- Create tables with constraints
+CREATE TABLE products (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    price REAL,
+    category TEXT
+);
+
+-- Drop tables
+DROP TABLE IF EXISTS old_table;
+```
+
+### Data Manipulation Language (DML)
+```sql
+-- Insert single or multiple rows
+INSERT INTO products (id, name, price) VALUES (1, 'Widget', 19.99);
+INSERT INTO products (id, name, price) VALUES 
+    (2, 'Gadget', 29.99),
+    (3, 'Tool', 39.99);
+
+-- Update with conditions
+UPDATE products SET price = 24.99 WHERE name = 'Widget';
+
+-- Delete with conditions
+DELETE FROM products WHERE price < 20.00;
+
+-- Query with filtering, ordering, and limits
+SELECT name, price FROM products 
+WHERE category = 'Electronics' 
+ORDER BY price DESC 
+LIMIT 10;
+```
+
+### Transaction Control
+```sql
+BEGIN;
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+COMMIT;
+-- or ROLLBACK;
+```
+
+### Supported Data Types
+- `INTEGER` - 64-bit signed integers
+- `REAL` - 64-bit floating point numbers  
+- `TEXT` - UTF-8 strings
+- `BLOB` - Binary data
+- `NULL` - Null values
+
+## Performance Characteristics
+
+### Time Complexity
+- **Primary key lookups**: O(log n)
+- **Range scans**: O(log n + k) where k = result size
+- **Inserts/Updates/Deletes**: O(log n)
+- **Schema operations**: O(1) with caching
+
+### Memory Usage
+- **In-memory index**: BTreeMap with Arc-shared values
+- **Zero-copy reads**: Multiple references share same memory
+- **Lazy allocation**: Undo logs only allocated when needed
+- **Streaming queries**: LIMIT processed without loading full result
+
+### Storage Format
+- **Append-only log**: Fast writes, no seek overhead
+- **Binary serialization**: Compact data representation
+- **Automatic compaction**: Reclaims space from old entries
+- **Crash recovery**: Replay from last commit marker
+
+## Configuration
+
+```rust
+use tegdb::EngineConfig;
+
+let config = EngineConfig {
+    max_key_size: 1024,        // 1KB max key size
+    max_value_size: 256 * 1024, // 256KB max value size  
+    sync_on_write: false,       // Performance over durability
+    auto_compact: true,         // Auto-compact on open
+};
+
+// Note: Custom config requires dev feature and low-level API
+```
+
+## Advanced Usage
+
+### Low-Level Engine API
+
+For advanced use cases, enable the `dev` feature to access low-level APIs:
+
+```toml
+[dependencies]
+tegdb = { version = "0.2", features = ["dev"] }
+```
+
+```rust
+use tegdb::{Engine, EngineConfig};
+
+// Direct key-value operations
+let mut engine = Engine::new("data.db".into())?;
+engine.set(b"key", b"value".to_vec())?;
+let value = engine.get(b"key");
+
+// Transaction control
+let mut tx = engine.begin_transaction();
+tx.set(b"key1", b"value1".to_vec())?;
+tx.set(b"key2", b"value2".to_vec())?;
+tx.commit()?;
 ```
 
 ## Benchmarks
 
-Benchmarking is crucial to evaluate the performance and efficiency of TegDB compared to other databases. The project includes comprehensive benchmarks comparing performance against:
-
-- sled
-- SQLite
-- redb
-- SQLite
-
-Run the benchmarks with:
+Run performance benchmarks against other embedded databases:
 
 ```bash
-cargo bench
+cargo bench --features dev
 ```
 
-## Thread Safety
+Included benchmarks compare against:
+- SQLite
+- sled  
+- redb
 
-TegDB is designed to be used in a single-threaded environment. This decision prioritizes simplicity, reliability, and resource efficiency - especially important for embedded systems and devices with limited resources.
+## Development
 
-### Thread-Local Reference Types
+### Building
 
-TegDB provides thread-local reference types to ensure proper single-threaded access:
+```bash
+# Standard build
+cargo build
 
-- `EngineRef`: A thread-local reference to an Engine instance
-- `DatabaseRef`: A thread-local reference to a Database instance
+# With development features
+cargo build --features dev
 
-```rust
-// Creating a thread-local Engine reference
-let engine_ref = Engine::new_ref(path);
-let engine = engine_ref.borrow(); // borrow for operations
+# Run tests
+cargo test --features dev
 
-// Creating a thread-local Database reference
-let db_ref = Database::new_ref(path).await;
-let db = db_ref.borrow(); // borrow for operations
+# Run benchmarks  
+cargo bench --features dev
 ```
-
-### Thread Safety Considerations
-
-- The Engine is designed for use within a single thread
-- All database operations should be performed from the same thread
-- Use `Engine::new_ref()` and `Database::new_ref()` to create thread-local references
-- For multi-threaded applications, implement a worker pattern where database operations are delegated to a dedicated thread
-
-### Multi-Threaded Applications
-
-For applications that need to access the database from multiple threads, implement a worker pattern:
-
-1. Create a dedicated database thread
-2. Send operations to that thread via channels
-3. Return results to caller threads via response channels
-
-See the `thread_safe_usage.rs` example for a complete implementation.
-
-### Benefits of Single-Threaded Design
-
-By enforcing a single-threaded design, TegDB provides several benefits:
-
-1. Simplified codebase with fewer concurrency bugs
-2. Reduced memory footprint without synchronization overhead
-3. More predictable performance characteristics
-4. Lower resource usage suitable for embedded environments
-
-## Rules
-
-The following rules are established to ensure the development of TegDB remains straightforward, reliable, and maintainable:
-
-1. Keep it simple.
-2. Use the standard library whenever possible.
-3. Prioritize correctness and reliability.
-
-## TODO
-
-### Architecture Improvements
-
-- [ ] Better separation between Engine API and Database API layers
-- [ ] Clearer documentation of the two-layer architecture implementation
-- [ ] Better organization of code structure to match architectural layers
-- [ ] Optimization of single-threaded operations
-
-### Transaction Management
-
-- [ ] More robust testing for serializable isolation guarantees
-- [ ] Optimization of transaction rollback process
-- [ ] Better documentation of transaction recovery during startup
-- [ ] More efficient snapshot management during transactions
-
-### Write-Ahead Logging (WAL)
-
-- [ ] Improved documentation of WAL's role in crash recovery
-- [ ] More efficient log compaction process
-- [ ] Better implementation of background processing for log compaction
-- [ ] Optimization of garbage collection process
-
-### Documentation
-
-- [ ] Add comprehensive API documentation for all public types and functions
-  - Document all public methods in `Database`, `Transaction`, and `Engine` structs
-  - Add examples for common use cases and edge cases
-  - Include performance characteristics and memory usage considerations
-  - Document error conditions and recovery strategies
-
-- [ ] Create detailed architecture documentation
-  - Document the two-layer architecture (Engine API and Database API)
-  - Explain the interaction between components (SkipList, WAL, Transaction Manager)
-  - Detail the transaction isolation mechanisms
-  - Document the garbage collection and log compaction processes
-
-- [ ] Add configuration documentation
-  - Document all configurable parameters in `constants.rs`
-  - Explain the impact of different configuration values
-  - Provide recommendations for different use cases
-  - Include performance tuning guidelines
-
-- [ ] Create troubleshooting guide
-  - Document common issues and their solutions
-  - Add debugging tips for transaction conflicts
-  - Include performance optimization guidelines
-  - Document recovery procedures for different failure scenarios
-
-- [ ] Improve code examples
-  - Add more comprehensive examples for different use cases
-  - Create examples demonstrating transaction isolation
-  - Add examples for error handling and recovery
-  - Include examples for performance optimization
-
-- [ ] Add design rationale documentation
-  - Explain key design decisions and their trade-offs
-  - Document the reasoning behind architectural choices
-  - Compare with alternative approaches
-  - Explain performance considerations
-
-- [ ] Create deployment guide
-  - Document system requirements
-  - Provide installation instructions
-  - Include configuration recommendations
-  - Add monitoring and maintenance guidelines
-
-- [ ] Add contribution guidelines
-  - Document coding standards
-  - Explain the testing requirements
-  - Provide guidelines for documentation updates
-  - Include pull request process
-
-### Error Handling
-
-- [ ] More robust and consistent error handling across the codebase
-- [ ] Better handling of abort errors and edge cases
-- [ ] Improved error reporting and recovery mechanisms
 
 ### Testing
 
-- [ ] Comprehensive tests for ACID properties
-- [ ] Expanded benchmarking tests
-- [ ] Crash recovery tests
-- [ ] Performance optimization tests
+TegDB includes comprehensive tests covering:
+- ACID transaction properties
+- Crash recovery scenarios  
+- SQL parsing and execution
+- Performance benchmarks
+- Edge cases and error conditions
 
-### Dependencies
+## Design Principles
 
-- [ ] Review and optimize external dependencies
-- [ ] Replace some dependencies with standard library implementations
-- [ ] Update dependency versions where needed
+1. **Simplicity First**: Prefer simple, understandable solutions
+2. **Reliability**: Prioritize correctness over performance optimizations
+3. **Standard Library**: Use std library when possible to minimize dependencies
+4. **Single Threaded**: Eliminate concurrency complexity and bugs
+5. **Resource Efficient**: Optimize for memory and CPU usage
 
-### Configuration
+## Architecture Details
 
-- [ ] Add configuration options for performance tuning
-- [ ] Make hardcoded values configurable
-- [ ] Add configuration documentation
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
+- Layer-by-layer implementation details
+- Storage format and recovery mechanisms  
+- Memory management and performance optimizations
+- Transaction system and ACID guarantees
+- Query optimization and execution strategies
 
-### API Design
+## Limitations
 
-- [ ] More ergonomic and user-friendly API
-- [ ] Optimization for common use cases
-- [ ] Better API documentation
+### Current Limitations
+- **Single-threaded**: No concurrent access support
+- **No secondary indexes**: Only primary key optimization
+- **Limited SQL**: Subset of full SQL standard
+- **No foreign keys**: Basic constraint support only
+- **No joins**: Single table queries only
+
+### Future Enhancements
+- Secondary index support
+- JOIN operation support  
+- More SQL features (subqueries, aggregation)
+- Compression for large values
+- Streaming for very large result sets
 
 ## License
 
-This project is licensed under the AGPL-3.0 License. The AGPL-3.0 License is a strong copyleft license that ensures any modifications to the code are shared with the community. It was chosen to promote open collaboration and ensure that improvements to the project remain freely available.
+Licensed under AGPL-3.0. See [LICENSE](LICENSE) for details.
 
-See the [LICENSE](LICENSE) file for details.
+The AGPL-3.0 ensures that any modifications to TegDB remain open source and available to the community.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please:
+
+1. Follow the design principles above
+2. Include comprehensive tests
+3. Update documentation for new features
+4. Ensure benchmarks still pass
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
