@@ -40,7 +40,6 @@ pub struct Engine {
     log: Log,
     key_map: KeyMap,
     config: EngineConfig,
-    next_tx_id: u64,
 }
 
 // Transaction commit marker - special marker that won't be part of keymap
@@ -66,7 +65,6 @@ impl Engine {
             log,
             key_map,
             config,
-            next_tx_id: 1,
         };
         
         if engine.config.auto_compact {
@@ -78,13 +76,9 @@ impl Engine {
 
     /// Begins a new write-through transaction
     pub fn begin_transaction(&mut self) -> Transaction<'_> {
-        let tx_id = self.next_tx_id;
-        self.next_tx_id += 1;
-        
         // Don't write begin marker - only write commit marker on commit
         Transaction { 
             engine: self, 
-            tx_id,
             undo_log: None, // Lazy initialization
             finalized: false,
         }
@@ -210,7 +204,6 @@ struct UndoEntry {
 /// Write-through transactional context for ACID operations
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
-    tx_id: u64,
     undo_log: Option<Vec<UndoEntry>>, // Lazy initialization
     finalized: bool, // Track if transaction has been committed or rolled back
 }
@@ -315,8 +308,7 @@ impl Transaction<'_> {
         
         if has_writes {
             // Write transaction commit marker directly to log (not to keymap) and always sync on commit
-            let tx_id_bytes = self.tx_id.to_be_bytes().to_vec();
-            self.engine.log.write_tx_marker(&tx_id_bytes)?;
+            self.engine.log.write_entry(TX_COMMIT_MARKER, &[])?;
             
             // Clear the undo log
             if let Some(ref mut log) = self.undo_log {
@@ -510,12 +502,6 @@ impl Log {
          Ok(key_map)
     }
     
-    
-    fn write_tx_marker(&mut self, tx_id_bytes: &[u8]) -> Result<()> {
-        // Write commit marker entry using the same format as regular entries
-        self.write_entry(TX_COMMIT_MARKER, tx_id_bytes)
-    }
-
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         if key.len() > 1024 || value.len() > 256 * 1024 {
             return Err(Error::Other(format!(
