@@ -62,6 +62,16 @@ pub mod executor;
 #[cfg(not(feature = "dev"))]
 mod executor;
 
+#[cfg(feature = "dev")]
+pub mod planner;
+#[cfg(not(feature = "dev"))]
+mod planner;
+
+#[cfg(feature = "dev")]
+pub mod plan_executor;
+#[cfg(not(feature = "dev"))]
+mod plan_executor;
+
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
 pub use database::{Database, QueryResult, Row, Transaction as DbTransaction};
@@ -78,6 +88,10 @@ pub use parser::{
     DeleteStatement, CreateTableStatement, DropTableStatement, ColumnDefinition, WhereClause, 
     Assignment, OrderByClause
 };
+#[cfg(feature = "dev")]
+pub use planner::{QueryPlanner, ExecutionPlan, PlannerConfig, TableStatistics, ColumnStatistics, Cost};
+#[cfg(feature = "dev")]
+pub use plan_executor::PlanExecutor;
 
 // Export SqlValue unconditionally as it's needed for working with query results
 #[cfg(not(feature = "dev"))]
@@ -89,4 +103,6 @@ pub mod low_level {
     pub use crate::engine::{Engine, Transaction as EngineTransaction, EngineConfig};
     pub use crate::executor::{Executor, ResultSet};
     pub use crate::parser::{parse_sql, Statement, SqlValue};
+    pub use crate::planner::{QueryPlanner, ExecutionPlan, PlannerConfig};
+    pub use crate::plan_executor::PlanExecutor;
 }
