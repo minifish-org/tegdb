@@ -76,6 +76,21 @@ harness = false
 required-features = ["dev"]
 
 [[bench]]
+name = "planner_optimization_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "simple_planner_test"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "focused_planner_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
 name = "bottleneck_analysis"
 harness = false
 required-features = ["dev"]
