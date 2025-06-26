@@ -4,6 +4,7 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::{engine::Engine, executor::{Executor, TableSchema}, parser::{parse_sql, SqlValue}, Result};
+use crate::{planner::QueryPlanner, plan_executor::PlanExecutor};
 use std::{path::Path, collections::HashMap, sync::{Arc, RwLock}};
 
 /// Database connection, similar to sqlite::Connection
@@ -123,12 +124,19 @@ impl Database {
         
         // Use a single transaction for this operation
         let transaction = self.engine.begin_transaction();
-        let mut executor = Executor::new_with_schemas(transaction, schemas);
+        
+        // Use the new planner pipeline
+        let planner = QueryPlanner::new(schemas.clone());
+        let mut plan_executor = PlanExecutor::new(transaction, schemas.clone());
         
         // Start an implicit transaction
-        executor.execute(crate::parser::Statement::Begin)?;
-        let result = executor.execute(statement.clone())?;
-        executor.execute(crate::parser::Statement::Commit)?;
+        plan_executor.executor_mut().execute(crate::parser::Statement::Begin)?;
+        
+        // Generate and execute the plan
+        let plan = planner.plan(statement.clone())?;
+        let result = plan_executor.execute_plan(plan)?;
+        
+        plan_executor.executor_mut().execute(crate::parser::Statement::Commit)?;
         
         // Update our shared schemas cache for DDL operations
         match &statement {
@@ -150,7 +158,7 @@ impl Database {
         }
         
         // Actually commit the engine transaction
-        executor.transaction_mut().commit()?;
+        plan_executor.executor_mut().transaction_mut().commit()?;
         
         match result {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
@@ -170,15 +178,22 @@ impl Database {
         let schemas = self.table_schemas.read().unwrap().clone();
         
         let transaction = self.engine.begin_transaction();
-        let mut executor = Executor::new_with_schemas(transaction, schemas);
+        
+        // Use the new planner pipeline
+        let planner = QueryPlanner::new(schemas.clone());
+        let mut plan_executor = PlanExecutor::new(transaction, schemas);
         
         // Start an implicit transaction
-        executor.execute(crate::parser::Statement::Begin)?;
-        let result = executor.execute(statement)?;
-        executor.execute(crate::parser::Statement::Commit)?;
+        plan_executor.executor_mut().execute(crate::parser::Statement::Begin)?;
+        
+        // Generate and execute the plan
+        let plan = planner.plan(statement)?;
+        let result = plan_executor.execute_plan(plan)?;
+        
+        plan_executor.executor_mut().execute(crate::parser::Statement::Commit)?;
         
         // Actually commit the engine transaction
-        executor.transaction_mut().commit()?;
+        plan_executor.executor_mut().transaction_mut().commit()?;
         
         match result {
             crate::executor::ResultSet::Select { columns, rows } => {

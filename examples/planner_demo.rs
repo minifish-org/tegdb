@@ -3,7 +3,7 @@
 //! This example shows the conceptual flow of how a query planner would work:
 //! SQL Text -> Parser -> Planner -> Execution Plan -> Plan Executor -> Results
 //! 
-//! Run with: cargo run --example planner_demo --features dev
+//! Run with: cargo run --example planner_demo
 
 use tegdb::{Database, Result};
 

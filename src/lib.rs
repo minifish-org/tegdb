@@ -51,26 +51,20 @@ pub mod error;
 pub mod database;
 pub mod serialization;
 
-// Make these modules public when dev feature is enabled so tests can access them
-#[cfg(feature = "dev")]
+// Make these modules public when dev feature is enabled or when running tests
+#[cfg(any(feature = "dev", test))]
 pub mod parser;
-#[cfg(not(feature = "dev"))]
+#[cfg(not(any(feature = "dev", test)))]
 mod parser;
 
-#[cfg(feature = "dev")]
+#[cfg(any(feature = "dev", test))]
 pub mod executor;
-#[cfg(not(feature = "dev"))]
+#[cfg(not(any(feature = "dev", test)))]
 mod executor;
 
-#[cfg(feature = "dev")]
+// Planner modules are now always available since they're the main execution path
 pub mod planner;
-#[cfg(not(feature = "dev"))]
-mod planner;
-
-#[cfg(feature = "dev")]
 pub mod plan_executor;
-#[cfg(not(feature = "dev"))]
-mod plan_executor;
 
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
@@ -83,7 +77,7 @@ pub use engine::{Engine, EngineConfig, Transaction};
 pub use executor::{Executor, ResultSet};
 #[cfg(feature = "dev")]
 pub use parser::{
-    parse_sql, Statement, SqlValue, DataType, ColumnConstraint, ComparisonOperator, 
+    parse_sql, Statement, DataType, ColumnConstraint, ComparisonOperator, 
     OrderDirection, Condition, SelectStatement, InsertStatement, UpdateStatement, 
     DeleteStatement, CreateTableStatement, DropTableStatement, ColumnDefinition, WhereClause, 
     Assignment, OrderByClause
@@ -94,7 +88,6 @@ pub use planner::{QueryPlanner, ExecutionPlan, PlannerConfig, TableStatistics, C
 pub use plan_executor::PlanExecutor;
 
 // Export SqlValue unconditionally as it's needed for working with query results
-#[cfg(not(feature = "dev"))]
 pub use parser::SqlValue;
 
 // For backward compatibility, also expose via modules when dev feature is enabled

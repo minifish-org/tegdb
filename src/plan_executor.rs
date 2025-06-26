@@ -13,6 +13,8 @@ use std::collections::HashMap;
 pub struct PlanExecutor<'a> {
     /// The underlying SQL executor
     executor: Executor<'a>,
+    /// Table schemas for plan execution
+    table_schemas: HashMap<String, TableSchema>,
 }
 
 impl<'a> PlanExecutor<'a> {
@@ -22,7 +24,8 @@ impl<'a> PlanExecutor<'a> {
         table_schemas: HashMap<String, TableSchema>
     ) -> Self {
         Self {
-            executor: Executor::new_with_schemas(transaction, table_schemas),
+            executor: Executor::new_with_schemas(transaction, table_schemas.clone()),
+            table_schemas,
         }
     }
 
@@ -459,25 +462,114 @@ impl<'a> PlanExecutor<'a> {
         Ok(row_data)
     }
 
-    fn parse_pk_value(&self, _table: &str, _column: &str, value_str: &str) -> Result<SqlValue> {
-        // This is simplified - in a real implementation we'd need access to schema
-        // For now, try to parse as different types
-        if let Ok(int_val) = value_str.trim_start_matches('0').parse::<i64>() {
-            Ok(SqlValue::Integer(int_val))
-        } else if let Ok(real_val) = value_str.parse::<f64>() {
-            Ok(SqlValue::Real(real_val))
+    fn parse_pk_value(&self, table: &str, column: &str, value_str: &str) -> Result<SqlValue> {
+        // Get column data type from schema
+        if let Some(schema) = self.table_schemas.get(table) {
+            if let Some(col_info) = schema.columns.iter().find(|col| col.name == column) {
+                match col_info.data_type {
+                    crate::parser::DataType::Integer => {
+                        // Remove zero padding and parse
+                        let cleaned = value_str.trim_start_matches('0');
+                        let cleaned = if cleaned.is_empty() { "0" } else { cleaned };
+                        Ok(SqlValue::Integer(cleaned.parse::<i64>()
+                            .map_err(|e| crate::Error::Other(format!("Failed to parse integer PK value '{}': {}", value_str, e)))?))
+                    },
+                    crate::parser::DataType::Text => {
+                        Ok(SqlValue::Text(value_str.to_string()))
+                    },
+                    crate::parser::DataType::Real => {
+                        Ok(SqlValue::Real(value_str.parse::<f64>()
+                            .map_err(|e| crate::Error::Other(format!("Failed to parse real PK value '{}': {}", value_str, e)))?))
+                    },
+                    crate::parser::DataType::Blob => {
+                        // For now, treat BLOB as text in primary keys
+                        Ok(SqlValue::Text(value_str.to_string()))
+                    },
+                }
+            } else {
+                Err(crate::Error::Other(format!("Column '{}' not found in table '{}'", column, table)))
+            }
         } else {
-            Ok(SqlValue::Text(value_str.to_string()))
+            Err(crate::Error::Other(format!("Table '{}' not found", table)))
         }
     }
 
-    fn validate_row_data(&self, _table: &str, row_data: &HashMap<String, SqlValue>) -> Result<()> {
-        // For now, just do basic validation
-        // In a full implementation, this would check schema constraints
-        if row_data.is_empty() {
-            return Err(crate::Error::Other("Row data cannot be empty".to_string()));
+    fn validate_row_data(&self, table: &str, row_data: &HashMap<String, SqlValue>) -> Result<()> {
+        let schema = self.table_schemas.get(table)
+            .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table)))?;
+        
+        // Check for required columns and data type compatibility
+        for column in &schema.columns {
+            if let Some(value) = row_data.get(&column.name) {
+                // Validate data type compatibility
+                self.validate_data_type(value, &column.data_type, &column.name)?;
+                
+                // Check NOT NULL constraint
+                if column.constraints.contains(&crate::parser::ColumnConstraint::NotNull) && *value == SqlValue::Null {
+                    return Err(crate::Error::Other(format!(
+                        "Column '{}' cannot be NULL", column.name
+                    )));
+                }
+            } else {
+                // Column is missing - check if it's required
+                if column.constraints.contains(&crate::parser::ColumnConstraint::NotNull) ||
+                   column.constraints.contains(&crate::parser::ColumnConstraint::PrimaryKey) {
+                    return Err(crate::Error::Other(format!(
+                        "Required column '{}' is missing", column.name
+                    )));
+                }
+            }
         }
+        
+        // Check for unknown columns
+        for column_name in row_data.keys() {
+            if !schema.columns.iter().any(|col| col.name == *column_name) {
+                return Err(crate::Error::Other(format!(
+                    "Unknown column '{}' for table '{}'", column_name, table
+                )));
+            }
+        }
+        
         Ok(())
+    }
+
+    /// Validate that a value matches the expected data type
+    fn validate_data_type(&self, value: &SqlValue, expected_type: &crate::parser::DataType, column_name: &str) -> Result<()> {
+        use crate::parser::DataType;
+        use SqlValue::*;
+        
+        let is_valid = match (value, expected_type) {
+            (Null, _) => true, // NULL is valid for any type (NOT NULL constraint checked separately)
+            (Integer(_), DataType::Integer) => true,
+            (Text(_), DataType::Text) => true,
+            (Real(_), DataType::Real) => true,
+            // Allow implicit conversions
+            (Integer(_), DataType::Real) => true, // Integer can be converted to Real
+            (Integer(_), DataType::Text) => true, // Integer can be converted to Text
+            (Real(_), DataType::Text) => true, // Real can be converted to Text
+            // For BLOB, we'll accept any type since SqlValue doesn't have Blob variant yet
+            (_, DataType::Blob) => true,
+            _ => false,
+        };
+        
+        if !is_valid {
+            return Err(crate::Error::Other(format!(
+                "Type mismatch for column '{}': expected {:?}, got {:?}", 
+                column_name, expected_type, self.get_value_type(value)
+            )));
+        }
+        
+        Ok(())
+    }
+    
+    /// Get the type name of a SqlValue for error messages
+    fn get_value_type(&self, value: &SqlValue) -> &'static str {
+        match value {
+            SqlValue::Null => "NULL",
+            SqlValue::Integer(_) => "INTEGER",
+            SqlValue::Real(_) => "REAL", 
+            SqlValue::Text(_) => "TEXT",
+        }
     }
 
     fn generate_row_key(&self, table: &str, row_data: &HashMap<String, SqlValue>) -> Result<String> {
@@ -510,17 +602,74 @@ impl<'a> PlanExecutor<'a> {
         Ok(self.executor.transaction_mut().get(&key_bytes).is_some())
     }
 
-    fn get_primary_key_columns(&self, _table: &str) -> Result<Vec<String>> {
-        // We need to access the executor's table schemas
-        // This is a bit of a limitation of the current design
-        // In a real implementation, we'd pass schemas to the plan executor
-        
-        // For now, return a hardcoded error - this needs to be fixed
-        Err(crate::Error::Other("Cannot access table schema in plan executor".to_string()))
+    fn get_primary_key_columns(&self, table_name: &str) -> Result<Vec<String>> {
+        if let Some(schema) = self.table_schemas.get(table_name) {
+            let pk_columns: Vec<String> = schema.columns
+                .iter()
+                .filter(|col| col.constraints.contains(&crate::parser::ColumnConstraint::PrimaryKey))
+                .map(|col| col.name.clone())
+                .collect();
+            
+            if pk_columns.is_empty() {
+                Err(crate::Error::Other(format!(
+                    "Table '{}' must have a primary key column", table_name
+                )))
+            } else {
+                Ok(pk_columns)
+            }
+        } else {
+            Err(crate::Error::Other(format!("Table '{}' not found", table_name)))
+        }
     }
 
-    fn validate_unique_constraints(&mut self, _table: &str, _row_data: &HashMap<String, SqlValue>, _exclude_key: Option<&[u8]>) -> Result<()> {
-        // Simplified for now - would need access to schema
+    fn validate_unique_constraints(&mut self, table: &str, row_data: &HashMap<String, SqlValue>, exclude_key: Option<&[u8]>) -> Result<()> {
+        let schema = self.table_schemas.get(table)
+            .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table)))?;
+        
+        // Get columns with UNIQUE constraints
+        let unique_columns: Vec<_> = schema.columns
+            .iter()
+            .filter(|col| col.constraints.contains(&crate::parser::ColumnConstraint::Unique))
+            .collect();
+        
+        if unique_columns.is_empty() {
+            return Ok(()); // No UNIQUE constraints to check
+        }
+        
+        // Scan existing rows to check for duplicates
+        let table_key_prefix = format!("{}:", table);
+        let start_key = table_key_prefix.as_bytes().to_vec();
+        let end_key = format!("{}~", table).as_bytes().to_vec();
+        
+        let scan_results = self.executor.transaction_mut().scan(start_key..end_key)?;
+        let scan_results: Vec<_> = scan_results.collect(); // Collect to avoid borrow conflicts
+        
+        for (existing_key, existing_value) in scan_results {
+            // Skip the row we're updating (if any)
+            if let Some(exclude) = exclude_key {
+                if existing_key == exclude {
+                    continue;
+                }
+            }
+            
+            if let Ok(existing_row) = self.deserialize_row(table, &existing_key, &existing_value) {
+                // Check each UNIQUE column
+                for unique_col in &unique_columns {
+                    if let (Some(new_val), Some(existing_val)) = (
+                        row_data.get(&unique_col.name),
+                        existing_row.get(&unique_col.name)
+                    ) {
+                        if new_val != &SqlValue::Null && existing_val != &SqlValue::Null && new_val == existing_val {
+                            return Err(crate::Error::Other(format!(
+                                "UNIQUE constraint violation: duplicate value for column '{}'", 
+                                unique_col.name
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+        
         Ok(())
     }
 
