@@ -93,13 +93,13 @@ impl<'a> PlanExecutor<'a> {
                 self.execute_drop_table_plan(&table, if_exists)
             }
             ExecutionPlan::Begin => {
-                self.executor.execute(crate::parser::Statement::Begin)
+                self.executor.begin_transaction()
             }
             ExecutionPlan::Commit => {
-                self.executor.execute(crate::parser::Statement::Commit)
+                self.executor.commit_transaction()
             }
             ExecutionPlan::Rollback => {
-                self.executor.execute(crate::parser::Statement::Rollback)
+                self.executor.rollback_transaction()
             }
         }
     }
@@ -337,7 +337,7 @@ impl<'a> PlanExecutor<'a> {
             }).collect(),
         };
         
-        self.executor.execute(crate::parser::Statement::CreateTable(create_statement))
+        self.executor.execute_create_table(create_statement)
     }
 
     /// Execute a drop table plan
@@ -347,7 +347,7 @@ impl<'a> PlanExecutor<'a> {
             if_exists,
         };
         
-        self.executor.execute(crate::parser::Statement::DropTable(drop_statement))
+        self.executor.execute_drop_table(drop_statement)
     }
 
     // Helper methods that delegate to the underlying executor

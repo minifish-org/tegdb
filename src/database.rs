@@ -130,13 +130,13 @@ impl Database {
         let mut plan_executor = PlanExecutor::new(transaction, schemas.clone());
         
         // Start an implicit transaction
-        plan_executor.executor_mut().execute(crate::parser::Statement::Begin)?;
+        plan_executor.executor_mut().begin_transaction()?;
         
         // Generate and execute the plan
         let plan = planner.plan(statement.clone())?;
         let result = plan_executor.execute_plan(plan)?;
         
-        plan_executor.executor_mut().execute(crate::parser::Statement::Commit)?;
+        plan_executor.executor_mut().commit_transaction()?;
         
         // Update our shared schemas cache for DDL operations
         match &statement {
@@ -184,13 +184,13 @@ impl Database {
         let mut plan_executor = PlanExecutor::new(transaction, schemas);
         
         // Start an implicit transaction
-        plan_executor.executor_mut().execute(crate::parser::Statement::Begin)?;
+        plan_executor.executor_mut().begin_transaction()?;
         
         // Generate and execute the plan
         let plan = planner.plan(statement)?;
         let result = plan_executor.execute_plan(plan)?;
         
-        plan_executor.executor_mut().execute(crate::parser::Statement::Commit)?;
+        plan_executor.executor_mut().commit_transaction()?;
         
         // Actually commit the engine transaction
         plan_executor.executor_mut().transaction_mut().commit()?;
@@ -301,7 +301,7 @@ impl<'a> Transaction<'a> {
         let planner = QueryPlanner::new(schemas.clone());
         let mut plan_executor = PlanExecutor::new(transaction, schemas);
         // Start the transaction immediately
-        let _ = plan_executor.executor_mut().execute(crate::parser::Statement::Begin);
+        let _ = plan_executor.executor_mut().begin_transaction();
         Self { plan_executor, planner }
     }
     
@@ -342,7 +342,7 @@ impl<'a> Transaction<'a> {
     
     /// Commit transaction
     pub fn commit(mut self) -> Result<()> {
-        self.plan_executor.executor_mut().execute(crate::parser::Statement::Commit)?;
+        self.plan_executor.executor_mut().commit_transaction()?;
         // Actually commit the underlying engine transaction
         self.plan_executor.executor_mut().transaction_mut().commit()?;
         Ok(())
@@ -350,7 +350,7 @@ impl<'a> Transaction<'a> {
     
     /// Rollback transaction
     pub fn rollback(mut self) -> Result<()> {
-        self.plan_executor.executor_mut().execute(crate::parser::Statement::Rollback)?;
+        self.plan_executor.executor_mut().rollback_transaction()?;
         // Actually rollback the underlying engine transaction
         let _ = self.plan_executor.executor_mut().transaction_mut().rollback();
         Ok(())

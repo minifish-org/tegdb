@@ -4,7 +4,7 @@
 //! and execute them against a TegDB engine instance using transactions for ACID compliance.
 
 use crate::parser::{
-    Statement, SelectStatement, InsertStatement, UpdateStatement, 
+    SelectStatement, InsertStatement, UpdateStatement, 
     DeleteStatement, CreateTableStatement, DropTableStatement, SqlValue, Condition, 
     ComparisonOperator
 };
@@ -100,53 +100,8 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Execute a parsed SQL statement with explicit transaction control
-    pub fn execute(&mut self, statement: Statement) -> Result<ResultSet> {
-        match statement {
-            Statement::Begin => self.execute_begin(),
-            Statement::Commit => self.execute_commit(),
-            Statement::Rollback => self.execute_rollback(),
-            Statement::Select(select) => {
-                if !self.in_transaction {
-                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
-                }
-                self.execute_select(select)
-            }
-            Statement::Insert(insert) => {
-                if !self.in_transaction {
-                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
-                }
-                self.execute_insert(insert)
-            }
-            Statement::Update(update) => {
-                if !self.in_transaction {
-                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
-                }
-                self.execute_update(update)
-            }
-            Statement::Delete(delete) => {
-                if !self.in_transaction {
-                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
-                }
-                self.execute_delete(delete)
-            }
-            Statement::CreateTable(create) => {
-                if !self.in_transaction {
-                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
-                }
-                self.execute_create_table(create)
-            }
-            Statement::DropTable(drop) => {
-                if !self.in_transaction {
-                    return Err(crate::Error::Other("No active transaction. Use BEGIN to start a transaction.".to_string()));
-                }
-                self.execute_drop_table(drop)
-            }
-        }
-    }
-
-    /// Execute a BEGIN statement
-    fn execute_begin(&mut self) -> Result<ResultSet> {
+    /// Start a transaction (replaces execute with Statement::Begin)
+    pub fn begin_transaction(&mut self) -> Result<ResultSet> {
         if self.in_transaction {
             return Err(crate::Error::Other("Already in a transaction".to_string()));
         }
@@ -156,8 +111,8 @@ impl<'a> Executor<'a> {
         Ok(ResultSet::Begin)
     }
 
-    /// Execute a COMMIT statement  
-    fn execute_commit(&mut self) -> Result<ResultSet> {
+    /// Commit the current transaction (replaces execute with Statement::Commit)
+    pub fn commit_transaction(&mut self) -> Result<ResultSet> {
         if !self.in_transaction {
             return Err(crate::Error::Other("No active transaction to commit".to_string()));
         }
@@ -168,8 +123,8 @@ impl<'a> Executor<'a> {
         Ok(ResultSet::Commit)
     }
 
-    /// Execute a ROLLBACK statement
-    fn execute_rollback(&mut self) -> Result<ResultSet> {
+    /// Rollback the current transaction (replaces execute with Statement::Rollback)
+    pub fn rollback_transaction(&mut self) -> Result<ResultSet> {
         if !self.in_transaction {
             return Err(crate::Error::Other("No active transaction to rollback".to_string()));
         }
@@ -181,7 +136,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute a SELECT statement with query optimization
-    fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
+    pub fn execute_select(&mut self, select: SelectStatement) -> Result<ResultSet> {
         // Try to optimize the query using the planner
         if let Some(ref where_clause) = select.where_clause {
             if let Some(optimized_result) = self.try_optimize_select(&select, &where_clause.condition)? {
@@ -364,7 +319,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute an INSERT statement within a transaction
-    fn execute_insert(&mut self, insert: InsertStatement) -> Result<ResultSet> {
+    pub fn execute_insert(&mut self, insert: InsertStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
 
         // Prepare and apply each row operation directly to the transaction
@@ -404,7 +359,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute an UPDATE statement within a transaction
-    fn execute_update(&mut self, update: UpdateStatement) -> Result<ResultSet> {
+    pub fn execute_update(&mut self, update: UpdateStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", update.table);
         
@@ -450,7 +405,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute a DELETE statement within a transaction
-    fn execute_delete(&mut self, delete: DeleteStatement) -> Result<ResultSet> {
+    pub fn execute_delete(&mut self, delete: DeleteStatement) -> Result<ResultSet> {
         let mut rows_affected = 0;
         let table_key_prefix = format!("{}:", delete.table);
         
@@ -483,7 +438,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute a CREATE TABLE statement within a transaction
-    fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
+    pub fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
         // Validate that the table has at least one primary key column
         let has_primary_key = create.columns
             .iter()
@@ -519,7 +474,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute a DROP TABLE statement within a transaction
-    fn execute_drop_table(&mut self, drop: DropTableStatement) -> Result<ResultSet> {
+    pub fn execute_drop_table(&mut self, drop: DropTableStatement) -> Result<ResultSet> {
         let schema_key = format!("__schema__:{}", drop.table);
         
         // Check if table exists by looking for its schema
