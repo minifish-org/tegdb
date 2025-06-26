@@ -3,7 +3,7 @@
 //! This module provides a SQLite-like interface for TegDB, making it easy for users
 //! to interact with the database without dealing with low-level engine details.
 
-use crate::{engine::Engine, executor::{Executor, TableSchema}, parser::{parse_sql, SqlValue}, Result};
+use crate::{engine::Engine, executor::TableSchema, parser::{parse_sql, SqlValue}, Result};
 use crate::{planner::QueryPlanner, plan_executor::PlanExecutor};
 use std::{path::Path, collections::HashMap, sync::{Arc, RwLock}};
 
@@ -292,15 +292,17 @@ impl Row<'_> {
 
 /// Database transaction
 pub struct Transaction<'a> {
-    executor: Executor<'a>,
+    plan_executor: PlanExecutor<'a>,
+    planner: QueryPlanner,
 }
 
 impl<'a> Transaction<'a> {
     fn new_with_schemas(transaction: crate::engine::Transaction<'a>, schemas: HashMap<String, TableSchema>) -> Self {
-        let mut executor = Executor::new_with_schemas(transaction, schemas);
+        let planner = QueryPlanner::new(schemas.clone());
+        let mut plan_executor = PlanExecutor::new(transaction, schemas);
         // Start the transaction immediately
-        let _ = executor.execute(crate::parser::Statement::Begin);
-        Self { executor }
+        let _ = plan_executor.executor_mut().execute(crate::parser::Statement::Begin);
+        Self { plan_executor, planner }
     }
     
     /// Execute SQL in transaction
@@ -308,7 +310,9 @@ impl<'a> Transaction<'a> {
         let (_, statement) = parse_sql(sql)
             .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
         
-        let result = self.executor.execute(statement)?;
+        // Use the planner pipeline for transaction operations too
+        let plan = self.planner.plan(statement)?;
+        let result = self.plan_executor.execute_plan(plan)?;
         
         match result {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
@@ -324,7 +328,9 @@ impl<'a> Transaction<'a> {
         let (_, statement) = parse_sql(sql)
             .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
         
-        let result = self.executor.execute(statement)?;
+        // Use the planner pipeline for transaction queries too
+        let plan = self.planner.plan(statement)?;
+        let result = self.plan_executor.execute_plan(plan)?;
         
         match result {
             crate::executor::ResultSet::Select { columns, rows } => {
@@ -336,22 +342,22 @@ impl<'a> Transaction<'a> {
     
     /// Commit transaction
     pub fn commit(mut self) -> Result<()> {
-        self.executor.execute(crate::parser::Statement::Commit)?;
+        self.plan_executor.executor_mut().execute(crate::parser::Statement::Commit)?;
         // Actually commit the underlying engine transaction
-        self.executor.transaction_mut().commit()?;
+        self.plan_executor.executor_mut().transaction_mut().commit()?;
         Ok(())
     }
     
     /// Rollback transaction
     pub fn rollback(mut self) -> Result<()> {
-        self.executor.execute(crate::parser::Statement::Rollback)?;
+        self.plan_executor.executor_mut().execute(crate::parser::Statement::Rollback)?;
         // Actually rollback the underlying engine transaction
-        let _ = self.executor.transaction_mut().rollback();
+        let _ = self.plan_executor.executor_mut().transaction_mut().rollback();
         Ok(())
     }
     
     /// Get mutable reference to the underlying transaction for low-level access
     pub fn transaction_mut(&mut self) -> &mut crate::engine::Transaction<'a> {
-        self.executor.transaction_mut()
+        self.plan_executor.executor_mut().transaction_mut()
     }
 }
