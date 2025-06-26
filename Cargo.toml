@@ -91,6 +91,11 @@ harness = false
 required-features = ["dev"]
 
 [[bench]]
+name = "limit_optimization_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
 name = "bottleneck_analysis"
 harness = false
 required-features = ["dev"]
