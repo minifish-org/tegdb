@@ -48,7 +48,8 @@ fn test_update_validation() -> Result<()> {
     db.execute("INSERT INTO users (id, name, email) VALUES (2, 'Bob', 'bob@example.com')")?;
     
     // Test valid update
-    let result = db.execute("UPDATE users SET name = 'Alice Updated' WHERE id = 1")?;
+    let result = db.execute("UPDATE users SET name = 'Alice Updated' WHERE id = 1");
+    assert!(result.is_ok(), "Valid update should succeed: {:?}", result);
     println!("Valid update result: {:?}", result);
     
     // Test NOT NULL constraint violation

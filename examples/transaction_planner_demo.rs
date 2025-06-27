@@ -44,16 +44,16 @@ fn main() -> Result<()> {
         let result = tx.query("SELECT * FROM users WHERE age > 25")?;
         println!("   → Query via transaction planner found {} rows:", result.rows().len());
         
-        for row in result.iter() {
-            let id: i64 = match row.get("id").unwrap() {
+        for row in result.rows().iter() {
+            let id: i64 = match &row[0] {
                 tegdb::SqlValue::Integer(v) => *v,
                 _ => 0,
             };
-            let name = match row.get("name").unwrap() {
-                tegdb::SqlValue::Text(v) => v,
-                _ => "unknown",
+            let name = match &row[1] {
+                tegdb::SqlValue::Text(v) => v.clone(),
+                _ => "unknown".to_string(),
             };
-            let age: i64 = match row.get("age").unwrap() {
+            let age: i64 = match &row[2] {
                 tegdb::SqlValue::Integer(v) => *v,
                 _ => 0,
             };

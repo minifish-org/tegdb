@@ -62,9 +62,13 @@ fn main() -> Result<()> {
     let pk_lookup_time = start_time.elapsed();
     println!("✅ Primary key lookup completed in {:?}", pk_lookup_time);
     
-    if let Some(row) = result.iter().next() {
+    if let Some(row) = result.rows().first() {
+        let user_id_pos = result.columns().iter().position(|c| c == "user_id").unwrap();
+        let session_id_pos = result.columns().iter().position(|c| c == "session_id").unwrap();
+        let ip_address_pos = result.columns().iter().position(|c| c == "ip_address").unwrap();
+        
         println!("   Found session: user_id={:?}, session_id={:?}, ip={:?}",
-            row.get("user_id"), row.get("session_id"), row.get("ip_address"));
+            &row[user_id_pos], &row[session_id_pos], &row[ip_address_pos]);
     }
     
     // Estimate storage savings

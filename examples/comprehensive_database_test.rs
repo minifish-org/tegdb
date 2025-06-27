@@ -74,16 +74,20 @@ fn print_query_result(result: &tegdb::QueryResult) {
     println!("Columns: {:?}", result.columns());
     println!("Rows: {}", result.rows().len());
     
-    for row in result.iter() {
-        let id = match row.get("id").unwrap() {
+    for row in result.rows().iter() {
+        let id_pos = result.columns().iter().position(|c| c == "id").unwrap();
+        let name_pos = result.columns().iter().position(|c| c == "name").unwrap();
+        let age_pos = result.columns().iter().position(|c| c == "age").unwrap();
+        
+        let id = match &row[id_pos] {
             SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let name = match row.get("name").unwrap() {
+        let name = match &row[name_pos] {
             SqlValue::Text(s) => s.clone(),
             _ => "Unknown".to_string(),
         };
-        let age = match row.get("age").unwrap() {
+        let age = match &row[age_pos] {
             SqlValue::Integer(i) => *i,
             _ => 0,
         };

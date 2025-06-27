@@ -51,14 +51,20 @@ fn main() -> Result<()> {
     let result = db.query("SELECT * FROM orders ORDER BY customer_id, order_id")?;
     
     println!("   Columns: {:?}", result.columns());
-    for row in result.iter() {
+    for (i, row) in result.rows().iter().enumerate() {
+        let customer_id_pos = result.columns().iter().position(|c| c == "customer_id").unwrap();
+        let order_id_pos = result.columns().iter().position(|c| c == "order_id").unwrap();
+        let product_name_pos = result.columns().iter().position(|c| c == "product_name").unwrap();
+        let quantity_pos = result.columns().iter().position(|c| c == "quantity").unwrap();
+        let price_pos = result.columns().iter().position(|c| c == "price").unwrap();
+        
         println!("   Row {}: customer_id={:?}, order_id={:?}, product_name={:?}, quantity={:?}, price={:?}",
-            row.index(),
-            row.get("customer_id"),
-            row.get("order_id"), 
-            row.get("product_name"),
-            row.get("quantity"),
-            row.get("price")
+            i,
+            &row[customer_id_pos],
+            &row[order_id_pos], 
+            &row[product_name_pos],
+            &row[quantity_pos],
+            &row[price_pos]
         );
     }
     
@@ -66,11 +72,15 @@ fn main() -> Result<()> {
     println!("\n4. Primary key lookup (efficient IOT access):");
     let pk_result = db.query("SELECT * FROM orders WHERE customer_id = 1 AND order_id = 101")?;
     println!("   Found {} rows for customer_id=1, order_id=101", pk_result.rows().len());
-    if let Some(row) = pk_result.iter().next() {
+    if let Some(row) = pk_result.rows().first() {
+        let product_name_pos = pk_result.columns().iter().position(|c| c == "product_name").unwrap();
+        let quantity_pos = pk_result.columns().iter().position(|c| c == "quantity").unwrap();
+        let price_pos = pk_result.columns().iter().position(|c| c == "price").unwrap();
+        
         println!("   Product: {:?}, Quantity: {:?}, Price: {:?}",
-            row.get("product_name"),
-            row.get("quantity"),
-            row.get("price")
+            &row[product_name_pos],
+            &row[quantity_pos],
+            &row[price_pos]
         );
     }
     

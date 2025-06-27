@@ -32,16 +32,16 @@ fn main() -> Result<()> {
     let result = db.query("SELECT * FROM users")?;
     println!("Found {} rows:", result.rows().len());
     
-    for row in result.iter() {
-        let id = match row.get("id").unwrap() {
+    for row in result.rows() {
+        let id = match &row[0] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let name = match row.get("name").unwrap() {
+        let name = match &row[1] {
             tegdb::SqlValue::Text(s) => s.clone(),
             _ => "Unknown".to_string(),
         };
-        let age = match row.get("age").unwrap() {
+        let age = match &row[2] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };

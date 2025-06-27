@@ -75,42 +75,26 @@ fn test_query_result_interface() -> Result<()> {
     assert_eq!(result.columns(), &["id", "name", "price", "active"]);
     assert_eq!(result.rows().len(), 2);
     
-    // Test Row iteration and access
-    for (i, row) in result.iter().enumerate() {
-        assert_eq!(row.index(), i);
+    // Test Row access by index
+    for i in 0..result.rows().len() {
+        let row = &result.rows()[i];
         
-        // Test get by column name
-        let id = row.get("id").unwrap();
-        let name = row.get("name").unwrap();
-        let price = row.get("price").unwrap();
-        let active = row.get("active").unwrap();
-        
-        // Test get by index
-        assert_eq!(row.get_by_index(0).unwrap(), id);
-        assert_eq!(row.get_by_index(1).unwrap(), name);
-        assert_eq!(row.get_by_index(2).unwrap(), price);
-        assert_eq!(row.get_by_index(3).unwrap(), active);
-        
-        // Verify types and values
+        // Verify types and values for each row
         match i {
             0 => {
-                assert_eq!(*id, SqlValue::Integer(1));
-                assert_eq!(*name, SqlValue::Text("Laptop".to_string()));
-                assert_eq!(*price, SqlValue::Real(999.99));
-                assert_eq!(*active, SqlValue::Integer(1));
+                assert_eq!(row[0], SqlValue::Integer(1));
+                assert_eq!(row[1], SqlValue::Text("Laptop".to_string()));
+                assert_eq!(row[2], SqlValue::Real(999.99));
+                assert_eq!(row[3], SqlValue::Integer(1));
             }
             1 => {
-                assert_eq!(*id, SqlValue::Integer(2));
-                assert_eq!(*name, SqlValue::Text("Mouse".to_string()));
-                assert_eq!(*price, SqlValue::Real(29.99));
-                assert_eq!(*active, SqlValue::Integer(1));
+                assert_eq!(row[0], SqlValue::Integer(2));
+                assert_eq!(row[1], SqlValue::Text("Mouse".to_string()));
+                assert_eq!(row[2], SqlValue::Real(29.99));
+                assert_eq!(row[3], SqlValue::Integer(1));
             }
             _ => panic!("Unexpected row index"),
         }
-        
-        // Test invalid column access
-        assert!(row.get("nonexistent").is_none());
-        assert!(row.get_by_index(10).is_none());
     }
     
     Ok(())
@@ -424,8 +408,8 @@ fn test_database_schema_persistence() -> Result<()> {
         assert_eq!(result.rows().len(), 1);
         
         // Find column positions
-        let id_pos = result.columns().iter().position(|c| c == "id").unwrap();
-        let data_pos = result.columns().iter().position(|c| c == "data").unwrap();
+        let id_pos = result.columns().iter().position(|c| c == "id").expect("id column not found");
+        let data_pos = result.columns().iter().position(|c| c == "data").expect("data column not found");
         
         assert_eq!(result.rows()[0][id_pos], SqlValue::Integer(1));
         assert_eq!(result.rows()[0][data_pos], SqlValue::Text("test data".to_string()));

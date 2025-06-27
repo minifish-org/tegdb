@@ -44,14 +44,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Test 7: Query to verify data
     let result = db.query("SELECT * FROM users")?;
-    println!("Query result: {} rows returned", result.rows.len());
-    for (i, row_data) in result.rows.iter().enumerate() {
+    println!("Query result: {} rows returned", result.rows().len());
+    for (i, row_data) in result.rows().iter().enumerate() {
         println!("  Row {}: {:?}", i + 1, row_data);
     }
     
     // Test 8: Select with LIMIT (memory optimization)
     let result = db.query("SELECT * FROM users LIMIT 1")?;
-    println!("Select with LIMIT result: {} rows returned", result.rows.len());
+    println!("Select with LIMIT result: {} rows returned", result.rows().len());
     
     println!("All tests completed successfully!");
     

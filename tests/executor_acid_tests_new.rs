@@ -65,8 +65,8 @@ fn test_transaction_consistency() -> Result<()> {
         let mut tx = db.begin_transaction()?;
         
         // Transfer $200 from account 1 to account 2
-        tx.execute("UPDATE accounts SET balance = 800 WHERE id = 1")?;  // 1000 - 200
-        tx.execute("UPDATE accounts SET balance = 700 WHERE id = 2")?;  // 500 + 200
+        tx.execute("UPDATE accounts SET balance = balance - 200 WHERE id = 1")?;
+        tx.execute("UPDATE accounts SET balance = balance + 200 WHERE id = 2")?;
         
         tx.commit()?;
     }
@@ -244,8 +244,7 @@ fn test_concurrent_transaction_patterns() -> Result<()> {
         let mut tx = db.begin_transaction()?;
         tx.execute("INSERT INTO shared_counter (id, value) VALUES (2, 100)")?;
         tx.execute("INSERT INTO shared_counter (id, value) VALUES (3, 200)")?;
-        tx.execute("UPDATE shared_counter SET value = 110 WHERE id = 2")?;  // 100 + 10
-        tx.execute("UPDATE shared_counter SET value = 210 WHERE id = 3")?;  // 200 + 10
+        tx.execute("UPDATE shared_counter SET value = value + 10 WHERE id >= 2")?;
         tx.commit()?;
     }
     

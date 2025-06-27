@@ -42,7 +42,7 @@ fn main() -> Result<()> {
         let pk_time = start.elapsed();
         
         println!("   Primary Key Query: SELECT * FROM benchmark_test WHERE id = 5");
-        println!("   → Found {} rows in {:?}", result.rows.len(), pk_time);
+        println!("   → Found {} rows in {:?}", result.rows().len(), pk_time);
         println!("   → Plan type: PrimaryKeyLookup (O(1) direct access)");
         
         // Table scan with filter (should use TableScan plan with predicate pushdown)
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
         let scan_time = start.elapsed();
         
         println!("\n   Table Scan Query: SELECT value FROM benchmark_test WHERE score > 15.0");
-        println!("   → Found {} rows in {:?}", result.rows.len(), scan_time);
+        println!("   → Found {} rows in {:?}", result.rows().len(), scan_time);
         println!("   → Plan type: TableScan with predicate pushdown");
         
         // Limited query (should use TableScan with limit pushdown)
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
         let limit_time = start.elapsed();
         
         println!("\n   Limited Query: SELECT * FROM benchmark_test LIMIT 3");
-        println!("   → Found {} rows in {:?}", result.rows.len(), limit_time);
+        println!("   → Found {} rows in {:?}", result.rows().len(), limit_time);
         println!("   → Plan type: TableScan with early termination");
         
         println!("\n3. Executing modification operations through planner...");
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
         
         // Verify final state
         let result = db.query("SELECT * FROM benchmark_test")?;
-        println!("\n   Remaining rows: {}", result.rows.len());
+        println!("\n   Remaining rows: {}", result.rows().len());
         
         println!("\n=== Query Planner Integration Confirmed ===");
         println!("✓ All operations executed through the planner pipeline");

@@ -416,6 +416,7 @@ mod tests {
     
     fn create_test_schema() -> TableSchema {
         TableSchema {
+            name: "test_table".to_string(),
             columns: vec![
                 ColumnInfo {
                     name: "id".to_string(),

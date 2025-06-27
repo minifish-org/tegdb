@@ -110,11 +110,6 @@ impl Database {
                 let constraints_str = if components.len() > 2 { components[2] } else { "" };
 
                 let data_type = match data_type_str {
-                    "Integer" => crate::parser::DataType::Integer,
-                    "Text" => crate::parser::DataType::Text,
-                    "Real" => crate::parser::DataType::Real,
-                    "Blob" => crate::parser::DataType::Blob,
-                    // Also accept uppercase for backward compatibility
                     "INTEGER" => crate::parser::DataType::Integer,
                     "TEXT" => crate::parser::DataType::Text,
                     "REAL" => crate::parser::DataType::Real,
@@ -232,13 +227,14 @@ impl Database {
     }
     
     /// Begin a new database transaction
-    pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
+    pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction> {
         let schemas = self.table_schemas.read().unwrap().clone();
         let transaction = self.engine.begin_transaction();
         let executor = Executor::new_with_schemas(transaction, schemas);
         
         Ok(DatabaseTransaction {
             executor,
+            config: self.config.clone(),
             table_schemas: Arc::clone(&self.table_schemas),
         })
     }
@@ -294,12 +290,13 @@ impl QueryResult {
 }
 
 /// Transaction handle for batch operations
-pub struct DatabaseTransaction<'a> {
-    executor: Executor<'a>,
+pub struct DatabaseTransaction {
+    executor: Executor<'static>,
+    config: DatabaseConfig,
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
 }
 
-impl<'a> DatabaseTransaction<'a> {
+impl DatabaseTransaction {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let (_, statement) = parse_sql(sql)

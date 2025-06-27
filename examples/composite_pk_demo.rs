@@ -33,20 +33,20 @@ fn main() -> Result<()> {
     let result = db.query("SELECT * FROM order_items")?;
     println!("Found {} order items:", result.rows().len());
     
-    for row in result.iter() {
-        let order_id = match row.get("order_id").unwrap() {
+    for row in result.rows() {
+        let order_id = match &row[0] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let product_id = match row.get("product_id").unwrap() {
+        let product_id = match &row[1] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let quantity = match row.get("quantity").unwrap() {
+        let quantity = match &row[2] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let price = match row.get("price").unwrap() {
+        let price = match &row[3] {
             tegdb::SqlValue::Real(r) => *r,
             _ => 0.0,
         };
@@ -60,12 +60,12 @@ fn main() -> Result<()> {
     let result = db.query("SELECT * FROM order_items WHERE order_id = 100")?;
     println!("Found {} items for order 100:", result.rows().len());
     
-    for row in result.iter() {
-        let product_id = match row.get("product_id").unwrap() {
+    for row in result.rows() {
+        let product_id = match &row[1] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let quantity = match row.get("quantity").unwrap() {
+        let quantity = match &row[2] {
             tegdb::SqlValue::Integer(i) => *i,
             _ => 0,
         };

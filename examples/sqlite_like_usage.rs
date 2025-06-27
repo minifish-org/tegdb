@@ -29,16 +29,16 @@ fn main() -> Result<()> {
     println!("Columns: {:?}", result.columns());
     println!("Found {} rows", result.rows().len());
     
-    for row in result.iter() {
-        let name = match row.get("name").unwrap() {
+    for row in result.rows().iter() {
+        let name = match &row[result.columns().iter().position(|c| c == "name").unwrap()] {
             SqlValue::Text(s) => s.clone(),
             _ => "Unknown".to_string(),
         };
-        let id = match row.get("id").unwrap() {
+        let id = match &row[result.columns().iter().position(|c| c == "id").unwrap()] {
             SqlValue::Integer(i) => *i,
             _ => 0,
         };
-        let age = match row.get("age").unwrap() {
+        let age = match &row[result.columns().iter().position(|c| c == "age").unwrap()] {
             SqlValue::Integer(i) => *i,
             _ => 0,
         };

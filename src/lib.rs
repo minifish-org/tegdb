@@ -21,8 +21,8 @@
 //!     
 //!     // Query data
 //!     let result = db.query("SELECT * FROM users")?;
-//!     for row in result.iter() {
-//!         println!("User: {:?}", row.get("name"));
+//!     for row in result.rows() {
+//!         println!("User row: {:?}", row);
 //!     }
 //!     
 //!     // Use transactions
@@ -49,11 +49,8 @@
 pub mod engine;
 pub mod error;
 pub mod database;
-pub mod serialization;
-pub mod optimized_serialization;
 pub mod native_row_format;
 pub mod storage_format;
-pub mod enhanced_plan_executor;
 
 // Make these modules public when dev feature is enabled or when running tests
 #[cfg(any(feature = "dev", test))]
@@ -68,18 +65,17 @@ mod executor;
 
 // Planner modules are now always available since they're the main execution path
 pub mod planner;
-pub mod plan_executor;
 
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
-pub use database::{Database, QueryResult, Row, Transaction as DbTransaction, DatabaseConfig};
+pub use database::{Database, QueryResult, DatabaseConfig, DatabaseTransaction};
 pub use storage_format::StorageFormat;
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
 pub use engine::{Engine, EngineConfig, Transaction};
 #[cfg(feature = "dev")]
-pub use executor::{Executor, ResultSet};
+pub use executor::{Executor, ResultSet, TableSchema, ColumnInfo};
 #[cfg(feature = "dev")]
 pub use parser::{
     parse_sql, Statement, DataType, ColumnConstraint, ComparisonOperator, 
@@ -89,8 +85,6 @@ pub use parser::{
 };
 #[cfg(feature = "dev")]
 pub use planner::{QueryPlanner, ExecutionPlan, PlannerConfig, TableStatistics, ColumnStatistics, Cost};
-#[cfg(feature = "dev")]
-pub use plan_executor::PlanExecutor;
 
 // Export SqlValue unconditionally as it's needed for working with query results
 pub use parser::SqlValue;
@@ -99,8 +93,7 @@ pub use parser::SqlValue;
 #[cfg(feature = "dev")]
 pub mod low_level {
     pub use crate::engine::{Engine, Transaction as EngineTransaction, EngineConfig};
-    pub use crate::executor::{Executor, ResultSet};
+    pub use crate::executor::{Executor, ResultSet, TableSchema, ColumnInfo};
     pub use crate::parser::{parse_sql, Statement, SqlValue};
     pub use crate::planner::{QueryPlanner, ExecutionPlan, PlannerConfig};
-    pub use crate::plan_executor::PlanExecutor;
 }

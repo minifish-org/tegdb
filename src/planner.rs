@@ -366,6 +366,7 @@ impl QueryPlanner {
     fn plan_create_table(&self, create: CreateTableStatement) -> Result<ExecutionPlan> {
         // Convert parser schema to executor schema
         let schema = TableSchema {
+            name: create.table.clone(),
             columns: create.columns.iter().map(|col| ColumnInfo {
                 name: col.name.clone(),
                 data_type: col.data_type.clone(),
@@ -466,11 +467,9 @@ impl QueryPlanner {
     /// Normalize selected columns (handle * expansion)
     fn normalize_selected_columns(&self, table_name: &str, columns: &[String]) -> Result<Vec<String>> {
         if columns.len() == 1 && columns[0] == "*" {
-            // Expand * to all columns
+            // Expand * to all columns in schema order
             if let Some(schema) = self.table_schemas.get(table_name) {
-                let mut all_columns: Vec<_> = schema.columns.iter().map(|c| c.name.clone()).collect();
-                all_columns.sort(); // Ensure consistent ordering
-                Ok(all_columns)
+                Ok(schema.columns.iter().map(|c| c.name.clone()).collect())
             } else {
                 Err(crate::Error::Other(format!("Table '{}' not found", table_name)))
             }
@@ -643,6 +642,7 @@ mod tests {
         
         // Users table with single primary key
         schemas.insert("users".to_string(), TableSchema {
+            name: "users".to_string(),
             columns: vec![
                 ColumnInfo {
                     name: "id".to_string(),
