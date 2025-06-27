@@ -158,25 +158,27 @@ impl<'a> PlanExecutor<'a> {
         early_termination: bool
     ) -> Result<ResultSet> {
         let table_key_prefix = format!("{}:", table);
-        let mut matching_rows: Vec<HashMap<String, SqlValue>> = Vec::new();
-        
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", table).as_bytes().to_vec();
         
+        // Collect scan results to avoid borrow conflicts, but process immediately
+        // TODO: Future optimization - stream processing without collection
         let scan_results = self.executor.transaction_mut().scan(start_key..end_key)?;
-        let scan_results: Vec<_> = scan_results.collect(); // Collect to avoid borrow conflicts
+        let scan_results: Vec<_> = scan_results.collect();
         
-        // Process with early termination optimization
+        let mut result_rows = Vec::new();
         let mut processed_count = 0;
         let effective_limit = limit.unwrap_or(u64::MAX) as usize;
         
+        // Process rows with improved efficiency
         for (key, value) in scan_results {
+            // Early termination check BEFORE expensive operations
             if early_termination && processed_count >= effective_limit {
-                break; // Early termination optimization
+                break;
             }
             
             if let Ok(row_data) = self.deserialize_row(table, &key, &value) {
-                // Apply filter if present (predicate pushdown)
+                // Apply filter if present
                 let matches = if let Some(condition) = filter {
                     self.evaluate_condition(condition, &row_data)
                 } else {
@@ -184,7 +186,12 @@ impl<'a> PlanExecutor<'a> {
                 };
                 
                 if matches {
-                    matching_rows.push(row_data);
+                    // Extract only the selected columns immediately (avoid intermediate HashMap storage)
+                    let mut result_row = Vec::with_capacity(selected_columns.len());
+                    for col in selected_columns {
+                        result_row.push(row_data.get(col).cloned().unwrap_or(SqlValue::Null));
+                    }
+                    result_rows.push(result_row);
                     processed_count += 1;
                     
                     // Break early if we've reached the limit
@@ -193,16 +200,6 @@ impl<'a> PlanExecutor<'a> {
                     }
                 }
             }
-        }
-
-        // Extract selected columns from matching rows
-        let mut result_rows = Vec::with_capacity(matching_rows.len());
-        for row in matching_rows {
-            let mut result_row = Vec::with_capacity(selected_columns.len());
-            for col in selected_columns {
-                result_row.push(row.get(col).cloned().unwrap_or(SqlValue::Null));
-            }
-            result_rows.push(result_row);
         }
 
         Ok(ResultSet::Select {
