@@ -4,8 +4,30 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::{engine::Engine, executor::TableSchema, parser::{parse_sql, SqlValue}, Result};
-use crate::{planner::QueryPlanner, plan_executor::PlanExecutor};
+use crate::{planner::QueryPlanner, enhanced_plan_executor::EnhancedPlanExecutor};
+use crate::storage_format::StorageFormat;
 use std::{path::Path, collections::HashMap, sync::{Arc, RwLock}};
+
+/// Configuration for database creation
+#[derive(Clone, Debug)]
+pub struct DatabaseConfig {
+    /// Storage format to use for row data (always native binary format)
+    pub storage_format: StorageFormat,
+    /// Enable query planner optimizations
+    pub enable_planner: bool,
+    /// Enable statistics collection for better query planning
+    pub enable_statistics: bool,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            storage_format: StorageFormat::native(), // Always use native format
+            enable_planner: true,
+            enable_statistics: true,
+        }
+    }
+}
 
 /// Database connection, similar to sqlite::Connection
 /// 
@@ -18,11 +40,18 @@ pub struct Database {
     /// Shared table schemas cache, loaded once and shared across executors
     /// Uses Arc<RwLock<>> for thread-safe access with multiple readers
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
+    /// Database configuration including storage format
+    config: DatabaseConfig,
 }
 
 impl Database {
-    /// Create or open database
+    /// Create or open database with default configuration
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::open_with_config(path, DatabaseConfig::default())
+    }
+    
+    /// Create or open database with custom configuration
+    pub fn open_with_config<P: AsRef<Path>>(path: P, config: DatabaseConfig) -> Result<Self> {
         let mut engine = Engine::new(path.as_ref().to_path_buf())?;
         
         // Load all table schemas at database initialization
@@ -36,7 +65,8 @@ impl Database {
         
         Ok(Self { 
             engine, 
-            table_schemas: Arc::new(RwLock::new(table_schemas))
+            table_schemas: Arc::new(RwLock::new(table_schemas)),
+            config,
         })
     }
     
@@ -125,9 +155,9 @@ impl Database {
         // Use a single transaction for this operation
         let transaction = self.engine.begin_transaction();
         
-        // Use the new planner pipeline
+        // Use the new planner pipeline with enhanced executor
         let planner = QueryPlanner::new(schemas.clone());
-        let mut plan_executor = PlanExecutor::new(transaction, schemas.clone());
+        let mut plan_executor = EnhancedPlanExecutor::new(transaction, schemas.clone(), self.config.storage_format.clone());
         
         // Start an implicit transaction
         plan_executor.executor_mut().begin_transaction()?;
@@ -179,9 +209,9 @@ impl Database {
         
         let transaction = self.engine.begin_transaction();
         
-        // Use the new planner pipeline
+        // Use the new planner pipeline with enhanced executor
         let planner = QueryPlanner::new(schemas.clone());
-        let mut plan_executor = PlanExecutor::new(transaction, schemas);
+        let mut plan_executor = EnhancedPlanExecutor::new(transaction, schemas, self.config.storage_format.clone());
         
         // Start an implicit transaction
         plan_executor.executor_mut().begin_transaction()?;
@@ -207,7 +237,7 @@ impl Database {
     pub fn begin_transaction(&mut self) -> Result<Transaction> {
         let tx = self.engine.begin_transaction();
         let schemas = self.table_schemas.read().unwrap().clone();
-        Ok(Transaction::new_with_schemas(tx, schemas))
+        Ok(Transaction::new_with_schemas(tx, schemas, self.config.storage_format.clone()))
     }
     
     /// Refresh schema cache from database storage
@@ -292,14 +322,14 @@ impl Row<'_> {
 
 /// Database transaction
 pub struct Transaction<'a> {
-    plan_executor: PlanExecutor<'a>,
+    plan_executor: EnhancedPlanExecutor<'a>,
     planner: QueryPlanner,
 }
 
 impl<'a> Transaction<'a> {
-    fn new_with_schemas(transaction: crate::engine::Transaction<'a>, schemas: HashMap<String, TableSchema>) -> Self {
+    fn new_with_schemas(transaction: crate::engine::Transaction<'a>, schemas: HashMap<String, TableSchema>, storage_format: StorageFormat) -> Self {
         let planner = QueryPlanner::new(schemas.clone());
-        let mut plan_executor = PlanExecutor::new(transaction, schemas);
+        let mut plan_executor = EnhancedPlanExecutor::new(transaction, schemas, storage_format);
         // Start the transaction immediately
         let _ = plan_executor.executor_mut().begin_transaction();
         Self { plan_executor, planner }

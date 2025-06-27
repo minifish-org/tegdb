@@ -50,6 +50,10 @@ pub mod engine;
 pub mod error;
 pub mod database;
 pub mod serialization;
+pub mod optimized_serialization;
+pub mod native_row_format;
+pub mod storage_format;
+pub mod enhanced_plan_executor;
 
 // Make these modules public when dev feature is enabled or when running tests
 #[cfg(any(feature = "dev", test))]
@@ -68,7 +72,8 @@ pub mod plan_executor;
 
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
-pub use database::{Database, QueryResult, Row, Transaction as DbTransaction};
+pub use database::{Database, QueryResult, Row, Transaction as DbTransaction, DatabaseConfig};
+pub use storage_format::StorageFormat;
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]

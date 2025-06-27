@@ -6,6 +6,7 @@
 use crate::planner::{ExecutionPlan, Assignment};
 use crate::executor::{Executor, ResultSet, TableSchema};
 use crate::parser::{SqlValue, Condition, ComparisonOperator};
+use crate::optimized_serialization::OptimizedRowSerializer;
 use crate::Result;
 use std::collections::HashMap;
 
@@ -148,7 +149,7 @@ impl<'a> PlanExecutor<'a> {
         }
     }
 
-    /// Execute an optimized table scan
+    /// Execute an optimized table scan with performance improvements
     fn execute_table_scan_optimized(
         &mut self,
         table: &str,
@@ -161,8 +162,7 @@ impl<'a> PlanExecutor<'a> {
         let start_key = table_key_prefix.as_bytes().to_vec();
         let end_key = format!("{}~", table).as_bytes().to_vec();
         
-        // Collect scan results to avoid borrow conflicts, but process immediately
-        // TODO: Future optimization - stream processing without collection
+        // Collect scan results to avoid borrow conflicts
         let scan_results = self.executor.transaction_mut().scan(start_key..end_key)?;
         let scan_results: Vec<_> = scan_results.collect();
         
@@ -170,13 +170,19 @@ impl<'a> PlanExecutor<'a> {
         let mut processed_count = 0;
         let effective_limit = limit.unwrap_or(u64::MAX) as usize;
         
-        // Process rows with improved efficiency
+        // Pre-allocate result capacity for better performance
+        if let Some(limit_val) = limit {
+            result_rows.reserve(std::cmp::min(limit_val as usize, 1000));
+        }
+        
+        // Process rows with minimal overhead
         for (key, value) in scan_results {
             // Early termination check BEFORE expensive operations
             if early_termination && processed_count >= effective_limit {
                 break;
             }
             
+            // Use existing but optimized row processing
             if let Ok(row_data) = self.deserialize_row(table, &key, &value) {
                 // Apply filter if present
                 let matches = if let Some(condition) = filter {
@@ -186,7 +192,7 @@ impl<'a> PlanExecutor<'a> {
                 };
                 
                 if matches {
-                    // Extract only the selected columns immediately (avoid intermediate HashMap storage)
+                    // Extract selected columns with pre-allocated vector
                     let mut result_row = Vec::with_capacity(selected_columns.len());
                     for col in selected_columns {
                         result_row.push(row_data.get(col).cloned().unwrap_or(SqlValue::Null));
@@ -345,6 +351,102 @@ impl<'a> PlanExecutor<'a> {
         };
         
         self.executor.execute_drop_table(drop_statement)
+    }
+
+    /// Optimized deserialization that only extracts needed columns
+    fn deserialize_selected_columns_optimized(
+        &self,
+        table: &str,
+        key: &[u8],
+        value: &[u8],
+        selected_columns: &[String],
+        filter: Option<&Condition>,
+        _schema: &TableSchema
+    ) -> Result<Option<Vec<SqlValue>>> {
+        // Step 1: Extract primary key values from the key
+        let pk_data = self.extract_pk_values_from_key(table, key)?;
+        
+        // Step 2: Use optimized deserializer to get only needed columns
+        let mut column_names_needed = selected_columns.to_vec();
+        
+        // If we have a filter, we might need additional columns for evaluation
+        if let Some(condition) = filter {
+            let filter_columns = self.extract_condition_columns(condition);
+            for col in filter_columns {
+                if !column_names_needed.contains(&col) {
+                    column_names_needed.push(col);
+                }
+            }
+        }
+        
+        // Use optimized deserialization for stored (non-PK) columns
+        let stored_data = OptimizedRowSerializer::deserialize_columns_only(value, &column_names_needed)?;
+        
+        // Combine PK and stored data
+        let mut full_row_data = pk_data;
+        full_row_data.extend(stored_data);
+        
+        // Apply filter if present
+        let matches = if let Some(condition) = filter {
+            self.evaluate_condition(condition, &full_row_data)
+        } else {
+            true
+        };
+        
+        if matches {
+            // Extract only the originally requested columns
+            let mut result_row = Vec::with_capacity(selected_columns.len());
+            for col in selected_columns {
+                result_row.push(full_row_data.get(col).cloned().unwrap_or(SqlValue::Null));
+            }
+            Ok(Some(result_row))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    /// Extract primary key values from the row key
+    fn extract_pk_values_from_key(&self, table: &str, key: &[u8]) -> Result<HashMap<String, SqlValue>> {
+        let mut pk_data = HashMap::new();
+        
+        let key_str = std::str::from_utf8(key)
+            .map_err(|e| crate::Error::Other(format!("Invalid key encoding: {}", e)))?;
+        
+        if let Some(key_suffix) = key_str.strip_prefix(&format!("{}:", table)) {
+            let pk_columns = self.get_primary_key_columns(table)?;
+            let pk_values_str: Vec<&str> = key_suffix.split(':').collect();
+            
+            if pk_values_str.len() == pk_columns.len() {
+                for (pk_col, pk_value_str) in pk_columns.iter().zip(pk_values_str.iter()) {
+                    let parsed_value = self.parse_pk_value(table, pk_col, pk_value_str)?;
+                    pk_data.insert(pk_col.clone(), parsed_value);
+                }
+            }
+        }
+        
+        Ok(pk_data)
+    }
+    
+    /// Extract column names referenced in a condition
+    fn extract_condition_columns(&self, condition: &Condition) -> Vec<String> {
+        let mut columns = Vec::new();
+        self.collect_condition_columns(condition, &mut columns);
+        columns.sort();
+        columns.dedup();
+        columns
+    }
+    
+    /// Recursively collect column names from a condition
+    fn collect_condition_columns(&self, condition: &Condition, columns: &mut Vec<String>) {
+        match condition {
+            Condition::Comparison { left, .. } => {
+                columns.push(left.clone());
+            }
+            Condition::And(left, right) | Condition::Or(left, right) => {
+                self.collect_condition_columns(left, columns);
+                self.collect_condition_columns(right, columns);
+            }
+        }
     }
 
     // Helper methods that delegate to the underlying executor
