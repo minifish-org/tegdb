@@ -115,11 +115,6 @@ path = "tests/engine_tests.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "executor_acid_tests"
-path = "tests/executor_acid_tests.rs"
-required-features = ["dev"]
-
-[[test]]
 name = "explicit_transaction_integration_tests"
 path = "tests/explicit_transaction_integration_tests.rs"
 required-features = ["dev"]
