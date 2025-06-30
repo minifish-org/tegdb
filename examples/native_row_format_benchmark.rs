@@ -7,7 +7,7 @@
 //! - Table scan performance with LIMIT clauses
 //! - Condition evaluation performance
 
-use tegdb::{Database, DatabaseConfig, StorageFormat};
+use tegdb::Database;
 use std::time::Instant;
 
 fn main() -> tegdb::Result<()> {
@@ -100,14 +100,8 @@ fn test_storage_format(test_data: &[(i64, String, String, f64, i64)]) -> tegdb::
     
     let start = Instant::now();
     
-    // Create database with native format
-    let config = DatabaseConfig {
-        storage_format: StorageFormat::native(),
-        enable_planner: true,
-        enable_statistics: true,
-    };
-    
-    let mut db = Database::open_with_config(db_path, config)?;
+    // Create database (now always uses native format)
+    let mut db = Database::open(db_path)?;
     let creation_time = start.elapsed().as_nanos();
     
     // Create table

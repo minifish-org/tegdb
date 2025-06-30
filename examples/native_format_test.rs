@@ -2,7 +2,7 @@
 //! 
 //! This tests basic operations to ensure the native format integration works correctly.
 
-use tegdb::{Database, DatabaseConfig, StorageFormat};
+use tegdb::Database;
 
 fn main() -> tegdb::Result<()> {
     println!("=== Native Binary Row Format Functionality Test ===\n");
@@ -10,15 +10,9 @@ fn main() -> tegdb::Result<()> {
     // Clean up any existing database
     let _ = std::fs::remove_file("test_native.db");
     
-    // Test 1: Create database with native format
+    // Test 1: Create database (now always uses native format)
     println!("1. Creating database with native binary row format...");
-    let config = DatabaseConfig {
-        storage_format: StorageFormat::native(),
-        enable_planner: true,
-        enable_statistics: true,
-    };
-    
-    let mut db = Database::open_with_config("test_native.db", config)?;
+    let mut db = Database::open("test_native.db")?;
     println!("   ✓ Database created successfully");
     
     // Test 2: Create table

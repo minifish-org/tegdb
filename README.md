@@ -71,10 +71,10 @@ tegdb = "0.2.0"
 ### Basic Usage
 
 ```rust
-use tegdb::{Database, Result};
+use tegdb::Database;
 
-fn main() -> Result<()> {
-    // Open or create a database
+fn main() -> tegdb::Result<()> {
+    // Open or create a database (no configuration needed!)
     let mut db = Database::open("my_app.db")?;
     
     // Create a table
@@ -87,10 +87,11 @@ fn main() -> Result<()> {
     // Query data
     let result = db.query("SELECT name, age FROM users WHERE age > 25")?;
     
-    for row in result.iter() {
-        let name = row.get("name").unwrap();
-        let age = row.get("age").unwrap();
-        println!("User: {:?}, Age: {:?}", name, age);
+    println!("Found {} users:", result.len());
+    for row in result.rows() {
+        if let (Some(name), Some(age)) = (row.get(0), row.get(1)) {
+            println!("User: {:?}, Age: {:?}", name, age);
+        }
     }
     
     Ok(())
@@ -100,21 +101,29 @@ fn main() -> Result<()> {
 ### Transaction Example
 
 ```rust
-use tegdb::{Database, Result};
+use tegdb::Database;
 
-fn transfer_funds(db: &mut Database, from_id: i64, to_id: i64, amount: i64) -> Result<()> {
-    // Begin explicit transaction
+fn main() -> tegdb::Result<()> {
+    let mut db = Database::open("bank.db")?;
+    
+    // Create accounts table
+    db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance INTEGER)")?;
+    db.execute("INSERT INTO accounts (id, name, balance) VALUES (1, 'Alice', 1000)")?;
+    db.execute("INSERT INTO accounts (id, name, balance) VALUES (2, 'Bob', 500)")?;
+    
+    // Transfer funds using explicit transaction
     let mut tx = db.begin_transaction()?;
     
-    // Debit from source account
-    tx.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?")?;
+    // Debit from Alice's account
+    tx.execute("UPDATE accounts SET balance = balance - 100 WHERE id = 1")?;
     
-    // Credit to destination account  
-    tx.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?")?;
+    // Credit to Bob's account  
+    tx.execute("UPDATE accounts SET balance = balance + 100 WHERE id = 2")?;
     
     // Commit the transaction (or it will auto-rollback on drop)
     tx.commit()?;
     
+    println!("Transfer completed successfully!");
     Ok(())
 }
 ```

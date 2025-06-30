@@ -68,14 +68,15 @@ pub mod planner;
 
 // Only export the high-level Database API and essential error types
 pub use error::{Error, Result};
-pub use database::{Database, QueryResult, DatabaseConfig, DatabaseTransaction};
-pub use storage_format::StorageFormat;
+pub use database::{Database, QueryResult, DatabaseTransaction};
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
 pub use engine::{Engine, EngineConfig, Transaction};
 #[cfg(feature = "dev")]
 pub use executor::{Executor, ResultSet, TableSchema, ColumnInfo};
+#[cfg(feature = "dev")]
+pub use storage_format::StorageFormat;
 #[cfg(feature = "dev")]
 pub use parser::{
     parse_sql, Statement, DataType, ColumnConstraint, ComparisonOperator, 

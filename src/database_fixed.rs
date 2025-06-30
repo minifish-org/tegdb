@@ -5,29 +5,7 @@
 
 use crate::{engine::Engine, executor::{TableSchema, Executor}, parser::{parse_sql, SqlValue}, Result};
 use crate::planner::QueryPlanner;
-use crate::storage_format::StorageFormat;
 use std::{path::Path, collections::HashMap, sync::{Arc, RwLock}};
-
-/// Configuration for database creation
-#[derive(Clone, Debug)]
-pub struct DatabaseConfig {
-    /// Storage format to use for row data (always native binary format)
-    pub storage_format: StorageFormat,
-    /// Enable query planner optimizations
-    pub enable_planner: bool,
-    /// Enable statistics collection for better query planning
-    pub enable_statistics: bool,
-}
-
-impl Default for DatabaseConfig {
-    fn default() -> Self {
-        Self {
-            storage_format: StorageFormat::native(), // Always use native format
-            enable_planner: true,
-            enable_statistics: true,
-        }
-    }
-}
 
 /// Database connection, similar to sqlite::Connection
 /// 
@@ -40,18 +18,11 @@ pub struct Database {
     /// Shared table schemas cache, loaded once and shared across executors
     /// Uses Arc<RwLock<>> for thread-safe access with multiple readers
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
-    /// Database configuration including storage format
-    config: DatabaseConfig,
 }
 
 impl Database {
-    /// Create or open database with default configuration
+    /// Create or open database
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Self::open_with_config(path, DatabaseConfig::default())
-    }
-    
-    /// Create or open database with custom configuration
-    pub fn open_with_config<P: AsRef<Path>>(path: P, config: DatabaseConfig) -> Result<Self> {
         let engine = Engine::new(path.as_ref().to_path_buf())?;
         
         // Load all table schemas at database initialization
@@ -63,7 +34,6 @@ impl Database {
         Ok(Self { 
             engine, 
             table_schemas: Arc::new(RwLock::new(table_schemas)),
-            config,
         })
     }
     
@@ -234,7 +204,6 @@ impl Database {
         
         Ok(DatabaseTransaction {
             executor,
-            config: self.config.clone(),
             table_schemas: Arc::clone(&self.table_schemas),
         })
     }
@@ -292,7 +261,6 @@ impl QueryResult {
 /// Transaction handle for batch operations
 pub struct DatabaseTransaction {
     executor: Executor<'static>,
-    config: DatabaseConfig,
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
 }
 

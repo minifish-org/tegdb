@@ -6,7 +6,7 @@
 //! - Table scans with LIMIT clauses
 //! - Storage efficiency
 
-use tegdb::{Database as TegDatabase, DatabaseConfig, StorageFormat};
+use tegdb::Database as TegDatabase;
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -110,13 +110,7 @@ struct BenchmarkResults {
 fn test_tegdb_native(row_count: usize) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
     let start = Instant::now();
     
-    let config = DatabaseConfig {
-        storage_format: StorageFormat::native(),
-        enable_planner: true,
-        enable_statistics: true,
-    };
-    
-    let mut db = TegDatabase::open_with_config("tegdb_native.db", config)?;
+    let mut db = TegDatabase::open("tegdb_native.db")?;
     let creation_time = start.elapsed().as_nanos();
     
     // Create table
