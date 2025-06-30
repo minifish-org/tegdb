@@ -51,8 +51,10 @@ fn database_benchmark(c: &mut Criterion) {
     // Benchmark SELECT operations
     c.bench_function("database select", |b| {
         b.iter(|| {
-            let result = db.query("SELECT * FROM benchmark_test WHERE id = 1").unwrap();
-            black_box(result);
+            let result_iter = db.query("SELECT * FROM benchmark_test WHERE id = 1").unwrap();
+            // Consume the iterator to simulate row processing
+            let result: Result<Vec<_>, _> = result_iter.collect();
+            black_box(result.unwrap());
         })
     });
 
@@ -62,8 +64,9 @@ fn database_benchmark(c: &mut Criterion) {
     // Benchmark SELECT with WHERE clause
     c.bench_function("database select where", |b| {
         b.iter(|| {
-            let result = db.query("SELECT name, value FROM benchmark_test WHERE value > 50").unwrap();
-            black_box(result);
+            let result_iter = db.query("SELECT name, value FROM benchmark_test WHERE value > 50").unwrap();
+            let result: Result<Vec<_>, _> = result_iter.collect();
+            black_box(result.unwrap());
         })
     });
 
