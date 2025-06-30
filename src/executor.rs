@@ -13,6 +13,182 @@ use crate::storage_format::StorageFormat;
 use crate::{Result, Error};
 use std::collections::HashMap;
 
+/// Row iterator for streaming query results
+pub struct RowIterator<'a> {
+    scan_iter: Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>,
+    schema: TableSchema,
+    selected_columns: Vec<String>,
+    filter: Option<Condition>,
+    storage_format: StorageFormat,
+    limit: Option<u64>,
+    count: u64,
+}
+
+impl<'a> RowIterator<'a> {
+    fn new(
+        scan_iter: Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>,
+        schema: TableSchema,
+        selected_columns: Vec<String>,
+        filter: Option<Condition>,
+        storage_format: StorageFormat,
+        limit: Option<u64>,
+    ) -> Self {
+        Self {
+            scan_iter,
+            schema,
+            selected_columns,
+            filter,
+            storage_format,
+            limit,
+            count: 0,
+        }
+    }
+    
+    /// Apply filter condition to row data
+    fn evaluate_condition(&self, condition: &Condition, row_data: &HashMap<String, SqlValue>) -> bool {
+        match condition {
+            Condition::Comparison { left, operator, right } => {
+                let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
+                self.compare_values(row_value, operator, right)
+            }
+            Condition::And(left, right) => {
+                self.evaluate_condition(left, row_data) && self.evaluate_condition(right, row_data)
+            }
+            Condition::Or(left, right) => {
+                self.evaluate_condition(left, row_data) || self.evaluate_condition(right, row_data)
+            }
+        }
+    }
+    
+    /// Compare two SqlValues using the given operator
+    fn compare_values(&self, left: &SqlValue, operator: &ComparisonOperator, right: &SqlValue) -> bool {
+        use ComparisonOperator::*;
+        
+        match operator {
+            Equal => left == right,
+            NotEqual => left != right,
+            LessThan => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a < b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a < b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) < *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a < (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a < b,
+                _ => false,
+            },
+            LessThanOrEqual => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a <= b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a <= b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) <= *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a <= (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a <= b,   
+                _ => false,
+            },
+            GreaterThan => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a > b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a > b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) > *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a > (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a > b,
+                _ => false,
+            },
+            GreaterThanOrEqual => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a >= b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a >= b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) >= *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a >= (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a >= b,
+                _ => false,
+            },
+            Like => {
+                // Simple LIKE implementation - just checking if right is substring of left
+                match (left, right) {
+                    (SqlValue::Text(a), SqlValue::Text(b)) => {
+                        // Simple pattern matching - convert SQL LIKE to contains for now
+                        let pattern = b.replace('%', "");
+                        a.contains(&pattern)
+                    }
+                    _ => false,
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for RowIterator<'a> {
+    type Item = Result<Vec<SqlValue>>;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check limit
+        if let Some(limit) = self.limit {
+            if self.count >= limit {
+                return None;
+            }
+        }
+        
+        // Process rows until we find one that matches the filter
+        while let Some((_, value)) = self.scan_iter.next() {
+            match self.storage_format.deserialize_row(&value, &self.schema) {
+                Ok(row_data) => {
+                    // Apply filter if present
+                    let matches = if let Some(ref filter) = self.filter {
+                        self.evaluate_condition(filter, &row_data)
+                    } else {
+                        true
+                    };
+                    
+                    if matches {
+                        // Extract selected columns
+                        let mut row_values = Vec::new();
+                        for col_name in &self.selected_columns {
+                            row_values.push(
+                                row_data.get(col_name).cloned().unwrap_or(SqlValue::Null)
+                            );
+                        }
+                        
+                        self.count += 1;
+                        return Some(Ok(row_values));
+                    }
+                }
+                Err(e) => return Some(Err(e)),
+            }
+        }
+        
+        None
+    }
+}
+
+/// Streaming result set for SELECT queries
+pub struct StreamingResultSet<'a> {
+    pub columns: Vec<String>,
+    pub rows: RowIterator<'a>,
+}
+
+impl<'a> StreamingResultSet<'a> {
+    /// Collect all rows into a vector (for compatibility with existing code)
+    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
+        self.rows.collect::<std::result::Result<Vec<_>, _>>()
+    }
+    
+    /// Get the first N rows
+    pub fn take(self, n: usize) -> impl Iterator<Item = Result<Vec<SqlValue>>> + 'a {
+        self.rows.take(n)
+    }
+    
+    /// Apply additional filtering
+    pub fn filter<F>(self, predicate: F) -> impl Iterator<Item = Result<Vec<SqlValue>>> + 'a
+    where
+        F: Fn(&Vec<SqlValue>) -> bool + 'a,
+    {
+        self.rows.filter_map(move |row_result| {
+            match row_result {
+                Ok(row) if predicate(&row) => Some(Ok(row)),
+                Ok(_) => None, // Filtered out
+                Err(e) => Some(Err(e)),
+            }
+        })
+    }
+}
+
 /// Column information for table schema
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
@@ -31,7 +207,7 @@ pub struct TableSchema {
 /// Query execution result
 #[derive(Debug, Clone)]
 pub enum ResultSet {
-    /// SELECT query result
+    /// SELECT query result (legacy - loads all rows)
     Select {
         columns: Vec<String>,
         rows: Vec<Vec<SqlValue>>,
@@ -61,6 +237,14 @@ pub enum ResultSet {
     Commit,
     /// Transaction ROLLBACK result
     Rollback,
+}
+
+/// High-level streaming result for queries
+pub enum StreamingResult<'a> {
+    /// Streaming SELECT query result
+    Select(StreamingResultSet<'a>),
+    /// Non-streaming results
+    Other(ResultSet),
 }
 
 /// SQL executor with native row format support
@@ -267,6 +451,80 @@ impl<'a> Executor<'a> {
         }
     }
 
+    /// Execute a query execution plan with streaming support
+    pub fn execute_plan_streaming(&mut self, plan: crate::planner::ExecutionPlan) -> Result<StreamingResult> {
+        use crate::planner::ExecutionPlan;
+        
+        match plan {
+            ExecutionPlan::PrimaryKeyLookup { table, pk_values, selected_columns, additional_filter } => {
+                // For single-row lookups, streaming doesn't provide much benefit
+                let result = self.execute_primary_key_lookup(&table, &pk_values, &selected_columns, additional_filter.as_ref())?;
+                Ok(StreamingResult::Other(result))
+            }
+            ExecutionPlan::TableScan { table, selected_columns, filter, limit, early_termination: _ } => {
+                let streaming_result = self.execute_table_scan_streaming(&table, &selected_columns, filter.as_ref(), limit)?;
+                Ok(StreamingResult::Select(streaming_result))
+            }
+            // Non-streaming operations fall back to regular execution
+            _ => {
+                let result = self.execute_plan(plan)?;
+                Ok(StreamingResult::Other(result))
+            }
+        }
+    }
+
+    /// Execute table scan with streaming support for better memory efficiency
+    fn execute_table_scan_streaming(
+        &mut self,
+        table: &str,
+        selected_columns: &[String],
+        filter: Option<&Condition>,
+        limit: Option<u64>
+    ) -> Result<StreamingResultSet> {
+        let schema = self.get_table_schema(table)?;
+        let table_prefix = format!("{}:", table);
+        let start_key = table_prefix.as_bytes().to_vec();
+        let end_key = format!("{}~", table).as_bytes().to_vec();
+        
+        // Create the scan iterator
+        let scan_iter = self.transaction.scan(start_key..end_key)?;
+        
+        // Create the row iterator
+        let row_iter = RowIterator::new(
+            Box::new(scan_iter),
+            schema,
+            selected_columns.to_vec(),
+            filter.cloned(),
+            self.storage_format.clone(),
+            limit,
+        );
+        
+        Ok(StreamingResultSet {
+            columns: selected_columns.to_vec(),
+            rows: row_iter,
+        })
+    }
+
+    /// High-level streaming API for SQL queries
+    pub fn execute_streaming_query(
+        &mut self,
+        table: &str,
+        columns: Option<&[String]>,
+        filter: Option<&Condition>,
+        limit: Option<u64>
+    ) -> Result<StreamingResultSet> {
+        let schema = self.get_table_schema(table)?;
+        
+        // Use all columns if none specified
+        let selected_columns = if let Some(cols) = columns {
+            cols.to_vec()
+        } else {
+            schema.columns.iter().map(|col| col.name.clone()).collect()
+        };
+        
+        self.execute_table_scan_streaming(table, &selected_columns, filter, limit)
+    }
+
     /// Execute primary key lookup plan
     fn execute_primary_key_lookup(
         &mut self,
@@ -316,7 +574,7 @@ impl<'a> Executor<'a> {
         })
     }
 
-    /// Execute table scan plan
+    /// Execute table scan plan - now uses streaming for better memory efficiency
     fn execute_table_scan(
         &mut self,
         table: &str,
@@ -324,42 +582,11 @@ impl<'a> Executor<'a> {
         filter: Option<&Condition>,
         limit: Option<u64>
     ) -> Result<ResultSet> {
-        let schema = self.get_table_schema(table)?;
-        let table_prefix = format!("{}:", table);
-        let start_key = table_prefix.as_bytes().to_vec();
-        let end_key = format!("{}~", table).as_bytes().to_vec();
+        // Use streaming implementation for better memory efficiency
+        let streaming_result = self.execute_table_scan_streaming(table, selected_columns, filter, limit)?;
         
-        let mut rows = Vec::new();
-        let scan_results: Vec<_> = self.transaction.scan(start_key..end_key)?.collect();
-        
-        for (_, value) in scan_results {
-            if let Ok(row_data) = self.storage_format.deserialize_row(&value, &schema) {
-                // Apply filter if present
-                let matches = if let Some(condition) = filter {
-                    self.evaluate_condition(condition, &row_data)
-                } else {
-                    true
-                };
-                
-                if matches {
-                    // Extract selected columns
-                    let mut row_values = Vec::new();
-                    for col_name in selected_columns {
-                        row_values.push(
-                            row_data.get(col_name).cloned().unwrap_or(SqlValue::Null)
-                        );
-                    }
-                    rows.push(row_values);
-                    
-                    // Apply limit if present
-                    if let Some(limit_val) = limit {
-                        if rows.len() >= limit_val as usize {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // Convert to traditional ResultSet for backward compatibility
+        let rows = streaming_result.collect_rows()?;
         
         Ok(ResultSet::Select {
             columns: selected_columns.to_vec(),

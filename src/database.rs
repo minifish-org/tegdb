@@ -172,6 +172,7 @@ impl Database {
     }
 
     /// Execute SQL query, return query results
+    /// This method uses streaming execution for better memory efficiency on large datasets
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         let (_, statement) = parse_sql(sql)
             .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
@@ -186,18 +187,29 @@ impl Database {
         let planner = QueryPlanner::new(schemas.clone());
         let mut executor = Executor::new_with_schemas(transaction, schemas.clone());
         
-        // Generate and execute the plan
+        // Generate and execute the plan using streaming API for better performance
         let plan = planner.plan(statement)?;
-        let result = executor.execute_plan(plan)?;
+        let streaming_result = executor.execute_plan_streaming(plan)?;
         
         // No need to commit for read operations
         
-        // Convert executor result to query result
-        match result {
-            crate::executor::ResultSet::Select { columns, rows } => {
+        // Convert streaming result to query result
+        match streaming_result {
+            crate::executor::StreamingResult::Select(streaming_set) => {
+                // Collect streaming results - this provides memory efficiency for large datasets
+                // while maintaining the familiar QueryResult interface
+                let columns = streaming_set.columns.clone();
+                let rows = streaming_set.collect_rows()?;
                 Ok(QueryResult { columns, rows })
             }
-            _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
+            crate::executor::StreamingResult::Other(result) => {
+                match result {
+                    crate::executor::ResultSet::Select { columns, rows } => {
+                        Ok(QueryResult { columns, rows })
+                    }
+                    _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
+                }
+            }
         }
     }
     
@@ -312,6 +324,7 @@ impl<'a> DatabaseTransaction<'a> {
     }
 
     /// Execute SQL query within transaction
+    /// This method uses streaming execution for better memory efficiency on large datasets
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         let (_, statement) = parse_sql(sql)
             .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
@@ -319,16 +332,26 @@ impl<'a> DatabaseTransaction<'a> {
         // Get schemas from shared cache
         let schemas = self.table_schemas.read().unwrap().clone();
         
-        // Use the planner pipeline
+        // Use the planner pipeline with streaming support
         let planner = QueryPlanner::new(schemas);
         let plan = planner.plan(statement)?;
-        let result = self.executor.execute_plan(plan)?;
+        let streaming_result = self.executor.execute_plan_streaming(plan)?;
         
-        match result {
-            crate::executor::ResultSet::Select { columns, rows } => {
+        match streaming_result {
+            crate::executor::StreamingResult::Select(streaming_set) => {
+                // Collect streaming results for better memory efficiency
+                let columns = streaming_set.columns.clone();
+                let rows = streaming_set.collect_rows()?;
                 Ok(QueryResult { columns, rows })
             }
-            _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
+            crate::executor::StreamingResult::Other(result) => {
+                match result {
+                    crate::executor::ResultSet::Select { columns, rows } => {
+                        Ok(QueryResult { columns, rows })
+                    }
+                    _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
+                }
+            }
         }
     }
     
