@@ -5,8 +5,8 @@
 
 use crate::engine::Transaction;
 use crate::parser::{
-    SqlValue, SelectStatement, InsertStatement, UpdateStatement, 
-    DeleteStatement, CreateTableStatement, DropTableStatement, DataType, 
+    SqlValue,
+    CreateTableStatement, DropTableStatement, DataType, 
     ColumnConstraint, ComparisonOperator, Condition
 };
 use crate::storage_format::StorageFormat;
@@ -874,29 +874,6 @@ impl<'a> Executor<'a> {
                 }
             }
         }
-    }
-
-    /// Convert INSERT statement to row-oriented format
-    fn convert_insert_to_rows(&self, insert: &InsertStatement) -> Result<Vec<HashMap<String, SqlValue>>> {
-        let mut rows = Vec::new();
-        
-        for value_row in &insert.values {
-            if value_row.len() != insert.columns.len() {
-                return Err(Error::Other(format!(
-                    "Column count mismatch: expected {}, got {}", 
-                    insert.columns.len(), 
-                    value_row.len()
-                )));
-            }
-            
-            let mut row_data = HashMap::new();
-            for (i, column_name) in insert.columns.iter().enumerate() {
-                row_data.insert(column_name.clone(), value_row[i].clone());
-            }
-            rows.push(row_data);
-        }
-        
-        Ok(rows)
     }
 }
 
