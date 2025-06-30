@@ -241,7 +241,9 @@ impl<'a> Executor<'a> {
                 if matches {
                     // Apply assignments
                     for assignment in &update.assignments {
-                        row_data.insert(assignment.column.clone(), assignment.value.clone());
+                        let new_value = assignment.value.evaluate(&row_data)
+                            .map_err(|e| crate::Error::Other(format!("Expression evaluation error: {}", e)))?;
+                        row_data.insert(assignment.column.clone(), new_value);
                     }
                     
                     // Validate updated row (exclude current row from UNIQUE checks)
@@ -596,7 +598,9 @@ impl<'a> Executor<'a> {
                     // Apply assignments
                     let mut updated_row = row_data.clone();
                     for assignment in assignments {
-                        updated_row.insert(assignment.column.clone(), assignment.value.clone());
+                        let new_value = assignment.value.evaluate(&updated_row)
+                            .map_err(|e| crate::Error::Other(format!("Expression evaluation error: {}", e)))?;
+                        updated_row.insert(assignment.column.clone(), new_value);
                     }
                     
                     // Validate updated row (exclude current row from UNIQUE checks)

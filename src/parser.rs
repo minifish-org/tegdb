@@ -138,7 +138,7 @@ pub enum ComparisonOperator {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment {
     pub column: String,
-    pub value: SqlValue,
+    pub value: Expression,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -159,6 +159,112 @@ pub enum SqlValue {
     Real(f64),
     Text(String),
     Null,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expression {
+    Value(SqlValue),
+    Column(String),
+    BinaryOp {
+        left: Box<Expression>,
+        operator: ArithmeticOperator,
+        right: Box<Expression>,
+    },
+}
+
+// Expression evaluation
+impl Expression {
+    /// Evaluate an expression given a context (current row data)
+    pub fn evaluate(&self, context: &HashMap<String, SqlValue>) -> Result<SqlValue, String> {
+        match self {
+            Expression::Value(value) => Ok(value.clone()),
+            Expression::Column(column_name) => {
+                context.get(column_name)
+                    .cloned()
+                    .ok_or_else(|| format!("Column '{}' not found", column_name))
+            }
+            Expression::BinaryOp { left, operator, right } => {
+                let left_val = left.evaluate(context)?;
+                let right_val = right.evaluate(context)?;
+                
+                match (left_val, right_val) {
+                    (SqlValue::Integer(l), SqlValue::Integer(r)) => {
+                        match operator {
+                            ArithmeticOperator::Add => Ok(SqlValue::Integer(l + r)),
+                            ArithmeticOperator::Subtract => Ok(SqlValue::Integer(l - r)),
+                            ArithmeticOperator::Multiply => Ok(SqlValue::Integer(l * r)),
+                            ArithmeticOperator::Divide => {
+                                if r == 0 {
+                                    Err("Division by zero".to_string())
+                                } else {
+                                    Ok(SqlValue::Integer(l / r))
+                                }
+                            }
+                        }
+                    }
+                    (SqlValue::Real(l), SqlValue::Real(r)) => {
+                        match operator {
+                            ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
+                            ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
+                            ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
+                            ArithmeticOperator::Divide => {
+                                if r == 0.0 {
+                                    Err("Division by zero".to_string())
+                                } else {
+                                    Ok(SqlValue::Real(l / r))
+                                }
+                            }
+                        }
+                    }
+                    (SqlValue::Integer(l), SqlValue::Real(r)) => {
+                        let l = l as f64;
+                        match operator {
+                            ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
+                            ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
+                            ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
+                            ArithmeticOperator::Divide => {
+                                if r == 0.0 {
+                                    Err("Division by zero".to_string())
+                                } else {
+                                    Ok(SqlValue::Real(l / r))
+                                }
+                            }
+                        }
+                    }
+                    (SqlValue::Real(l), SqlValue::Integer(r)) => {
+                        let r = r as f64;
+                        match operator {
+                            ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
+                            ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
+                            ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
+                            ArithmeticOperator::Divide => {
+                                if r == 0.0 {
+                                    Err("Division by zero".to_string())
+                                } else {
+                                    Ok(SqlValue::Real(l / r))
+                                }
+                            }
+                        }
+                    }
+                    (SqlValue::Text(l), SqlValue::Text(r)) => {
+                        match operator {
+                            ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{}{}", l, r))),
+                            _ => Err("Only addition (+) is supported for text values".to_string())
+                        }
+                    }
+                    _ => Err("Unsupported operand types for arithmetic operation".to_string())
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArithmeticOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 
 // Parse main SQL statement with fast paths for common cases
@@ -529,7 +635,7 @@ fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
     let (input, _) = multispace0(input)?;
     let (input, _) = char('=')(input)?;
     let (input, _) = multispace0(input)?;
-    let (input, value) = parse_sql_value(input)?;
+    let (input, value) = parse_expression(input)?;
 
     Ok((input, Assignment { column, value }))
 }
@@ -662,5 +768,82 @@ fn parse_identifier(input: &str) -> IResult<&str, String> {
             }
         },
     )(input)
+}
+
+// Parse expression (supports arithmetic operations)
+fn parse_expression(input: &str) -> IResult<&str, Expression> {
+    parse_additive_expression(input)
+}
+
+// Parse additive expressions (+ and -)
+fn parse_additive_expression(input: &str) -> IResult<&str, Expression> {
+    let (input, left) = parse_multiplicative_expression(input)?;
+    let (input, rights) = many0(tuple((
+        delimited(multispace0, parse_additive_operator, multispace0),
+        parse_multiplicative_expression,
+    )))(input)?;
+
+    Ok((
+        input,
+        rights.into_iter().fold(left, |acc, (op, right)| {
+            Expression::BinaryOp {
+                left: Box::new(acc),
+                operator: op,
+                right: Box::new(right),
+            }
+        }),
+    ))
+}
+
+// Parse multiplicative expressions (* and /)
+fn parse_multiplicative_expression(input: &str) -> IResult<&str, Expression> {
+    let (input, left) = parse_primary_expression(input)?;
+    let (input, rights) = many0(tuple((
+        delimited(multispace0, parse_multiplicative_operator, multispace0),
+        parse_primary_expression,
+    )))(input)?;
+
+    Ok((
+        input,
+        rights.into_iter().fold(left, |acc, (op, right)| {
+            Expression::BinaryOp {
+                left: Box::new(acc),
+                operator: op,
+                right: Box::new(right),
+            }
+        }),
+    ))
+}
+
+// Parse primary expressions (values, columns, parentheses)
+fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
+    alt((
+        // Parenthesized expressions
+        delimited(
+            char('('),
+            delimited(multispace0, parse_expression, multispace0),
+            char(')'),
+        ),
+        // Column references
+        map(parse_identifier, Expression::Column),
+        // Literal values
+        map(parse_sql_value, Expression::Value),
+    ))(input)
+}
+
+// Parse additive operators (+ and -)
+fn parse_additive_operator(input: &str) -> IResult<&str, ArithmeticOperator> {
+    alt((
+        map(char('+'), |_| ArithmeticOperator::Add),
+        map(char('-'), |_| ArithmeticOperator::Subtract),
+    ))(input)
+}
+
+// Parse multiplicative operators (* and /)
+fn parse_multiplicative_operator(input: &str) -> IResult<&str, ArithmeticOperator> {
+    alt((
+        map(char('*'), |_| ArithmeticOperator::Multiply),
+        map(char('/'), |_| ArithmeticOperator::Divide),
+    ))(input)
 }
 

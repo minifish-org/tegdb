@@ -60,7 +60,7 @@ fn test_parse_update() {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 1);
             assert_eq!(update.assignments[0].column, "name");
-            assert_eq!(update.assignments[0].value, SqlValue::Text("Jane".to_string()));
+            assert_eq!(update.assignments[0].value, Expression::Value(SqlValue::Text("Jane".to_string())));
             assert!(update.where_clause.is_some());
         }
         _ => panic!("Expected UPDATE statement"),
@@ -395,13 +395,13 @@ fn test_parse_update_multiple_assignments() {
             assert_eq!(update.assignments.len(), 3);
             
             assert_eq!(update.assignments[0].column, "name");
-            assert_eq!(update.assignments[0].value, SqlValue::Text("Jane".to_string()));
+            assert_eq!(update.assignments[0].value, Expression::Value(SqlValue::Text("Jane".to_string())));
             
             assert_eq!(update.assignments[1].column, "age");
-            assert_eq!(update.assignments[1].value, SqlValue::Integer(30));
+            assert_eq!(update.assignments[1].value, Expression::Value(SqlValue::Integer(30)));
             
             assert_eq!(update.assignments[2].column, "email");
-            assert_eq!(update.assignments[2].value, SqlValue::Text("jane@example.com".to_string()));
+            assert_eq!(update.assignments[2].value, Expression::Value(SqlValue::Text("jane@example.com".to_string())));
         }
         _ => panic!("Expected UPDATE statement"),
     }
@@ -465,7 +465,7 @@ fn test_parse_update_without_where() {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 1);
             assert_eq!(update.assignments[0].column, "active");
-            assert_eq!(update.assignments[0].value, SqlValue::Integer(0));
+            assert_eq!(update.assignments[0].value, Expression::Value(SqlValue::Integer(0)));
             assert!(update.where_clause.is_none());
         }
         _ => panic!("Expected UPDATE statement"),

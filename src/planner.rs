@@ -86,7 +86,7 @@ pub struct IndexCondition {
 #[derive(Debug, Clone)]
 pub struct Assignment {
     pub column: String,
-    pub value: SqlValue,
+    pub value: crate::parser::Expression,
 }
 
 /// Conflict resolution strategy for inserts
