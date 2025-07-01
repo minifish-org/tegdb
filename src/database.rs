@@ -225,32 +225,32 @@ impl Database {
     
     /// Execute SQL query, return backward-compatible materialized results
     /// This method still collects all results but uses the iterator interface
-    pub fn query(&mut self, sql: &str) -> Result<QueryIterator> {
-        let (_, statement) = parse_sql(sql)
-            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
-        
-        // Clone schemas for the executor
-        let schemas = self.table_schemas.read().unwrap().clone();
-        
-        // Use a single transaction for this operation
-        let transaction = self.engine.begin_transaction();
-        
-        // Use the new planner pipeline with executor
-        let planner = QueryPlanner::new(schemas.clone());
-        let mut executor = Executor::new_with_schemas(transaction, schemas.clone());
-        
-        // Generate and execute the plan
-        let plan = planner.plan(statement)?;
-        let result = executor.execute_plan(plan)?;
-        
-        // Return iterator result
-        match result {
-            crate::executor::ResultSet::Select { columns, rows } => {
-                Ok(QueryIterator::new_materialized(columns, rows))
-            }
-            _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
-        }
-    }
+//    pub fn query(&mut self, sql: &str) -> Result<QueryIterator> {
+//        let (_, statement) = parse_sql(sql)
+//            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+//        
+//        // Clone schemas for the executor
+//        let schemas = self.table_schemas.read().unwrap().clone();
+//        
+//        // Use a single transaction for this operation
+//        let transaction = self.engine.begin_transaction();
+//        
+//        // Use the new planner pipeline with executor
+//        let planner = QueryPlanner::new(schemas.clone());
+//        let mut executor = Executor::new_with_schemas(transaction, schemas.clone());
+//        
+//        // Generate and execute the plan
+//        let plan = planner.plan(statement)?;
+//        let result = executor.execute_plan(plan)?;
+//        
+//        // Return iterator result
+//        match result {
+//            crate::executor::ResultSet::Select { columns, rows } => {
+//                Ok(QueryIterator::new_materialized(columns, rows))
+//            }
+//            _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
+//        }
+//    }
     
     /// Begin a new database transaction
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
@@ -694,38 +694,38 @@ impl<'a> DatabaseTransaction<'a> {
 
     /// Execute SQL query within transaction
     /// Returns an iterator that yields rows as they are found
-    pub fn query(&mut self, sql: &str) -> Result<QueryIterator> {
-        let (_, statement) = parse_sql(sql)
-            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
-        
-        // Get schemas from shared cache
-        let schemas = self.table_schemas.read().unwrap().clone();
-        
-        // Use the planner pipeline with streaming support
-        let planner = QueryPlanner::new(schemas);
-        let plan = planner.plan(statement)?;
-        let streaming_result = self.executor.execute_plan_streaming(plan)?;
-        
-        match streaming_result {
-            crate::executor::StreamingResult::Select(streaming_set) => {
-                // For now, we'll collect the streaming results because we can't easily
-                // return the iterator with the current lifetime constraints
-                // TODO: Implement true streaming by restructuring the transaction lifecycle
-                let columns = streaming_set.columns.clone();
-                let rows = streaming_set.collect_rows()?;
-                
-                Ok(QueryIterator::new_materialized(columns, rows))
-            }
-            crate::executor::StreamingResult::Other(result) => {
-                match result {
-                    crate::executor::ResultSet::Select { columns, rows } => {
-                        Ok(QueryIterator::new_materialized(columns, rows))
-                    }
-                    _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
-                }
-            }
-        }
-    }
+//    pub fn query(&mut self, sql: &str) -> Result<QueryIterator> {
+//        let (_, statement) = parse_sql(sql)
+//            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+//        
+//        // Get schemas from shared cache
+//        let schemas = self.table_schemas.read().unwrap().clone();
+//        
+//        // Use the planner pipeline with streaming support
+//        let planner = QueryPlanner::new(schemas);
+//        let plan = planner.plan(statement)?;
+//        let streaming_result = self.executor.execute_plan_streaming(plan)?;
+//        
+//        match streaming_result {
+//            crate::executor::StreamingResult::Select(streaming_set) => {
+//                // For now, we'll collect the streaming results because we can't easily
+//                // return the iterator with the current lifetime constraints
+//                // TODO: Implement true streaming by restructuring the transaction lifecycle
+//                let columns = streaming_set.columns.clone();
+//                let rows = streaming_set.collect_rows()?;
+//                
+//                Ok(QueryIterator::new_materialized(columns, rows))
+//            }
+//            crate::executor::StreamingResult::Other(result) => {
+//                match result {
+//                    crate::executor::ResultSet::Select { columns, rows } => {
+//                        Ok(QueryIterator::new_materialized(columns, rows))
+//                    }
+//                    _ => Err(crate::Error::Other("Expected SELECT result".to_string())),
+//                }
+//            }
+//        }
+//    }
     
     /// Execute SQL query within transaction using true streaming
     /// This provides the same streaming capability as Database::stream_query but within a transaction context
