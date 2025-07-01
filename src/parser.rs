@@ -23,12 +23,11 @@ fn intern_string(s: &str) -> String {
     STRING_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(interned) = cache.get(s) {
-            interned.clone()
-        } else {
-            let owned = s.to_string();
-            cache.insert(owned.clone(), owned.clone());
-            owned
+            return interned.clone();
         }
+        let owned = s.to_string();
+        cache.insert(owned.clone(), owned.clone());
+        owned
     })
 }
 
@@ -501,11 +500,7 @@ fn parse_column_list(input: &str) -> IResult<&str, Vec<String>> {
                 delimited(multispace0, char(','), multispace0),
                 parse_identifier,
             ),
-            |mut columns| {
-                // Pre-allocate capacity for better performance with large column lists
-                columns.shrink_to_fit();
-                columns
-            }
+            |columns| columns,
         ),
     ))(input)
 }

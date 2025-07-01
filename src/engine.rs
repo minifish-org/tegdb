@@ -1,5 +1,5 @@
 // filepath: /Users/yusp/work/tegdb/src/engine.rs
-use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::collections::BTreeMap;
@@ -59,7 +59,7 @@ impl Engine {
     /// Creates a new database engine with custom configuration
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
         let mut log = Log::new(path)?;
-        let key_map = log.build_key_map()?;
+        let key_map = log.build_key_map(&config)?;
         
         let mut engine = Self {
             log,
@@ -394,112 +394,74 @@ impl Log {
         Ok(Self { path, file })
     }
 
-    fn build_key_map(&mut self) -> Result<KeyMap> {
-         let mut len_buf = [0u8; 4];
-         let mut key_map = KeyMap::new();
-         let file_len = self.file.metadata()?.len();
-         let mut reader = BufReader::new(&mut self.file);
-         let mut pos = reader.seek(SeekFrom::Start(0))?;
-         let mut last_commit_pos = 0; // Track position of last commit marker
+    fn build_key_map(&mut self, config: &EngineConfig) -> Result<KeyMap> {
+        let mut key_map = KeyMap::new();
+        let mut uncommitted_changes: Vec<(Vec<u8>, Option<Arc<[u8]>>)> = Vec::new();
+        let file_len = self.file.metadata()?.len();
+        let mut reader = BufReader::new(&mut self.file);
+        let mut pos = reader.seek(SeekFrom::Start(0))?;
+        let mut len_buf = [0u8; 4];
+        let mut committed = false;
 
-         // First pass: find the last commit marker
-         while pos < file_len {
-            // Read key length
-            match reader.read_exact(&mut len_buf) {
-                Ok(()) => {},
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    // Corrupted file, stop processing
-                    break;
-                },
-                Err(e) => return Err(e.into()),
-            }
-            
-            let key_len = u32::from_be_bytes(len_buf);
-            
-            // Read value length
-            match reader.read_exact(&mut len_buf) {
-                Ok(()) => {},
-                Err(_) => break, // Corrupted file, stop processing
-            }
-            
-            let value_len = u32::from_be_bytes(len_buf);
-
-            // Validate sizes to prevent memory allocation attacks
-            if key_len > 1024 || value_len > 256 * 1024 {
-                break; // Invalid sizes, stop processing
-            }
-
-            // Read key
-            let mut key = vec![0; key_len as usize];
-            match reader.read_exact(&mut key) {
-                Ok(()) => {},
-                Err(_) => break, // Corrupted file, stop processing
-            }
-
-            // Check if this is a commit marker
-            if key == TX_COMMIT_MARKER {
-                // This is a commit marker, update last commit position
-                last_commit_pos = pos + 4 + 4 + key_len as u64 + value_len as u64;
-            }
-
-            // Skip value and move to next entry
-            let value_pos = pos + 4 + 4 + key_len as u64;
-            pos = value_pos + value_len as u64;
-            reader.seek(SeekFrom::Start(pos))?;
-         }
-         
-         // If no commit markers found, recover all data (for non-transactional operations)
-         let recovery_end = if last_commit_pos == 0 { file_len } else { last_commit_pos };
-         
-         // Second pass: build keymap up to recovery end
-         reader.seek(SeekFrom::Start(0))?;
-         pos = 0;
-         
-         while pos < recovery_end {
+        while pos < file_len {
             // Read key length
             if reader.read_exact(&mut len_buf).is_err() {
-                break;
+                break; // Corrupted entry
             }
             let key_len = u32::from_be_bytes(len_buf);
-            
+
             // Read value length
             if reader.read_exact(&mut len_buf).is_err() {
-                break;
+                break; // Corrupted
             }
             let value_len = u32::from_be_bytes(len_buf);
+
+            // Basic validation
+            if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size {
+                break; // Invalid entry, treat as corruption
+            }
 
             // Read key
             let mut key = vec![0; key_len as usize];
             if reader.read_exact(&mut key).is_err() {
-                break;
+                break; // Corrupted
             }
 
-            // Skip commit markers in keymap building
+            // Check for commit marker
             if key == TX_COMMIT_MARKER {
-                // Skip value and continue
+                uncommitted_changes.clear();
+                committed = true;
                 reader.seek(SeekFrom::Current(value_len as i64))?;
-                pos = pos + 4 + 4 + key_len as u64 + value_len as u64;
-                continue;
-            }
-
-            // Read value
-            let mut value = vec![0; value_len as usize];
-            if reader.read_exact(&mut value).is_err() {
-                break;
-            }
-
-            // Apply to keymap
-            if value.is_empty() {
-                key_map.remove(&key);
             } else {
-                let shared = Arc::from(value.into_boxed_slice());
-                key_map.insert(key, shared);
-            }
+                // Read value
+                let mut value = vec![0; value_len as usize];
+                if reader.read_exact(&mut value).is_err() {
+                    break; // Corrupted
+                }
 
-            pos = pos + 4 + 4 + key_len as u64 + value_len as u64;
-         }
-         
-         Ok(key_map)
+                let old_value = if value.is_empty() {
+                    key_map.remove(&key)
+                } else {
+                    key_map.insert(key.clone(), Arc::from(value.into_boxed_slice()))
+                };
+                uncommitted_changes.push((key, old_value));
+            }
+            
+            pos = reader.seek(SeekFrom::Current(0))?;
+        }
+
+        // Rollback uncommitted changes if any commit marker was seen
+        if committed {
+            for (key, old_value) in uncommitted_changes.into_iter().rev() {
+                if let Some(value) = old_value {
+                    key_map.insert(key, value);
+                } else {
+                    key_map.remove(&key);
+                }
+            }
+        }
+        
+        Ok(key_map)
     }
     
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {

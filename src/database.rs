@@ -82,59 +82,62 @@ impl Database {
     
     /// Deserialize table schema from bytes (copied from Executor)
     fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
-        let data_str = String::from_utf8_lossy(data);
         let mut columns = Vec::new();
+        let mut start = 0;
 
-        for column_part in data_str.split('|') {
-            if column_part.is_empty() {
-                continue;
+        for (i, &byte) in data.iter().enumerate() {
+            if byte == b'|' {
+                if i > start {
+                    let column_part = &data[start..i];
+                    Self::parse_column_part(column_part, &mut columns);
+                }
+                start = i + 1;
             }
+        }
 
-            let components: Vec<&str> = column_part.splitn(3, ':').collect();
-            if components.len() >= 2 {
-                let column_name = components[0].to_string();
-                let data_type_str = components[1];
-                let constraints_str = if components.len() > 2 { components[2] } else { "" };
-
-                let data_type = match data_type_str {
-                    "Integer" => crate::parser::DataType::Integer,
-                    "Text" => crate::parser::DataType::Text,
-                    "Real" => crate::parser::DataType::Real,
-                    "Blob" => crate::parser::DataType::Blob,
-                    // Also accept uppercase for backward compatibility
-                    "INTEGER" => crate::parser::DataType::Integer,
-                    "TEXT" => crate::parser::DataType::Text,
-                    "REAL" => crate::parser::DataType::Real,
-                    "BLOB" => crate::parser::DataType::Blob,
-                    _ => crate::parser::DataType::Text, // Default fallback
-                };
-
-                let constraints = if constraints_str.is_empty() {
-                    Vec::new()
-                } else {
-                    constraints_str
-                        .split(',')
-                        .filter_map(|c| match c {
-                            "PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
-                            "NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
-                            "UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
-                            _ => None,
-                        })
-                        .collect()
-                };
-
-                columns.push(crate::executor::ColumnInfo {
-                    name: column_name,
-                    data_type,
-                    constraints,
-                });
-            }
+        if start < data.len() {
+            let column_part = &data[start..];
+            Self::parse_column_part(column_part, &mut columns);
         }
 
         Ok(TableSchema { 
             name: "unknown".to_string(), // Will be set by caller
             columns 
         })
+    }
+
+    // Helper to parse a single column entry to avoid repetition
+    fn parse_column_part(column_part: &[u8], columns: &mut Vec<crate::executor::ColumnInfo>) {
+        let mut parts = column_part.splitn(3, |&b| b == b':');
+        if let (Some(name_bytes), Some(type_bytes)) = (parts.next(), parts.next()) {
+            let name = String::from_utf8_lossy(name_bytes).to_string();
+            let type_str = String::from_utf8_lossy(type_bytes);
+
+            let data_type = match type_str.as_ref() {
+                "Integer" | "INTEGER" => crate::parser::DataType::Integer,
+                "Text" | "TEXT" => crate::parser::DataType::Text,
+                "Real" | "REAL" => crate::parser::DataType::Real,
+                "Blob" | "BLOB" => crate::parser::DataType::Blob,
+                _ => crate::parser::DataType::Text, // Default fallback
+            };
+
+            let constraints = if let Some(constraints_bytes) = parts.next() {
+                constraints_bytes.split(|&b| b == b',').filter_map(|c| match c {
+                    b"PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
+                    b"NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
+                    b"UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
+                    _ => None,
+                }).collect()
+            } else {
+                Vec::new()
+            };
+
+            columns.push(crate::executor::ColumnInfo {
+                name,
+                data_type,
+                constraints,
+            });
+        }
     }
     
     /// Execute SQL statement, return number of affected rows

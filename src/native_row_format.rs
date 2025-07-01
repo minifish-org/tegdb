@@ -32,7 +32,6 @@ pub enum TypeCode {
 /// Column access information for efficient lookups
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
-    pub name: String,
     pub offset: usize,     // Byte offset in the record
     pub type_code: u8,     // Type code from header
     pub size: usize,       // Size in bytes
@@ -107,8 +106,13 @@ impl NativeRowFormat {
         let header = Self::parse_header(data, schema)?;
         let mut result = Vec::with_capacity(column_names.len());
         
+        // Create a map from column name to index for faster lookups
+        let column_index_map: HashMap<_, _> = schema.columns.iter().enumerate()
+            .map(|(i, col)| (col.name.as_str(), i))
+            .collect();
+
         for col_name in column_names {
-            if let Some(column_index) = schema.columns.iter().position(|c| c.name == *col_name) {
+            if let Some(&column_index) = column_index_map.get(col_name.as_str()) {
                 if let Some(column_info) = header.columns.get(column_index) {
                     let value = Self::deserialize_column_at_offset(data, column_info)?;
                     result.push(value);
@@ -160,7 +164,7 @@ impl NativeRowFormat {
         let mut columns = Vec::with_capacity(schema.columns.len());
         let mut data_offset = cursor + header_size - 1; // Start of data section
         
-        for (i, _) in schema.columns.iter().enumerate() {
+        for _ in &schema.columns {
             if cursor >= data.len() {
                 return Err(crate::Error::Other("Truncated record header".to_string()));
             }
@@ -171,7 +175,6 @@ impl NativeRowFormat {
             let column_size = Self::get_column_size(type_code);
             
             columns.push(ColumnInfo {
-                name: schema.columns[i].name.clone(),
                 offset: data_offset,
                 type_code,
                 size: column_size,

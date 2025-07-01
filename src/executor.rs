@@ -117,26 +117,34 @@ impl<'a> Executor<'a> {
         
         // Store schema metadata (use simple string serialization for now)
         let schema_key = format!("__schema__:{}", create.table);
-        let schema_data = create.columns.iter()
-            .map(|col| {
-                let constraints_str = col.constraints.iter()
-                    .map(|c| match c {
+        
+        // Optimized schema serialization to reduce allocations
+        let mut schema_data = Vec::new();
+        for (i, col) in create.columns.iter().enumerate() {
+            if i > 0 {
+                schema_data.push(b'|');
+            }
+            schema_data.extend_from_slice(col.name.as_bytes());
+            schema_data.push(b':');
+            let type_str = format!("{:?}", col.data_type);
+            schema_data.extend_from_slice(type_str.as_bytes());
+
+            if !col.constraints.is_empty() {
+                schema_data.push(b':');
+                for (j, constraint) in col.constraints.iter().enumerate() {
+                    if j > 0 {
+                        schema_data.push(b',');
+                    }
+                    let constraint_str = match constraint {
                         crate::parser::ColumnConstraint::PrimaryKey => "PRIMARY_KEY",
                         crate::parser::ColumnConstraint::NotNull => "NOT_NULL",
                         crate::parser::ColumnConstraint::Unique => "UNIQUE",
-                    })
-                    .collect::<Vec<_>>()
-                    .join(",");
-                
-                if constraints_str.is_empty() {
-                    format!("{}:{:?}", col.name, col.data_type)
-                } else {
-                    format!("{}:{:?}:{}", col.name, col.data_type, constraints_str)
+                    };
+                    schema_data.extend_from_slice(constraint_str.as_bytes());
                 }
-            })
-            .collect::<Vec<_>>()
-            .join("|");
-        self.transaction.set(schema_key.as_bytes(), schema_data.as_bytes().to_vec())?;
+            }
+        }
+        self.transaction.set(schema_key.as_bytes(), schema_data)?;
         
         // Update local schema cache
         self.table_schemas.insert(create.table, schema);
@@ -325,25 +333,17 @@ impl<'a> Executor<'a> {
                 }
             }
             
-            if let Ok(row_data) = self.storage_format.deserialize_row(&value, &schema) {
-                // Apply filter if present
-                let matches = if let Some(filter) = filter {
-                    self.evaluate_condition(filter, &row_data)
-                } else {
-                    true
-                };
-                
-                if matches {
-                    // Extract selected columns
-                    let mut row_values = Vec::new();
-                    for col_name in selected_columns {
-                        row_values.push(
-                            row_data.get(col_name).cloned().unwrap_or(SqlValue::Null)
-                        );
-                    }
-                    rows.push(row_values);
-                    count += 1;
-                }
+            let matches = if let Some(filter) = filter {
+                self.storage_format.matches_condition(&value, &schema, filter).unwrap_or(false)
+            } else {
+                true
+            };
+
+            if matches {
+                // Since it matches, now we deserialize only the required columns
+                let row_values = self.storage_format.deserialize_columns(&value, &schema, selected_columns)?;
+                rows.push(row_values);
+                count += 1;
             }
         }
         
@@ -388,47 +388,56 @@ impl<'a> Executor<'a> {
         assignments: &[crate::planner::Assignment],
         scan_plan: crate::planner::ExecutionPlan
     ) -> Result<ResultSet> {
-        // First execute the scan plan to find rows to update
-        let scan_result = self.execute_plan(scan_plan)?;
-        
-        match scan_result {
-            ResultSet::Select { columns, rows } => {
-                let schema = self.get_table_schema(table)?;
-                let mut rows_affected = 0;
-                
-                for row_values in rows {
-                    // Reconstruct row data from scan result
-                    let mut row_data = HashMap::new();
-                    for (i, col_name) in columns.iter().enumerate() {
-                        if let Some(value) = row_values.get(i) {
-                            row_data.insert(col_name.clone(), value.clone());
+        let schema = self.get_table_schema(table)?;
+        let mut rows_affected = 0;
+
+        // We need to collect the keys first because the scan iterator will borrow the transaction,
+        // and we can't borrow it mutably inside the loop to perform the update.
+        let keys_to_update = {
+            let scan_result = self.execute_plan(scan_plan)?;
+            match scan_result {
+                ResultSet::Select { columns, rows } => {
+                    let mut keys = Vec::new();
+                    for row_values in rows {
+                        let mut row_data = HashMap::new();
+                        for (i, col_name) in columns.iter().enumerate() {
+                            if let Some(value) = row_values.get(i) {
+                                row_data.insert(col_name.clone(), value.clone());
+                            }
                         }
+                        let key = self.build_primary_key(table, &row_data, &schema)?;
+                        keys.push(key);
                     }
-                    
+                    keys
+                }
+                _ => return Err(Error::Other("Invalid scan result for update".to_string())),
+            }
+        };
+
+        for key in keys_to_update {
+            if let Some(value) = self.transaction.get(key.as_bytes()) {
+                if let Ok(mut row_data) = self.storage_format.deserialize_row(&value, &schema) {
                     // Apply assignments
-                    let mut updated_row = row_data.clone();
                     for assignment in assignments {
-                        let new_value = assignment.value.evaluate(&updated_row)
+                        let new_value = assignment.value.evaluate(&row_data)
                             .map_err(|e| crate::Error::Other(format!("Expression evaluation error: {}", e)))?;
-                        updated_row.insert(assignment.column.clone(), new_value);
+                        row_data.insert(assignment.column.clone(), new_value);
                     }
-                    
+
                     // Validate updated row (exclude current row from UNIQUE checks)
                     let original_key = self.build_primary_key(table, &row_data, &schema)?;
                     let exclude_key = Some(original_key.as_str());
-                    self.validate_row_data_excluding(table, &updated_row, &schema, exclude_key)?;
-                    
-                    // Build original key and update
-                    let original_key = self.build_primary_key(table, &row_data, &schema)?;
-                    let serialized = self.storage_format.serialize_row(&updated_row, &schema)?;
-                    self.transaction.set(original_key.as_bytes(), serialized)?;
+                    self.validate_row_data_excluding(table, &row_data, &schema, exclude_key)?;
+
+                    // Serialize and store the updated row
+                    let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
+                    self.transaction.set(key.as_bytes(), serialized)?;
                     rows_affected += 1;
                 }
-                
-                Ok(ResultSet::Update { rows_affected })
             }
-            _ => Err(Error::Other("Invalid scan result for update".to_string())),
         }
+
+        Ok(ResultSet::Update { rows_affected })
     }
 
     /// Execute delete plan
@@ -437,33 +446,18 @@ impl<'a> Executor<'a> {
         table: &str,
         scan_plan: crate::planner::ExecutionPlan
     ) -> Result<ResultSet> {
-        // First execute the scan plan to find rows to delete
-        let scan_result = self.execute_plan(scan_plan)?;
+        let schema = self.get_table_schema(table)?;
         
-        match scan_result {
-            ResultSet::Select { columns, rows } => {
-                let schema = self.get_table_schema(table)?;
-                let mut rows_affected = 0;
-                
-                for row_values in rows {
-                    // Reconstruct row data from scan result
-                    let mut row_data = HashMap::new();
-                    for (i, col_name) in columns.iter().enumerate() {
-                        if let Some(value) = row_values.get(i) {
-                            row_data.insert(col_name.clone(), value.clone());
-                        }
-                    }
-                    
-                    // Build key and delete
-                    let row_key = self.build_primary_key(table, &row_data, &schema)?;
-                    self.transaction.delete(row_key.as_bytes())?;
-                    rows_affected += 1;
-                }
-                
-                Ok(ResultSet::Delete { rows_affected })
-            }
-            _ => Err(Error::Other("Invalid scan result for delete".to_string())),
+        // This approach avoids collecting all full rows in memory first.
+        // It scans, collects keys, and then deletes.
+        let keys_to_delete = self.execute_scan_and_collect_keys(&scan_plan, &schema)?;
+        let rows_affected = keys_to_delete.len();
+
+        for key in keys_to_delete {
+            self.transaction.delete(key.as_bytes())?;
         }
+        
+        Ok(ResultSet::Delete { rows_affected })
     }
 
     /// Execute create table plan
@@ -493,6 +487,99 @@ impl<'a> Executor<'a> {
         };
         
         self.execute_drop_table(drop_stmt)
+    }
+
+    /// Helper function to execute a scan plan and collect the primary keys of the resulting rows.
+    /// This is more memory-efficient than collecting the full rows.
+    fn execute_scan_and_collect_keys(
+        &mut self,
+        scan_plan: &crate::planner::ExecutionPlan,
+        schema: &TableSchema,
+    ) -> Result<Vec<String>> {
+        use crate::planner::ExecutionPlan;
+        let mut keys = Vec::new();
+
+        match scan_plan {
+            ExecutionPlan::PrimaryKeyLookup { table, pk_values, additional_filter, .. } => {
+                let key = self.build_primary_key(table, pk_values, schema)?;
+                if let Some(value) = self.transaction.get(key.as_bytes()) {
+                    let matches = if let Some(filter) = additional_filter {
+                        if let Ok(row_data) = self.storage_format.deserialize_row(&value, schema) {
+                            self.evaluate_condition(filter, &row_data)
+                        } else {
+                            false
+                        }
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        keys.push(key);
+                    }
+                }
+            }
+            ExecutionPlan::TableScan { table, filter, limit, .. } => {
+                let table_prefix = format!("{}:", table);
+                let start_key = table_prefix.as_bytes().to_vec();
+                let end_key = format!("{}~", table).as_bytes().to_vec();
+                let mut count = 0;
+
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+
+                for (key, value) in scan_iter {
+                    if let Some(limit) = limit {
+                        if count >= *limit {
+                            break;
+                        }
+                    }
+
+                    let matches = if let Some(filter_cond) = filter {
+                        self.storage_format.matches_condition(&value, schema, filter_cond).unwrap_or(false)
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        if let Ok(key_str) = String::from_utf8(key) {
+                            keys.push(key_str);
+                            count += 1;
+                        }
+                    }
+                }
+            }
+            ExecutionPlan::IndexScan { table, filter, limit, .. } => {
+                // NOTE: This is a temporary implementation.
+                // Once secondary indexes are fully supported, this should use an index scan.
+                let schema = self.get_table_schema(table)?;
+                let table_prefix = format!("{}:", table);
+                let start_key = table_prefix.as_bytes().to_vec();
+                let end_key = format!("{}~", table).as_bytes().to_vec();
+                let mut count = 0;
+
+                let table_scan_iter = self.transaction.scan(start_key..end_key)?;
+
+                for (key, value) in table_scan_iter {
+                     if let Some(limit) = limit {
+                        if count >= *limit {
+                            break;
+                        }
+                    }
+                    
+                    let matches = if let Some(filter_cond) = filter {
+                        self.storage_format.matches_condition(&value, &schema, filter_cond).unwrap_or(false)
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        keys.push(String::from_utf8(key).unwrap());
+                        count += 1;
+                    }
+                }
+            }
+            _ => return Err(crate::Error::Other("Unsupported scan plan for key collection".to_string())),
+        }
+        Ok(keys)
     }
 
     /// Load table schemas from storage

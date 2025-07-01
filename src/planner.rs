@@ -321,10 +321,11 @@ impl QueryPlanner {
         // Create a SELECT plan to find rows to update
         let select = SelectStatement {
             table: update.table.clone(),
-            columns: vec!["*".to_string()], // Need all columns for update
+            // Only need the primary key for updates, not all columns
+            columns: self.get_primary_key_columns_as_vec(&update.table)?,
             where_clause: update.where_clause.clone(),
-            order_by: None,
-            limit: None, // Updates don't have LIMIT
+            order_by: None, // Updates don't have LIMIT
+            limit: None, 
         };
         
         let scan_plan = Box::new(self.plan_select(select)?);
@@ -348,10 +349,11 @@ impl QueryPlanner {
         // Create a SELECT plan to find rows to delete
         let select = SelectStatement {
             table: delete.table.clone(),
-            columns: vec!["*".to_string()], // Need primary key for deletion
+            // Only need the primary key for deletion, not all columns
+            columns: self.get_primary_key_columns_as_vec(&delete.table)?,
             where_clause: delete.where_clause.clone(),
-            order_by: None,
-            limit: None, // Deletes don't have LIMIT
+            order_by: None, // Deletes don't have LIMIT
+            limit: None, 
         };
         
         let scan_plan = Box::new(self.plan_select(select)?);
@@ -498,29 +500,41 @@ impl QueryPlanner {
                 .filter(|col| col.constraints.contains(&crate::parser::ColumnConstraint::PrimaryKey))
                 .map(|col| col.name.clone())
                 .collect();
-            
-            if pk_columns.is_empty() {
-                Err(crate::Error::Other(format!(
-                    "Table '{}' must have a primary key column", table_name
-                )))
-            } else {
-                Ok(pk_columns)
-            }
+            Ok(pk_columns)
         } else {
             Err(crate::Error::Other(format!("Table '{}' not found", table_name)))
         }
     }
+
+    /// Helper to get primary key columns as a Vec<String> for selection
+    fn get_primary_key_columns_as_vec(&self, table_name: &str) -> Result<Vec<String>> {
+        let pks = self.get_primary_key_columns(table_name)?;
+        if pks.is_empty() {
+            // If no explicit PK, we need all columns to uniquely identify rows for deletion
+            // This is a fallback and assumes row identity is based on all columns
+            self.normalize_selected_columns(table_name, &["*".to_string()])
+        } else {
+            Ok(pks)
+        }
+    }
     
-    /// Estimate cost of primary key lookup
-    fn estimate_pk_lookup_cost(&self, _table_name: &str) -> Cost {
+    /// Estimate cost for a primary key lookup
+    fn estimate_pk_lookup_cost(&self, table_name: &str) -> Cost {
+        let default_stats = TableStatistics {
+            row_count: 1,
+            avg_row_size: 100,
+            column_stats: HashMap::new(),
+        };
+        let stats = self.table_stats.get(table_name).unwrap_or(&default_stats);
+        
         Cost::new(
-            self.config.pk_lookup_cost,           // Very low I/O cost
-            self.config.cpu_tuple_cost,           // Minimal CPU cost
-            0.0                                   // No significant memory cost
+            self.config.pk_lookup_cost, // Very low I/O
+            self.config.cpu_tuple_cost * 1.0, // Minimal CPU
+            (stats.avg_row_size as f64 / 4096.0) * self.config.memory_page_cost, // Memory for one row
         )
     }
     
-    /// Estimate cost of table scan
+    /// Estimate cost for a table scan
     fn estimate_table_scan_cost(&self, table_name: &str, select: &SelectStatement) -> Cost {
         let row_count = self.table_stats
             .get(table_name)
