@@ -727,6 +727,57 @@ impl<'a> DatabaseTransaction<'a> {
         }
     }
     
+    /// Execute SQL query within transaction using true streaming
+    /// This provides the same streaming capability as Database::stream_query but within a transaction context
+    pub fn streaming_query(&mut self, sql: &str) -> Result<TransactionStreamingQuery> {
+        let (_, statement) = parse_sql(sql)
+            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+        
+        // Parse the statement to determine if we can do true streaming
+        match &statement {
+            crate::parser::Statement::Select(select) => {
+                // Get schemas from shared cache
+                let schemas = self.table_schemas.read().unwrap().clone();
+                
+                let table_name = &select.table;
+                let selected_columns = if select.columns.is_empty() || select.columns[0] == "*" {
+                    // Get all columns from schema
+                    if let Some(schema) = schemas.get(table_name) {
+                        schema.columns.iter().map(|col| col.name.clone()).collect()
+                    } else {
+                        return Err(crate::Error::Other(format!("Table '{}' not found", table_name)));
+                    }
+                } else {
+                    select.columns.clone()
+                };
+                
+                // Get table schema
+                let schema = schemas.get(table_name)
+                    .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table_name)))?
+                    .clone();
+                
+                // Extract condition from where clause
+                let condition = select.where_clause.as_ref().map(|wc| wc.condition.clone());
+                
+                // Create streaming query that uses the transaction's engine
+                let streaming_query = TransactionStreamingQuery::new(
+                    self.executor.transaction(),
+                    table_name.clone(),
+                    selected_columns,
+                    condition,
+                    select.limit,
+                    schema,
+                )?;
+                
+                Ok(streaming_query)
+            }
+            _ => {
+                // For non-SELECT statements, this doesn't make sense
+                Err(crate::Error::Other("streaming_query() should only be used for SELECT statements".to_string()))
+            }
+        }
+    }
+    
     /// Commit the transaction
     pub fn commit(mut self) -> Result<()> {
         self.executor.transaction_mut().commit()
@@ -735,5 +786,216 @@ impl<'a> DatabaseTransaction<'a> {
     /// Rollback the transaction
     pub fn rollback(mut self) -> Result<()> {
         self.executor.transaction_mut().rollback()
+    }
+}
+
+/// Transaction-based streaming query that operates within a transaction context
+/// Similar to StreamingQuery but works with a transaction instead of borrowing the engine directly
+pub struct TransactionStreamingQuery<'a> {
+    columns: Vec<String>,
+    transaction: &'a crate::engine::Transaction<'a>,
+    table_name: String,
+    selected_columns: Vec<String>,
+    filter: Option<crate::parser::Condition>,
+    limit: Option<u64>,
+    schema: crate::executor::TableSchema,
+    storage_format: crate::storage_format::StorageFormat,
+    last_key: Option<Vec<u8>>, // Track last seen key for continuation
+    count: u64,
+    finished: bool,
+}
+
+impl<'a> TransactionStreamingQuery<'a> {
+    /// Create a new streaming query that operates within a transaction
+    fn new(
+        transaction: &'a crate::engine::Transaction<'a>,
+        table_name: String,
+        selected_columns: Vec<String>,
+        filter: Option<crate::parser::Condition>,
+        limit: Option<u64>,
+        schema: crate::executor::TableSchema,
+    ) -> Result<Self> {
+        Ok(Self {
+            columns: selected_columns.clone(),
+            transaction,
+            table_name,
+            selected_columns,
+            filter,
+            limit,
+            schema,
+            storage_format: crate::storage_format::StorageFormat::new(),
+            last_key: None,
+            count: 0,
+            finished: false,
+        })
+    }
+    
+    /// Get column names
+    pub fn columns(&self) -> &[String] {
+        &self.columns
+    }
+    
+    /// Collect all remaining rows into a Vec (for compatibility)
+    pub fn collect_rows(mut self) -> Result<Vec<Vec<SqlValue>>> {
+        let mut rows = Vec::new();
+        while let Some(row_result) = self.next() {
+            rows.push(row_result?);
+        }
+        Ok(rows)
+    }
+    
+    /// Convert to the old QueryResult format (for backward compatibility)
+    pub fn into_query_result(self) -> Result<QueryResult> {
+        let columns = self.columns.clone();
+        let rows = self.collect_rows()?;
+        Ok(QueryResult { columns, rows })
+    }
+    
+    /// Apply filter condition to row data
+    fn evaluate_condition(&self, condition: &crate::parser::Condition, row_data: &std::collections::HashMap<String, SqlValue>) -> bool {
+        use crate::parser::Condition;
+        
+        match condition {
+            Condition::Comparison { left, operator, right } => {
+                let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
+                self.compare_values(row_value, operator, right)
+            }
+            Condition::And(left, right) => {
+                self.evaluate_condition(left, row_data) && self.evaluate_condition(right, row_data)
+            }
+            Condition::Or(left, right) => {
+                self.evaluate_condition(left, row_data) || self.evaluate_condition(right, row_data)
+            }
+        }
+    }
+    
+    /// Compare two SqlValues using the given operator
+    fn compare_values(&self, left: &SqlValue, operator: &crate::parser::ComparisonOperator, right: &SqlValue) -> bool {
+        use crate::parser::ComparisonOperator::*;
+        
+        match operator {
+            Equal => left == right,
+            NotEqual => left != right,
+            LessThan => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a < b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a < b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) < *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a < (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a < b,
+                _ => false,
+            },
+            LessThanOrEqual => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a <= b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a <= b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) <= *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a <= (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a <= b,   
+                _ => false,
+            },
+            GreaterThan => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a > b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a > b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) > *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a > (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a > b,
+                _ => false,
+            },
+            GreaterThanOrEqual => match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => a >= b,
+                (SqlValue::Real(a), SqlValue::Real(b)) => a >= b,
+                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) >= *b,
+                (SqlValue::Real(a), SqlValue::Integer(b)) => *a >= (*b as f64),
+                (SqlValue::Text(a), SqlValue::Text(b)) => a >= b,
+                _ => false,
+            },
+            Like => {
+                // Simple LIKE implementation - just checking if right is substring of left
+                match (left, right) {
+                    (SqlValue::Text(a), SqlValue::Text(b)) => {
+                        // Simple pattern matching - convert SQL LIKE to contains for now
+                        let pattern = b.replace('%', "");
+                        a.contains(&pattern)
+                    }
+                    _ => false,
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for TransactionStreamingQuery<'a> {
+    type Item = Result<Vec<SqlValue>>;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        
+        // Check limit
+        if let Some(limit) = self.limit {
+            if self.count >= limit {
+                self.finished = true;
+                return None;
+            }
+        }
+        
+        // Determine scan range
+        let start_key = match &self.last_key {
+            Some(last) => {
+                // Continue from after the last key
+                let mut next_key = last.clone();
+                next_key.push(0); // Increment key for next scan
+                next_key
+            }
+            None => {
+                // First scan - start from table prefix
+                let table_prefix = format!("{}:", self.table_name);
+                table_prefix.as_bytes().to_vec()
+            }
+        };
+        
+        let end_key = format!("{}~", self.table_name).as_bytes().to_vec();
+        
+        // Perform scan from current position using the transaction
+        let scan_result = match self.transaction.scan(start_key..end_key) {
+            Ok(scan) => scan,
+            Err(e) => return Some(Err(e)),
+        };
+        
+        // Process rows until we find one that matches the filter
+        for (key, value) in scan_result {
+            match self.storage_format.deserialize_row(&value, &self.schema) {
+                Ok(row_data) => {
+                    // Apply filter if present
+                    let matches = if let Some(ref filter) = self.filter {
+                        self.evaluate_condition(filter, &row_data)
+                    } else {
+                        true
+                    };
+                    
+                    if matches {
+                        // Extract selected columns
+                        let mut row_values = Vec::new();
+                        for col_name in &self.selected_columns {
+                            row_values.push(
+                                row_data.get(col_name).cloned().unwrap_or(SqlValue::Null)
+                            );
+                        }
+                        
+                        self.count += 1;
+                        self.last_key = Some(key);
+                        return Some(Ok(row_values));
+                    } else {
+                        // Update last_key even for filtered out rows to continue scan
+                        self.last_key = Some(key);
+                    }
+                }
+                Err(e) => return Some(Err(e)),
+            }
+        }
+        
+        // No more rows found
+        self.finished = true;
+        None
     }
 }
