@@ -70,7 +70,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("TegDB", "single_pk"), |b| {
         b.iter(|| {
             let id = black_box(250);
-            let result = tegdb.query(&format!("SELECT name, price FROM products WHERE id = {}", id)).unwrap();
+            let result = tegdb.query(&format!("SELECT name, price FROM products WHERE id = {}", id)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -100,7 +100,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let start = black_box(100);
             let end = black_box(110);
-            let result = tegdb.query(&format!("SELECT id, name FROM products WHERE id >= {} AND id <= {}", start, end)).unwrap();
+            let result = tegdb.query(&format!("SELECT id, name FROM products WHERE id >= {} AND id <= {}", start, end)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -131,7 +131,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("TegDB", "full_scan"), |b| {
         b.iter(|| {
             let category = black_box("Electronics");
-            let result = tegdb.query(&format!("SELECT id, name FROM products WHERE category = '{}'", category)).unwrap();
+            let result = tegdb.query(&format!("SELECT id, name FROM products WHERE category = '{}'", category)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -156,7 +156,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("TegDB", "optimized_pk"), |b| {
         b.iter(|| {
             let id = black_box(300);
-            let result = tegdb.query(&format!("SELECT name, category FROM products WHERE id = {}", id)).unwrap();
+            let result = tegdb.query(&format!("SELECT name, category FROM products WHERE id = {}", id)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });

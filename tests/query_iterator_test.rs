@@ -12,13 +12,13 @@ fn test_query_iterator_basic_functionality() {
     db.execute("INSERT INTO test_table (id, name, value) VALUES (3, 'third', 300)").unwrap();
     
     // Test iterator functionality
-    let query_iter = db.query("SELECT * FROM test_table ORDER BY id").unwrap();
+    let query_result = db.query("SELECT * FROM test_table ORDER BY id").unwrap().into_query_result().unwrap();
     
     // Check columns
-    assert_eq!(query_iter.columns(), &["id", "name", "value"]);
+    assert_eq!(query_result.columns(), &["id", "name", "value"]);
     
     // Collect all rows
-    let rows = query_iter.collect_rows().unwrap();
+    let rows = query_result.rows();
     assert_eq!(rows.len(), 3);
     
     assert_eq!(rows[0], vec![SqlValue::Integer(1), SqlValue::Text("first".to_string()), SqlValue::Integer(100)]);
@@ -40,12 +40,12 @@ fn test_query_iterator_streaming() {
     }
     
     // Test streaming iteration
-    let query_iter = db.query("SELECT * FROM streaming_test ORDER BY id").unwrap();
+    let streaming_query = db.query("SELECT * FROM streaming_test ORDER BY id").unwrap();
     
     let mut count = 0;
     let mut collected_rows = Vec::new();
     
-    for row_result in query_iter {
+    for row_result in streaming_query {
         let row = row_result.unwrap();
         collected_rows.push(row);
         count += 1;
@@ -78,8 +78,7 @@ fn test_query_iterator_backward_compatibility() {
     db.execute("INSERT INTO compat_test (id, name) VALUES (2, 'Bob')").unwrap();
     
     // Test conversion to old QueryResult format
-    let query_iter = db.query("SELECT * FROM compat_test ORDER BY id").unwrap();
-    let query_result = query_iter.into_query_result().unwrap();
+    let query_result = db.query("SELECT * FROM compat_test ORDER BY id").unwrap().into_query_result().unwrap();
     
     // Verify compatibility with old API
     assert_eq!(query_result.columns(), &["id", "name"]);
@@ -102,13 +101,13 @@ fn test_query_iterator_empty_result() {
     db.execute("CREATE TABLE empty_test (id INTEGER PRIMARY KEY, name TEXT)").unwrap();
     
     // Query with no results
-    let query_iter = db.query("SELECT * FROM empty_test").unwrap();
+    let query_result = db.query("SELECT * FROM empty_test").unwrap().into_query_result().unwrap();
     
     // Check columns are still available
-    assert_eq!(query_iter.columns(), &["id", "name"]);
+    assert_eq!(query_result.columns(), &["id", "name"]);
     
     // Collect should return empty vec
-    let rows = query_iter.collect_rows().unwrap();
+    let rows = query_result.rows();
     assert_eq!(rows.len(), 0);
     
     // Cleanup
@@ -126,16 +125,16 @@ fn test_query_iterator_with_where_clause() {
     }
     
     // Query with WHERE clause
-    let query_iter = db.query("SELECT * FROM where_test WHERE value > 50").unwrap();
+    let streaming_query = db.query("SELECT * FROM where_test WHERE value > 50").unwrap();
     
-    let rows = query_iter.collect_rows().unwrap();
+    let rows = streaming_query.collect_rows().unwrap();
     assert_eq!(rows.len(), 5); // ids 6-10 have values > 50
     
     // Since we can't guarantee order without ORDER BY, just verify we have the right data
     // Check that all values are > 50
     for row in &rows {
         if let SqlValue::Integer(value) = &row[1] {
-            assert!(*value > 50);
+            assert!(value > &50);
         }
     }
     
@@ -156,8 +155,8 @@ fn test_transaction_query_iterator() {
     tx.execute("INSERT INTO tx_test (id, name) VALUES (2, 'in_transaction')").unwrap();
     
     // Query within transaction should see the new data
-    let query_iter = tx.query("SELECT * FROM tx_test ORDER BY id").unwrap();
-    let rows = query_iter.collect_rows().unwrap();
+    let query_result = tx.streaming_query("SELECT * FROM tx_test ORDER BY id").unwrap().into_query_result().unwrap();
+    let rows = query_result.rows();
     
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0], vec![SqlValue::Integer(1), SqlValue::Text("initial".to_string())]);
@@ -166,8 +165,8 @@ fn test_transaction_query_iterator() {
     tx.commit().unwrap();
     
     // Verify data is persisted after commit
-    let query_iter = db.query("SELECT * FROM tx_test").unwrap();
-    let rows = query_iter.collect_rows().unwrap();
+    let query_result = db.query("SELECT * FROM tx_test").unwrap().into_query_result().unwrap();
+    let rows = query_result.rows();
     assert_eq!(rows.len(), 2); // Should have both rows
     
     // Cleanup

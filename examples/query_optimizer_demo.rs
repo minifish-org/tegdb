@@ -42,7 +42,7 @@ fn main() -> Result<()> {
     // Test 1: Optimized query with full primary key equality
     println!("\n🚀 Test 1: Query with complete PK equality (should use PK lookup)");
     let start = Instant::now();
-    let result = db.query("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42")?;
+    let result = db.query("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("   Query executed in {:?}", duration);
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     // Test 2: Query with partial primary key (should fall back to scan)
     println!("\n📊 Test 2: Query with partial PK (should fall back to table scan)");
     let start = Instant::now();
-    let result = db.query("SELECT name, price FROM products WHERE category = 'books'")?;
+    let result = db.query("SELECT name, price FROM products WHERE category = 'books'").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("   Query executed in {:?}", duration);
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     // Test 3: Query with non-PK column (should fall back to scan)
     println!("\n🔍 Test 3: Query with non-PK column (should fall back to table scan)");
     let start = Instant::now();
-    let result = db.query("SELECT category, product_id, name FROM products WHERE price > 50.0")?;
+    let result = db.query("SELECT category, product_id, name FROM products WHERE price > 50.0").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("   Query executed in {:?}", duration);
@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     let result = db.query(
         "SELECT name, price FROM products 
          WHERE product_id = 50 AND category = 'clothing' AND price > 0"
-    )?;
+    ).unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("   Query executed in {:?}", duration);

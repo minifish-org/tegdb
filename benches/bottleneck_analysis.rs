@@ -148,7 +148,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     // Benchmark complete query execution pipeline
     c.bench_function("complete query pipeline", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT id, value FROM test")).unwrap();
+            let result = db.query(black_box("SELECT id, value FROM test")).unwrap().into_query_result().unwrap();
             black_box(result);
         })
     });
@@ -160,14 +160,14 @@ fn bottleneck_analysis(c: &mut Criterion) {
     
     c.bench_function("query with data", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT id, value FROM test WHERE id < 50")).unwrap();
+            let result = db.query(black_box("SELECT id, value FROM test WHERE id < 50")).unwrap().into_query_result().unwrap();
             black_box(result);
         })
     });
     
     c.bench_function("limited query", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT id, value FROM test LIMIT 10")).unwrap();
+            let result = db.query(black_box("SELECT id, value FROM test LIMIT 10")).unwrap().into_query_result().unwrap();
             black_box(result);
         })
     });

@@ -25,7 +25,7 @@ fn test_arithmetic_expressions_in_update() {
         .expect("Failed to update with addition");
     
     let result = db.query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -38,7 +38,7 @@ fn test_arithmetic_expressions_in_update() {
         .expect("Failed to update with subtraction");
     
     let result = db.query("SELECT value FROM test_table WHERE id = 2")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -51,7 +51,7 @@ fn test_arithmetic_expressions_in_update() {
         .expect("Failed to update with multiplication");
     
     let result = db.query("SELECT score FROM test_table WHERE id = 1")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -64,7 +64,7 @@ fn test_arithmetic_expressions_in_update() {
         .expect("Failed to update with division");
     
     let result = db.query("SELECT score FROM test_table WHERE id = 2")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -77,7 +77,7 @@ fn test_arithmetic_expressions_in_update() {
         .expect("Failed to update with complex expression");
     
     let result = db.query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -119,7 +119,7 @@ fn test_arithmetic_expression_parsing() {
         db.execute(sql).expect(&format!("Failed to execute: {}", sql));
         
         let result = db.query("SELECT a FROM test WHERE id = 1")
-            .expect("Failed to query");
+            .expect("Failed to query").into_query_result().unwrap();
         
         if let Some(row) = result.rows().get(0) {
             if let Some(value) = row.get(0) {

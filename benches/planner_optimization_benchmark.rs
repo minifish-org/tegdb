@@ -81,7 +81,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("TegDB", "single_pk_lookup"), |b| {
         b.iter(|| {
             let id = black_box(5000); // Middle of dataset
-            let result = tegdb.query(&format!("SELECT * FROM products WHERE id = {}", id)).unwrap();
+            let result = tegdb.query(&format!("SELECT * FROM products WHERE id = {}", id)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -116,7 +116,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let start = black_box(1000);
             let end = black_box(1010); // Small range - 10 records
-            let result = tegdb.query(&format!("SELECT id, name, price FROM products WHERE id >= {} AND id <= {}", start, end)).unwrap();
+            let result = tegdb.query(&format!("SELECT id, name, price FROM products WHERE id >= {} AND id <= {}", start, end)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -154,7 +154,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let result = tegdb.query(&format!(
                 "SELECT name, price FROM products WHERE id = {} AND price > {}", 
                 id, min_price
-            )).unwrap();
+            )).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -187,7 +187,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
     group.bench_function(BenchmarkId::new("TegDB", "full_scan_category"), |b| {
         b.iter(|| {
             let category = black_box("Electronics");
-            let result = tegdb.query(&format!("SELECT id, name FROM products WHERE category = '{}'", category)).unwrap();
+            let result = tegdb.query(&format!("SELECT id, name FROM products WHERE category = '{}'", category)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -213,7 +213,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let ids = [black_box(100), black_box(2000), black_box(5000), black_box(8000)];
             for id in ids {
-                let result = tegdb.query(&format!("SELECT name, price FROM products WHERE id = {}", id)).unwrap();
+                let result = tegdb.query(&format!("SELECT name, price FROM products WHERE id = {}", id)).unwrap().into_query_result().unwrap();
                 black_box(result);
             }
         });
@@ -249,7 +249,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let start = black_box(1000);
             let end = black_box(2000);
-            let result = tegdb.query(&format!("SELECT id FROM products WHERE id >= {} AND id <= {}", start, end)).unwrap();
+            let result = tegdb.query(&format!("SELECT id FROM products WHERE id >= {} AND id <= {}", start, end)).unwrap().into_query_result().unwrap();
             // Simulate count by getting length
             black_box(result.rows().len());
         });
@@ -283,7 +283,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let result = tegdb.query(&format!(
                 "SELECT name, price, stock FROM products WHERE id = {} AND price > {} AND stock >= {}", 
                 id, min_price, min_stock
-            )).unwrap();
+            )).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });

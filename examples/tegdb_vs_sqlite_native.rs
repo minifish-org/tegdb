@@ -133,27 +133,27 @@ fn test_tegdb_native(row_count: usize) -> Result<BenchmarkResults, Box<dyn std::
     
     // Full table scan
     let full_start = Instant::now();
-    let _result = db.query("SELECT * FROM users")?;
+    let _result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
     let full_scan_time = full_start.elapsed().as_nanos();
     
     // Selective column scan
     let selective_start = Instant::now();
-    let _result = db.query("SELECT name, score FROM users")?;
+    let _result = db.query("SELECT name, score FROM users").unwrap().into_query_result().unwrap();
     let selective_scan_time = selective_start.elapsed().as_nanos();
     
     // Primary key lookup
     let pk_start = Instant::now();
-    let _result = db.query(&format!("SELECT name, email FROM users WHERE id = {}", row_count / 2))?;
+    let _result = db.query(&format!("SELECT name, email FROM users WHERE id = {}", row_count / 2)).unwrap().into_query_result().unwrap();
     let pk_lookup_time = pk_start.elapsed().as_nanos();
     
     // Limited scan
     let limit_start = Instant::now();
-    let _result = db.query("SELECT name, score FROM users LIMIT 1000")?;
+    let _result = db.query("SELECT name, score FROM users LIMIT 1000").unwrap().into_query_result().unwrap();
     let limited_scan_time = limit_start.elapsed().as_nanos();
     
     // Count query
     let count_start = Instant::now();
-    let _result = db.query("SELECT COUNT(*) FROM users")?;
+    let _result = db.query("SELECT COUNT(*) FROM users").unwrap().into_query_result().unwrap();
     let count_time = count_start.elapsed().as_nanos();
     
     let db_size = std::fs::metadata("tegdb_native.db")?.len();

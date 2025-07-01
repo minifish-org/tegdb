@@ -72,7 +72,7 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     
     group.bench_function(BenchmarkId::new("TegDB", "limit_5"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items LIMIT 5").unwrap();
+            let result = tegdb.query("SELECT id, name FROM items LIMIT 5").unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -94,7 +94,7 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     
     group.bench_function(BenchmarkId::new("TegDB", "limit_50"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items LIMIT 50").unwrap();
+            let result = tegdb.query("SELECT id, name FROM items LIMIT 50").unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -123,7 +123,7 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     
     group.bench_function(BenchmarkId::new("TegDB", "limit_pk_filter"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items WHERE id >= 100 LIMIT 10").unwrap();
+            let result = tegdb.query("SELECT id, name FROM items WHERE id >= 100 LIMIT 10").unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -152,7 +152,7 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     
     group.bench_function(BenchmarkId::new("TegDB", "limit_category_filter"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items WHERE category = 'A' LIMIT 5").unwrap();
+            let result = tegdb.query("SELECT id, name FROM items WHERE category = 'A' LIMIT 5").unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -181,14 +181,14 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     
     group.bench_function(BenchmarkId::new("TegDB", "full_scan"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items").unwrap();
+            let result = tegdb.query("SELECT id, name FROM items").unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
     
     group.bench_function(BenchmarkId::new("TegDB", "limited_scan"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items LIMIT 10").unwrap();
+            let result = tegdb.query("SELECT id, name FROM items LIMIT 10").unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });

@@ -48,7 +48,7 @@ fn test_operator_precedence() {
         .expect("Failed to update");
     
     let result = db.query("SELECT value FROM test WHERE id = 1")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -66,7 +66,7 @@ fn test_operator_precedence() {
         .expect("Failed to update");
     
     let result = db.query("SELECT value FROM test WHERE id = 1")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {
@@ -97,7 +97,7 @@ fn test_text_concatenation() {
         .expect("Failed to update");
     
     let result = db.query("SELECT text1 FROM test WHERE id = 1")
-        .expect("Failed to query");
+        .expect("Failed to query").into_query_result().unwrap();
     
     if let Some(row) = result.rows().get(0) {
         if let Some(value) = row.get(0) {

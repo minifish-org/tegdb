@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     
     // Query data (should be efficiently organized by primary key)
     println!("4. Querying data (organized by primary key)...");
-    let result = db.query("SELECT * FROM users")?;
+    let result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
     println!("Found {} rows:", result.rows().len());
     
     for row in result.rows() {

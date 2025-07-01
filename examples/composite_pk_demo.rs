@@ -30,21 +30,21 @@ fn main() -> Result<()> {
     
     // Query all data
     println!("4. Querying all order items (organized by composite PK)...");
-    let result = db.query("SELECT * FROM order_items")?;
+    let result = db.query("SELECT * FROM order_items")?.into_query_result()?;
     println!("Found {} order items:", result.rows().len());
     
     for row in result.rows() {
         let order_id = match &row[0] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
         let product_id = match &row[1] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
         let quantity = match &row[2] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
         let price = match &row[3] {
             tegdb::SqlValue::Real(r) => *r,
@@ -57,17 +57,17 @@ fn main() -> Result<()> {
     
     // Test WHERE clause with partial primary key
     println!("5. Querying by partial primary key (order_id = 100)...");
-    let result = db.query("SELECT * FROM order_items WHERE order_id = 100")?;
+    let result = db.query("SELECT * FROM order_items WHERE order_id = 100").unwrap().into_query_result().unwrap();
     println!("Found {} items for order 100:", result.rows().len());
     
     for row in result.rows() {
         let product_id = match &row[1] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
         let quantity = match &row[2] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
         
         println!("  Product: {}, Qty: {}", product_id, quantity);

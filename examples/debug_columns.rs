@@ -14,14 +14,14 @@ fn main() -> Result<()> {
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
     
     println!("Querying with explicit columns...");
-    let result = db.query("SELECT id, name, age FROM users")?;
+    let result = db.query("SELECT id, name, age FROM users").unwrap().into_query_result().unwrap();
     println!("Columns: {:?}", result.columns());
     for row in result.rows().iter() {
         println!("Row: {:?}", row);
     }
     
     println!("Querying with SELECT *...");
-    let result = db.query("SELECT * FROM users")?;
+    let result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
     println!("Columns: {:?}", result.columns());
     for row in result.rows().iter() {
         println!("Row: {:?}", row);

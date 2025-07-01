@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     println!("Inserted additional users");
     
     // Query data
-    let result = db.query("SELECT id, name, age FROM users")?;
+    let result = db.query("SELECT id, name, age FROM users").unwrap().into_query_result().unwrap();
     
     println!("Columns: {:?}", result.columns());
     println!("Found {} rows", result.rows().len());
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     }
     
     // Query again to see changes
-    let result2 = db.query("SELECT id, name, age FROM users")?;
+    let result2 = db.query("SELECT id, name, age FROM users").unwrap().into_query_result().unwrap();
     println!("After transaction - Found {} rows", result2.rows().len());
     
     // Database file is automatically cleaned up when temp_file goes out of scope

@@ -32,18 +32,18 @@ fn main() -> tegdb::Result<()> {
     
     // Test 4: Full table scan
     println!("4. Testing full table scan...");
-    let result = db.query("SELECT * FROM users")?;
+    let result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
     println!("   ✓ Full scan returned {} rows", result.rows().len());
     
     // Test 5: Selective column query (major benefit of native format)
     println!("5. Testing selective column query...");
-    let result = db.query("SELECT name, score FROM users")?;
+    let result = db.query("SELECT name, score FROM users").unwrap().into_query_result().unwrap();
     println!("   ✓ Selective query returned {} rows with {} columns", 
         result.rows().len(), result.columns().len());
     
     // Test 6: Primary key lookup
     println!("6. Testing primary key lookup...");
-    let result = db.query("SELECT name, email FROM users WHERE id = 500")?;
+    let result = db.query("SELECT name, email FROM users WHERE id = 500").unwrap().into_query_result().unwrap();
     println!("   ✓ Primary key lookup returned {} rows", result.rows().len());
     if !result.rows().is_empty() {
         if let Some(name) = result.rows()[0].get(0) {
@@ -53,7 +53,7 @@ fn main() -> tegdb::Result<()> {
     
     // Test 7: LIMIT query
     println!("7. Testing LIMIT query...");
-    let result = db.query("SELECT name FROM users LIMIT 10")?;
+    let result = db.query("SELECT name FROM users LIMIT 10").unwrap().into_query_result().unwrap();
     println!("   ✓ LIMIT query returned {} rows", result.rows().len());
     
     // Test 8: Check database size

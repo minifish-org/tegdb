@@ -23,7 +23,7 @@ fn test_explicit_transaction_basic_workflow() {
 
     // Select data
     let select_sql = "SELECT * FROM users";
-    let result = tx.query(select_sql).unwrap();
+    let result = tx.streaming_query(select_sql).unwrap().into_query_result().unwrap();
     assert_eq!(result.len(), 2);
 
     // Commit transaction
@@ -55,7 +55,7 @@ fn test_explicit_transaction_rollback() {
 
         // Verify changes are visible within transaction
         let select_sql = "SELECT * FROM products";
-        let result = tx.query(select_sql).unwrap();
+        let result = tx.streaming_query(select_sql).unwrap().into_query_result().unwrap();
         assert_eq!(result.len(), 2); // Should see both products
 
         // Rollback transaction
@@ -64,7 +64,7 @@ fn test_explicit_transaction_rollback() {
 
     // Verify rollback worked - changes should be gone
     let select_sql = "SELECT * FROM products";
-    let result = db.query(select_sql).unwrap();
+    let result = db.query(select_sql).unwrap().into_query_result().unwrap();
     assert_eq!(result.len(), 1); // Should only see original product
     
     // Original price should be unchanged
@@ -95,7 +95,7 @@ fn test_explicit_transaction_error_handling() {
     assert!(result.is_ok());
 
     let select_sql = "SELECT * FROM users";
-    let result = tx.query(select_sql);
+    let result = tx.streaming_query(select_sql);
     assert!(result.is_ok());
     
     tx.commit().unwrap();
@@ -135,11 +135,11 @@ fn test_explicit_transaction_complex_operations() {
 
     // Verify state within transaction
     let select_orders_sql = "SELECT * FROM orders";
-    let result = tx.query(select_orders_sql).unwrap();
+    let result = tx.streaming_query(select_orders_sql).unwrap().into_query_result().unwrap();
     assert_eq!(result.len(), 1); // Should only have the updated order
 
     let select_users_sql = "SELECT * FROM users";
-    let result = tx.query(select_users_sql).unwrap();
+    let result = tx.streaming_query(select_users_sql).unwrap().into_query_result().unwrap();
     assert_eq!(result.len(), 2); // Should have both users
 
     // Commit all changes
@@ -147,7 +147,7 @@ fn test_explicit_transaction_complex_operations() {
 
     // Verify persistence after commit
     let select_orders_sql = "SELECT * FROM orders";
-    let result = db.query(select_orders_sql).unwrap();
+    let result = db.query(select_orders_sql).unwrap().into_query_result().unwrap();
     assert_eq!(result.len(), 1); // Changes should be persisted
 }
 
@@ -170,7 +170,7 @@ fn test_explicit_transaction_nested_behavior() {
 
     // Now we can start a new transaction
     let mut tx2 = db.begin_transaction().unwrap();
-    let result = tx2.query("SELECT * FROM test").unwrap();
+    let result = tx2.streaming_query("SELECT * FROM test").unwrap().into_query_result().unwrap();
     assert_eq!(result.len(), 1);
     tx2.commit().unwrap();
 }

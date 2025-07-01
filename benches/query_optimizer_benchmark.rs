@@ -48,7 +48,7 @@ fn bench_optimizer_comparison(c: &mut Criterion) {
     // PK lookup (optimized) - should be very fast
     group.bench_function("pk_exact_match", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42")).unwrap();
+            let result = db.query(black_box("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42")).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -56,7 +56,7 @@ fn bench_optimizer_comparison(c: &mut Criterion) {
     // Partial PK (not optimized) - should be slower
     group.bench_function("partial_pk_scan", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT * FROM products WHERE category = 'electronics'")).unwrap();
+            let result = db.query(black_box("SELECT * FROM products WHERE category = 'electronics'")).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });
@@ -64,7 +64,7 @@ fn bench_optimizer_comparison(c: &mut Criterion) {
     // Non-PK condition (not optimized) - should be slower
     group.bench_function("non_pk_scan", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT * FROM products WHERE price > 15.0")).unwrap();
+            let result = db.query(black_box("SELECT * FROM products WHERE price > 15.0")).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });

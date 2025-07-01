@@ -56,7 +56,7 @@ fn main() -> tegdb::Result<()> {
     println!("8. Testing mixed type arithmetic (integer + real)...");
     db.execute("UPDATE products SET price = quantity + price WHERE id = 1")?;
     
-    let result = db.query("SELECT name, price FROM products WHERE id = 1")?;
+    let result = db.query("SELECT name, price FROM products WHERE id = 1").unwrap().into_query_result().unwrap();
     if let Some(row) = result.rows().get(0) {
         println!("   Product '{}' now has price: {:?}", 
                  match &row[0] { SqlValue::Text(s) => s.as_str(), _ => "unknown" },
@@ -80,7 +80,7 @@ fn main() -> tegdb::Result<()> {
 }
 
 fn print_products(db: &mut Database) -> tegdb::Result<()> {
-    let result = db.query("SELECT name, price, quantity, discount FROM products ORDER BY id")?;
+    let result = db.query("SELECT name, price, quantity, discount FROM products ORDER BY id").unwrap().into_query_result().unwrap();
     
     println!("   Products:");
     println!("   | Name     | Price    | Quantity | Discount |");

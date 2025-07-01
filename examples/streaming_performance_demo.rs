@@ -39,7 +39,7 @@ fn main() -> tegdb::Result<()> {
     // Current approach: Load all data into memory
     println!("Current approach (loads all into memory):");
     let start = Instant::now();
-    let result = db.query("SELECT * FROM sensor_data")?;
+    let result = db.query("SELECT * FROM sensor_data").unwrap().into_query_result().unwrap();
     let query_time = start.elapsed();
     println!("  ✓ Loaded {} rows in {:?}", result.len(), query_time);
     println!("  ✓ Memory usage: {} rows × ~100 bytes = ~{} KB in memory", 
@@ -58,7 +58,7 @@ fn main() -> tegdb::Result<()> {
     // Current: Must process query completely
     println!("Current approach with LIMIT 5:");
     let start = Instant::now();
-    let limited_result = db.query("SELECT * FROM sensor_data LIMIT 5")?;
+    let limited_result = db.query("SELECT * FROM sensor_data LIMIT 5").unwrap().into_query_result().unwrap();
     let limited_time = start.elapsed();
     println!("  ✓ Got {} rows in {:?}", limited_result.len(), limited_time);
     
@@ -73,7 +73,7 @@ fn main() -> tegdb::Result<()> {
     // Simulate what streaming aggregation would look like
     println!("Calculating average temperature (simulating streaming):");
     let start = Instant::now();
-    let values_result = db.query("SELECT value FROM sensor_data")?;
+    let values_result = db.query("SELECT value FROM sensor_data").unwrap().into_query_result().unwrap();
     
     // Process "as if" streaming (to show the concept)
     let mut sum = 0.0;
@@ -99,7 +99,7 @@ fn main() -> tegdb::Result<()> {
     // Current approach: Load all, then filter
     println!("Current approach (load all, then filter):");
     let start = Instant::now();
-    let all_data = db.query("SELECT id, sensor_id, value, location FROM sensor_data")?;
+    let all_data = db.query("SELECT id, sensor_id, value, location FROM sensor_data").unwrap().into_query_result().unwrap();
     
     let mut high_temp_count = 0;
     for row in all_data.rows() {
@@ -133,7 +133,7 @@ fn main() -> tegdb::Result<()> {
     println!("Getting page {} (simulating pagination):", page_number);
     let start = Instant::now();
     let offset = (page_number - 1) * page_size;
-    let page_result = db.query(&format!("SELECT id, sensor_id, location FROM sensor_data LIMIT {} OFFSET {}", page_size, offset))?;
+    let page_result = db.query(&format!("SELECT id, sensor_id, location FROM sensor_data LIMIT {} OFFSET {}", page_size, offset)).unwrap().into_query_result().unwrap();
     let pagination_time = start.elapsed();
     
     println!("  ✓ Retrieved {} rows for page {} in {:?}", page_result.len(), page_number, pagination_time);

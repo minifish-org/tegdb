@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     
     // Query the data to verify IOT works correctly
     println!("\n3. Querying data (IOT reconstruction in action):");
-    let result = db.query("SELECT * FROM orders ORDER BY customer_id, order_id")?;
+    let result = db.query("SELECT * FROM orders ORDER BY customer_id, order_id").unwrap().into_query_result().unwrap();
     
     println!("   Columns: {:?}", result.columns());
     for (i, row) in result.rows().iter().enumerate() {
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     
     // Demonstrate primary key lookup efficiency
     println!("\n4. Primary key lookup (efficient IOT access):");
-    let pk_result = db.query("SELECT * FROM orders WHERE customer_id = 1 AND order_id = 101")?;
+    let pk_result = db.query("SELECT * FROM orders WHERE customer_id = 1 AND order_id = 101").unwrap().into_query_result().unwrap();
     println!("   Found {} rows for customer_id=1, order_id=101", pk_result.rows().len());
     if let Some(row) = pk_result.rows().first() {
         let product_name_pos = pk_result.columns().iter().position(|c| c == "product_name").unwrap();

@@ -121,27 +121,27 @@ fn test_storage_format(test_data: &[(i64, String, String, f64, i64)]) -> tegdb::
     
     // Test 1: Full table scan
     let full_scan_start = Instant::now();
-    let _full_result = db.query("SELECT * FROM users")?;
+    let _full_result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
     let full_scan_time = full_scan_start.elapsed().as_nanos();
     
     // Test 2: Selective column scan (major optimization for native format)
     let selective_start = Instant::now();
-    let _selective_result = db.query("SELECT name, score FROM users")?;
+    let _selective_result = db.query("SELECT name, score FROM users").unwrap().into_query_result().unwrap();
     let selective_scan_time = selective_start.elapsed().as_nanos();
     
     // Test 3: Primary key lookup
     let pk_start = Instant::now();
-    let _pk_result = db.query("SELECT name, email FROM users WHERE id = 5000")?;
+    let _pk_result = db.query("SELECT name, email FROM users WHERE id = 5000").unwrap().into_query_result().unwrap();
     let pk_lookup_time = pk_start.elapsed().as_nanos();
     
     // Test 4: Limited scan (should benefit from early termination)
     let limited_start = Instant::now();
-    let _limited_result = db.query("SELECT name, score FROM users LIMIT 100")?;
+    let _limited_result = db.query("SELECT name, score FROM users LIMIT 100").unwrap().into_query_result().unwrap();
     let limited_scan_time = limited_start.elapsed().as_nanos();
     
     // Test 5: Condition-based query
     let condition_start = Instant::now();
-    let _condition_result = db.query("SELECT name, score FROM users WHERE score > 70.0")?;
+    let _condition_result = db.query("SELECT name, score FROM users WHERE score > 70.0").unwrap().into_query_result().unwrap();
     let condition_query_time = condition_start.elapsed().as_nanos();
     
     // Estimate database size

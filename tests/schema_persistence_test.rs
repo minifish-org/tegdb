@@ -22,7 +22,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         db.execute("INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")?;
         
         // Verify data can be retrieved
-        let result = db.query("SELECT * FROM users WHERE age > 25")?;
+        let result = db.query("SELECT * FROM users WHERE age > 25").unwrap().into_query_result().unwrap();
         assert_eq!(result.rows().len(), 1);
         assert_eq!(result.rows()[0].len(), 3); // id, name, age
     }
@@ -36,7 +36,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         db.execute("INSERT INTO users (id, name, age) VALUES (3, 'Charlie', 35)")?;
         
         // 2. Query the data (including old and new data)
-        let result = db.query("SELECT name, age FROM users ORDER BY age")?;
+        let result = db.query("SELECT name, age FROM users ORDER BY age").unwrap().into_query_result().unwrap();
         assert_eq!(result.rows().len(), 3);
         
         // Verify we have the correct columns
@@ -58,8 +58,8 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         db.execute("INSERT INTO products (id, name, price) VALUES (1, 'Widget', 9.99)")?;
         
         // Verify both tables work by doing simple queries
-        let users_result = db.query("SELECT * FROM users")?;
-        let products_result = db.query("SELECT * FROM products")?;
+        let users_result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
+        let products_result = db.query("SELECT * FROM products").unwrap().into_query_result().unwrap();
         
         // Should have 3 users and 1 product
         assert_eq!(users_result.rows().len(), 3);
@@ -104,7 +104,7 @@ fn test_schema_loading_on_executor_creation() -> Result<()> {
         let mut db = Database::open(db_path)?;
         
         // This should work without any issues if the schema was properly loaded
-        let result = db.query("SELECT * FROM items")?;
+        let result = db.query("SELECT * FROM items").unwrap().into_query_result().unwrap();
         assert_eq!(result.rows().len(), 1);
         
         // Verify columns exist (order might vary due to HashMap iteration)

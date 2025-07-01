@@ -41,7 +41,7 @@ fn test_schema_loading_performance() -> Result<()> {
         // in the old implementation
         let start = Instant::now();
         for i in 0..5 {
-            let result = db.query(&format!("SELECT * FROM table_{} LIMIT 1", i))?;
+            let result = db.query(&format!("SELECT * FROM table_{} LIMIT 1", i)).unwrap().into_query_result().unwrap();
             assert!(result.rows().len() <= 1);
         }
         let query_time = start.elapsed();
@@ -78,15 +78,15 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
         
         // Query should work immediately (schemas are shared)
-        let result = db.query("SELECT * FROM users")?;
+        let result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
         assert_eq!(result.rows().len(), 1);
         
         // Create another table in the same database instance
         db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
         
         // Both tables should work
-        let users_result = db.query("SELECT * FROM users")?;
-        let products_result = db.query("SELECT * FROM products")?;
+        let users_result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
+        let products_result = db.query("SELECT * FROM products").unwrap().into_query_result().unwrap();
         
         assert_eq!(users_result.rows().len(), 1);
         assert_eq!(products_result.rows().len(), 0);
@@ -97,8 +97,8 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         let mut db = Database::open(db_path)?;
         
         // Both tables should still be available
-        let users_result = db.query("SELECT * FROM users")?;
-        let products_result = db.query("SELECT * FROM products")?;
+        let users_result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
+        let products_result = db.query("SELECT * FROM products").unwrap().into_query_result().unwrap();
         
         assert_eq!(users_result.rows().len(), 1);
         assert_eq!(products_result.rows().len(), 0);

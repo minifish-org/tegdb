@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     println!("Insert affected: {}", affected);
     
     // Check count
-    let result = db.query("SELECT * FROM test")?;
+    let result = db.query("SELECT * FROM test").unwrap().into_query_result().unwrap();
     println!("After first insert - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
         println!("  Row {}: {:?}", i, row);
@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     println!("Insert affected: {}", affected);
     
     // Check count
-    let result = db.query("SELECT * FROM test")?;
+    let result = db.query("SELECT * FROM test").unwrap().into_query_result().unwrap();
     println!("After second insert - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
         println!("  Row {}: {:?}", i, row);
@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     println!("Update affected: {}", affected);
     
     // Check count and content
-    let result = db.query("SELECT * FROM test ORDER BY id")?;
+    let result = db.query("SELECT * FROM test ORDER BY id").unwrap().into_query_result().unwrap();
     println!("After update - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
         println!("  Row {}: {:?}", i, row);
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
     println!("Delete affected: {}", affected);
     
     // Final check
-    let result = db.query("SELECT * FROM test")?;
+    let result = db.query("SELECT * FROM test").unwrap().into_query_result().unwrap();
     println!("Final - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
         println!("  Row {}: {:?}", i, row);

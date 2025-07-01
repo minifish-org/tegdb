@@ -45,7 +45,7 @@ fn simple_planner_test(c: &mut Criterion) {
     c.bench_function("tegdb_pk_lookup", |b| {
         b.iter(|| {
             let id = black_box(50);
-            let result = tegdb.query(&format!("SELECT name FROM users WHERE id = {}", id)).unwrap();
+            let result = tegdb.query(&format!("SELECT name FROM users WHERE id = {}", id)).unwrap().into_query_result().unwrap();
             black_box(result);
         });
     });

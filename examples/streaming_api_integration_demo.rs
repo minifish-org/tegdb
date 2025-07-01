@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 1: Full table scan with streaming
     println!("\n--- Test 1: Full Table Scan (Streaming) ---");
     let start = Instant::now();
-    let result = db.query("SELECT id, name, category, value FROM large_dataset ORDER BY id")?;
+    let result = db.query("SELECT id, name, category, value FROM large_dataset ORDER BY id").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("✓ Query executed in: {:?}", duration);
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 2: Filtered query with streaming benefits
     println!("\n--- Test 2: Filtered Query (Streaming Benefits) ---");
     let start = Instant::now();
-    let result = db.query("SELECT id, name, value FROM large_dataset WHERE category = 'premium' ORDER BY id")?;
+    let result = db.query("SELECT id, name, value FROM large_dataset WHERE category = 'premium' ORDER BY id").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("✓ Filtered query executed in: {:?}", duration);
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 3: Limited query (demonstrating early termination)
     println!("\n--- Test 3: Limited Query (Early Termination) ---");
     let start = Instant::now();
-    let result = db.query("SELECT id, name, category FROM large_dataset ORDER BY id LIMIT 10")?;
+    let result = db.query("SELECT id, name, category FROM large_dataset ORDER BY id LIMIT 10").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("✓ Limited query executed in: {:?}", duration);
@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 4: Complex query with streaming
     println!("\n--- Test 4: Complex Query (Streaming Processing) ---");
     let start = Instant::now();
-    let result = db.query("SELECT id, name, category FROM large_dataset WHERE value > 1000.0 ORDER BY id")?;
+    let result = db.query("SELECT id, name, category FROM large_dataset WHERE value > 1000.0 ORDER BY id").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("✓ Complex query executed in: {:?}", duration);
@@ -93,8 +93,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tx = db.begin_transaction()?;
     
     let start = Instant::now();
-    let result1 = tx.query("SELECT id, name FROM large_dataset WHERE category = 'standard' LIMIT 5")?;
-    let result2 = tx.query("SELECT id, value FROM large_dataset WHERE category = 'premium' LIMIT 5")?;
+    let result1 = tx.streaming_query("SELECT id, name FROM large_dataset WHERE category = 'standard' LIMIT 5").unwrap().into_query_result().unwrap();
+    let result2 = tx.streaming_query("SELECT id, value FROM large_dataset WHERE category = 'premium' LIMIT 5").unwrap().into_query_result().unwrap();
     let duration = start.elapsed();
     
     println!("✓ Transaction queries executed in: {:?}", duration);
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Performance comparison summary
     println!("\n=== Streaming API Integration Summary ===");
     println!("✓ Database.query() now uses execute_plan_streaming() internally");
-    println!("✓ DatabaseTransaction.query() now uses execute_plan_streaming() internally"); 
+    println!("✓ DatabaseTransaction.streaming_query() now uses execute_plan_streaming() internally"); 
     println!("✓ All SELECT operations benefit from streaming execution");
     println!("✓ Memory efficiency improved for large datasets");
     println!("✓ Early termination works for LIMIT queries");

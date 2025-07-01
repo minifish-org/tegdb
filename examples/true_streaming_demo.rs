@@ -2,7 +2,7 @@
 /// 
 /// This example shows the difference between:
 /// 1. The backward-compatible `query()` API that materializes all rows
-/// 2. The new `stream_query()` API that yields rows on-demand without materializing
+/// 2. The new `query()` API that yields rows on-demand without materializing
 
 use tegdb::Database;
 use std::time::Instant;
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Backward-compatible API (materializes all rows)
     println!("1. Using backward-compatible query() API (materializes all rows):");
     let start = Instant::now();
-    let result_iter = db.query("SELECT * FROM large_table WHERE value < 5")?;
+    let result_iter = db.query("SELECT * FROM large_table WHERE value < 5").unwrap();
     let materialized_time = start.elapsed();
     
     let count = result_iter.collect::<Result<Vec<_>, _>>()?.len();
@@ -41,9 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   - Memory usage: All {} rows materialized in memory", count);
     
     // 2. True streaming API (yields rows on-demand)
-    println!("\n2. Using new stream_query() API (true streaming):");
+    println!("\n2. Using new query() API (true streaming):");
     let start = Instant::now();
-    let mut streaming_result = db.stream_query("SELECT * FROM large_table WHERE value < 5")?;
+    let mut streaming_result = db.query("SELECT * FROM large_table WHERE value < 5")?;
     let streaming_create_time = start.elapsed();
     
     println!("   - Time to create streaming iterator: {:?}", streaming_create_time);
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. Demonstrate early termination benefit
     println!("\n3. Demonstrating early termination with LIMIT:");
     let start = Instant::now();
-    let mut limited_stream = db.stream_query("SELECT * FROM large_table LIMIT 5")?;
+    let mut limited_stream = db.query("SELECT * FROM large_table LIMIT 5")?;
     
     let mut limited_count = 0;
     while let Some(row) = limited_stream.next() {
@@ -95,9 +95,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Show memory efficiency comparison
     println!("\n=== MEMORY EFFICIENCY COMPARISON ===");
     println!("• query() API: Materializes ALL matching rows in memory before returning");
-    println!("• stream_query() API: Yields rows one-by-one on demand");
-    println!("• Early termination: stream_query() can stop processing without reading all data");
-    println!("• Large datasets: stream_query() uses constant memory, query() uses O(n) memory");
+    println!("• query() API: Yields rows one-by-one on demand");
+    println!("• Early termination: query() can stop processing without reading all data");
+    println!("• Large datasets: query() uses constant memory, query() uses O(n) memory");
     
     // Clean up
     std::fs::remove_file("streaming_demo.db").ok();

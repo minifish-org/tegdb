@@ -179,7 +179,7 @@ fn demonstrate_execution_comparison() -> Result<()> {
         println!("   Testing {}: {}", query_type, sql);
         
         let start = std::time::Instant::now();
-        let result = db.query(sql)?;
+        let result = db.query(sql)?.into_query_result()?;
         let duration = start.elapsed();
         
         println!("     → Found {} rows in {:?}", result.rows().len(), duration);

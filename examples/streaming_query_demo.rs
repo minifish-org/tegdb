@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Streaming Query Demo ===");
     
     // Query with iterator API - this is now the default behavior
-    let query_iter = db.query("SELECT * FROM users WHERE age > 25")?;
+    let query_iter = db.query("SELECT * FROM users WHERE age > 25").unwrap();
     
     println!("Columns: {:?}", query_iter.columns());
     println!("Processing rows one by one (streaming):");
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Collecting All Results (if needed) ===");
     
     // If you need all results at once, you can still collect them
-    let query_iter = db.query("SELECT name, age FROM users ORDER BY age")?;
+    let query_iter = db.query("SELECT name, age FROM users ORDER BY age").unwrap();
     let all_rows = query_iter.collect_rows()?;
     
     println!("All rows collected: {:?}", all_rows);
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Backward Compatibility ===");
     
     // For backward compatibility, convert to old QueryResult format
-    let query_iter = db.query("SELECT * FROM users WHERE name LIKE '%a%'")?;
+    let query_iter = db.query("SELECT * FROM users WHERE name LIKE '%a%'").unwrap();
     let query_result = query_iter.into_query_result()?;
     
     println!("Using old QueryResult format:");
