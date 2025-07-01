@@ -284,7 +284,7 @@ impl Transaction<'_> {
 
     /// Returns true if the transaction has pending operations (i.e., uncommitted changes)
     pub fn has_pending_operations(&self) -> bool {
-        !self.finalized && self.undo_log.as_ref().map_or(false, |log| !log.is_empty())
+        !self.finalized && self.undo_log.as_ref().is_some_and(|log| !log.is_empty())
     }
     
     /// Returns true if the transaction is clean (no pending operations)
@@ -304,7 +304,7 @@ impl Transaction<'_> {
         }
         
         // Check if this is a read-only transaction (no write operations)
-        let has_writes = self.undo_log.as_ref().map_or(false, |log| !log.is_empty());
+        let has_writes = self.undo_log.as_ref().is_some_and(|log| !log.is_empty());
         
         if has_writes {
             // Write transaction commit marker directly to log (not to keymap) and always sync on commit
@@ -328,7 +328,7 @@ impl Transaction<'_> {
         }
         
         // Check if there's anything to rollback
-        let has_operations = self.undo_log.as_ref().map_or(false, |log| !log.is_empty());
+        let has_operations = self.undo_log.as_ref().is_some_and(|log| !log.is_empty());
         if !has_operations {
             // No operations performed, nothing to rollback
             self.finalized = true;

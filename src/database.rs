@@ -333,9 +333,9 @@ impl<'a> StreamingQuery<'a> {
     }
     
     /// Collect all remaining rows into a Vec (for compatibility)
-    pub fn collect_rows(mut self) -> Result<Vec<Vec<SqlValue>>> {
+    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
         let mut rows = Vec::new();
-        while let Some(row_result) = self.next() {
+        for row_result in self {
             rows.push(row_result?);
         }
         Ok(rows)
@@ -420,7 +420,7 @@ impl<'a> StreamingQuery<'a> {
     }
 }
 
-impl<'a> Iterator for StreamingQuery<'a> {
+impl Iterator for StreamingQuery<'_> {
     type Item = Result<Vec<SqlValue>>;
     
     fn next(&mut self) -> Option<Self::Item> {
@@ -497,123 +497,6 @@ impl<'a> Iterator for StreamingQuery<'a> {
     }
 }
 
-/// Iterator-based query result that streams rows without loading all into memory
-/// Similar to SQLite's row iterator approach
-pub enum QueryIterator<'a> {
-    /// True streaming iterator that holds the transaction and executor
-    Streaming {
-        columns: Vec<String>,
-        streaming_result: crate::executor::StreamingResultSet<'a>,
-    },
-    /// Materialized iterator for backward compatibility
-    Materialized {
-        columns: Vec<String>,
-        rows: Vec<Vec<SqlValue>>,
-        index: usize,
-    },
-}
-
-impl<'a> QueryIterator<'a> {
-    /// Create a new streaming QueryIterator
-    fn new_streaming(columns: Vec<String>, streaming_result: crate::executor::StreamingResultSet<'a>) -> Self {
-        Self::Streaming { columns, streaming_result }
-    }
-    
-    /// Create a new materialized QueryIterator (for backward compatibility)
-    fn new_materialized(columns: Vec<String>, rows: Vec<Vec<SqlValue>>) -> Self {
-        Self::Materialized { columns, rows, index: 0 }
-    }
-    
-    /// Get column names
-    pub fn columns(&self) -> &[String] {
-        match self {
-            Self::Streaming { columns, .. } => columns,
-            Self::Materialized { columns, .. } => columns,
-        }
-    }
-    
-    /// Get all rows (backward compatibility - forces materialization for streaming)
-    pub fn rows(&self) -> Result<Vec<Vec<SqlValue>>> {
-        match self {
-            Self::Streaming { .. } => {
-                Err(crate::Error::Other("Cannot get all rows from streaming iterator without collecting first".to_string()))
-            }
-            Self::Materialized { rows, .. } => Ok(rows.clone()),
-        }
-    }
-    
-    /// Get number of remaining rows (backward compatibility - only works for materialized)
-    pub fn len(&self) -> Result<usize> {
-        match self {
-            Self::Streaming { .. } => {
-                Err(crate::Error::Other("Cannot get length of streaming iterator without collecting first".to_string()))
-            }
-            Self::Materialized { rows, index, .. } => Ok(rows.len() - *index),
-        }
-    }
-    
-    /// Check if result is empty (only works for materialized)
-    pub fn is_empty(&self) -> Result<bool> {
-        match self {
-            Self::Streaming { .. } => {
-                Err(crate::Error::Other("Cannot check if streaming iterator is empty without collecting first".to_string()))
-            }
-            Self::Materialized { rows, index, .. } => Ok(*index >= rows.len()),
-        }
-    }
-    
-    /// Collect all remaining rows into a Vec
-    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
-        match self {
-            Self::Streaming { streaming_result, .. } => {
-                streaming_result.collect_rows()
-            }
-            Self::Materialized { rows, index, .. } => {
-                Ok(rows.into_iter().skip(index).collect())
-            }
-        }
-    }
-    
-    /// Convert to the old QueryResult format (for backward compatibility)
-    pub fn into_query_result(self) -> Result<QueryResult> {
-        let columns = self.columns().to_vec();
-        let rows = self.collect_rows()?;
-        Ok(QueryResult { columns, rows })
-    }
-    
-    /// Take only the first N rows
-    pub fn take(self, n: usize) -> impl Iterator<Item = Result<Vec<SqlValue>>> + 'a {
-        match self {
-            Self::Streaming { streaming_result, .. } => {
-                Box::new(streaming_result.take(n)) as Box<dyn Iterator<Item = Result<Vec<SqlValue>>> + 'a>
-            }
-            Self::Materialized { rows, index, .. } => {
-                Box::new(rows.into_iter().skip(index).take(n).map(Ok)) as Box<dyn Iterator<Item = Result<Vec<SqlValue>>> + 'a>
-            }
-        }
-    }
-}
-
-impl<'a> Iterator for QueryIterator<'a> {
-    type Item = Result<Vec<SqlValue>>;
-    
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::Streaming { streaming_result, .. } => {
-                streaming_result.rows.next()
-            }
-            Self::Materialized { rows, index, .. } => {
-                if *index < rows.len() {
-                    let row = rows[*index].clone();
-                    *index += 1;
-                    Some(Ok(row))
-                } else {
-                    None
-                }
-            }
-        }
-    }
-}
 
 /// Transaction handle for batch operations
 pub struct DatabaseTransaction<'a> {
@@ -621,7 +504,7 @@ pub struct DatabaseTransaction<'a> {
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
 }
 
-impl<'a> DatabaseTransaction<'a> {
+impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let (_, statement) = parse_sql(sql)
@@ -772,9 +655,9 @@ impl<'a> TransactionStreamingQuery<'a> {
     }
     
     /// Collect all remaining rows into a Vec (for compatibility)
-    pub fn collect_rows(mut self) -> Result<Vec<Vec<SqlValue>>> {
+    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
         let mut rows = Vec::new();
-        while let Some(row_result) = self.next() {
+        for row_result in self {
             rows.push(row_result?);
         }
         Ok(rows)
@@ -859,7 +742,7 @@ impl<'a> TransactionStreamingQuery<'a> {
     }
 }
 
-impl<'a> Iterator for TransactionStreamingQuery<'a> {
+impl Iterator for TransactionStreamingQuery<'_> {
     type Item = Result<Vec<SqlValue>>;
     
     fn next(&mut self) -> Option<Self::Item> {

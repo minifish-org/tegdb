@@ -1,5 +1,5 @@
 use tegdb::Database;
-use tegdb::parser::SqlValue;
+use tegdb::SqlValue;
 
 #[test]
 fn test_query_iterator_basic_functionality() {

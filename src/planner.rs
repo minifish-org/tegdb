@@ -279,7 +279,7 @@ impl QueryPlanner {
         
         // Enable early termination if we have a LIMIT and simple conditions
         let early_termination = select.limit.is_some() && 
-            self.is_simple_filter(filter.as_ref());
+            Self::is_simple_filter(filter.as_ref());
         
         Ok(ExecutionPlan::TableScan {
             table: select.table.clone(),
@@ -393,7 +393,7 @@ impl QueryPlanner {
         let pk_columns = self.get_primary_key_columns(table_name)?;
         let mut pk_values = HashMap::new();
         
-        self.collect_pk_equality_values(condition, &pk_columns, &mut pk_values);
+        Self::collect_pk_equality_values(condition, &pk_columns, &mut pk_values);
         
         // Check if we have values for ALL primary key columns
         if pk_values.len() == pk_columns.len() {
@@ -404,7 +404,7 @@ impl QueryPlanner {
     }
     
     /// Recursively collect primary key equality values from conditions
-    fn collect_pk_equality_values(&self, condition: &Condition, pk_columns: &[String], pk_values: &mut HashMap<String, SqlValue>) {
+    fn collect_pk_equality_values(condition: &Condition, pk_columns: &[String], pk_values: &mut HashMap<String, SqlValue>) {
         match condition {
             Condition::Comparison { left, operator, right } => {
                 if let ComparisonOperator::Equal = operator {
@@ -414,8 +414,8 @@ impl QueryPlanner {
                 }
             }
             Condition::And(left_cond, right_cond) => {
-                self.collect_pk_equality_values(left_cond, pk_columns, pk_values);
-                self.collect_pk_equality_values(right_cond, pk_columns, pk_values);
+                Self::collect_pk_equality_values(left_cond, pk_columns, pk_values);
+                Self::collect_pk_equality_values(right_cond, pk_columns, pk_values);
             }
             Condition::Or(_, _) => {
                 // For OR conditions, we cannot optimize with PK lookup
@@ -479,12 +479,12 @@ impl QueryPlanner {
     }
     
     /// Check if a filter is simple enough for early termination optimization
-    fn is_simple_filter(&self, filter: Option<&Condition>) -> bool {
+    fn is_simple_filter(filter: Option<&Condition>) -> bool {
         match filter {
             None => true,
             Some(Condition::Comparison { .. }) => true,
             Some(Condition::And(left, right)) => {
-                self.is_simple_filter(Some(left)) && self.is_simple_filter(Some(right))
+                Self::is_simple_filter(Some(left)) && Self::is_simple_filter(Some(right))
             }
             Some(Condition::Or(_, _)) => false, // OR conditions are more complex
         }

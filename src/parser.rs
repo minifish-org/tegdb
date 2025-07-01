@@ -758,7 +758,7 @@ fn parse_identifier(input: &str) -> IResult<&str, String> {
         )),
         |s: &str| {
             // Only intern very common, short identifiers to avoid overhead
-            if s.len() <= 8 && s.chars().all(|c| c.is_ascii()) {
+            if s.len() <= 8 && s.is_ascii() {
                 match s {
                     "id" | "name" | "age" | "email" | "user" | "users" | "data" | "table" => intern_string(s),
                     _ => s.to_string(),
