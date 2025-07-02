@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-use std::fs;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use tegdb::{Engine, EngineConfig, Result};
 
 /// Creates a unique temporary file path for tests
@@ -16,7 +16,7 @@ fn test_engine() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    
+
     let mut engine = Engine::new(path.clone())?;
 
     // Test set and get
@@ -31,7 +31,7 @@ fn test_engine() -> Result<()> {
         String::from_utf8_lossy(value),
         String::from_utf8_lossy(&get_value)
     );
-    
+
     // Test del
     engine.del(key)?;
     let get_value = engine.get(key);
@@ -47,7 +47,7 @@ fn test_engine() -> Result<()> {
     let end_key = b"z";
     engine.set(start_key, b"start_value".to_vec())?;
     engine.set(end_key, b"end_value".to_vec())?;
-    
+
     let mut end_key_extended = Vec::new();
     end_key_extended.extend_from_slice(end_key);
     end_key_extended.push(0);
@@ -59,7 +59,7 @@ fn test_engine() -> Result<()> {
 
     // Cleanup
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -73,11 +73,11 @@ fn test_persistence() -> Result<()> {
     // Create engine and set values
     {
         let mut engine = Engine::new(path.clone())?;
-        
+
         engine.set(b"key1", b"value1".to_vec())?;
         engine.set(b"key2", b"value2".to_vec())?;
         engine.set(b"key3", b"value3".to_vec())?;
-        
+
         // Explicitly drop the engine to ensure file is closed properly
         drop(engine);
     }
@@ -85,15 +85,24 @@ fn test_persistence() -> Result<()> {
     // Reopen and verify values
     {
         let engine = Engine::new(path.clone())?;
-        
+
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
         let value3 = engine.get(b"key3").unwrap();
 
-        assert_eq!(&*value1, b"value1", "Value for key1 not persisted correctly");
-        assert_eq!(&*value2, b"value2", "Value for key2 not persisted correctly");
-        assert_eq!(&*value3, b"value3", "Value for key3 not persisted correctly");
-        
+        assert_eq!(
+            &*value1, b"value1",
+            "Value for key1 not persisted correctly"
+        );
+        assert_eq!(
+            &*value2, b"value2",
+            "Value for key2 not persisted correctly"
+        );
+        assert_eq!(
+            &*value3, b"value3",
+            "Value for key3 not persisted correctly"
+        );
+
         // Drop engine again to ensure changes are persisted
         drop(engine);
     }
@@ -101,10 +110,10 @@ fn test_persistence() -> Result<()> {
     // Reopen, update some values, and verify again
     {
         let mut engine = Engine::new(path.clone())?;
-        
+
         engine.set(b"key2", b"updated_value".to_vec())?;
         engine.set(b"key4", b"value4".to_vec())?;
-        
+
         // Explicitly drop the engine to ensure file is closed properly
         drop(engine);
     }
@@ -112,17 +121,23 @@ fn test_persistence() -> Result<()> {
     // Reopen and verify updated values
     {
         let engine = Engine::new(path.clone())?;
-        
+
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
         let value3 = engine.get(b"key3").unwrap();
         let value4 = engine.get(b"key4").unwrap();
-        
+
         assert_eq!(&*value1, b"value1", "Original value for key1 was lost");
-        assert_eq!(&*value2, b"updated_value", "Value for key2 not updated correctly");
+        assert_eq!(
+            &*value2, b"updated_value",
+            "Value for key2 not updated correctly"
+        );
         assert_eq!(&*value3, b"value3", "Original value for key3 was lost");
-        assert_eq!(&*value4, b"value4", "New value for key4 not persisted correctly");
-        
+        assert_eq!(
+            &*value4, b"value4",
+            "New value for key4 not persisted correctly"
+        );
+
         // Drop engine again
         drop(engine);
     }
@@ -130,9 +145,9 @@ fn test_persistence() -> Result<()> {
     // Reopen, delete a key, and verify again
     {
         let mut engine = Engine::new(path.clone())?;
-        
+
         engine.del(b"key3")?;
-        
+
         // Explicitly drop the engine to ensure file is closed properly
         drop(engine);
     }
@@ -140,18 +155,18 @@ fn test_persistence() -> Result<()> {
     // Reopen and verify deletion
     {
         let engine = Engine::new(path.clone())?;
-        
+
         let value3 = engine.get(b"key3");
-        
+
         assert_eq!(value3, None, "Key3 was not deleted properly");
-        
+
         // Drop engine for the last time
         drop(engine);
     }
 
     // Cleanup
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -161,15 +176,15 @@ fn test_basic_operations() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    
+
     let mut engine = Engine::new(path.clone())?;
-    
+
     engine.set(b"key", b"value".to_vec())?;
     let value = engine.get(b"key").unwrap();
     assert_eq!(&*value, b"value");
-    
+
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -179,22 +194,25 @@ fn test_concurrent_access() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    
+
     // First engine instance
     let engine1 = Engine::new(path.clone())?;
-    
+
     // This should fail - file should be locked
     let engine2_result = Engine::new(path.clone());
-    assert!(engine2_result.is_err(), "Second engine should not be able to open locked database");
-    
+    assert!(
+        engine2_result.is_err(),
+        "Second engine should not be able to open locked database"
+    );
+
     // Clean up
     drop(engine1);
-    
+
     // After dropping the first instance, we should be able to open it again
     let _engine3 = Engine::new(path.clone())?;
-    
+
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -204,24 +222,27 @@ fn test_empty_string_values() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    
+
     let mut engine = Engine::new(path.clone())?;
-    
+
     // Empty value should be treated as delete
     engine.set(b"key1", vec![])?;
     assert_eq!(engine.get(b"key1"), None);
-    
+
     // Set a value first
     engine.set(b"key2", b"value".to_vec())?;
-    assert_eq!(engine.get(b"key2").map(|a| a.as_ref().to_vec()), Some(b"value".to_vec()));
-    
+    assert_eq!(
+        engine.get(b"key2").map(|a| a.as_ref().to_vec()),
+        Some(b"value".to_vec())
+    );
+
     // Then set it to empty (should delete)
     engine.set(b"key2", vec![])?;
     assert_eq!(engine.get(b"key2"), None);
-    
+
     // Clean up
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -231,38 +252,38 @@ fn test_len_and_empty() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    
+
     let mut engine = Engine::new(path.clone())?;
-    
+
     // Should start empty
     assert_eq!(engine.len(), 0);
     assert!(engine.is_empty());
-    
+
     // Add some entries
     engine.set(b"key1", b"value1".to_vec())?;
     engine.set(b"key2", b"value2".to_vec())?;
-    
+
     // Should have 2 entries
     assert_eq!(engine.len(), 2);
     assert!(!engine.is_empty());
-    
+
     // Delete an entry
     engine.del(b"key1")?;
-    
+
     // Should have 1 entry
     assert_eq!(engine.len(), 1);
     assert!(!engine.is_empty());
-    
+
     // Delete the last entry
     engine.del(b"key2")?;
-    
+
     // Should be empty again
     assert_eq!(engine.len(), 0);
     assert!(engine.is_empty());
-    
+
     // Clean up
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -272,20 +293,23 @@ fn test_engine_basic_operations_moved() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    
+
     let mut engine = Engine::new(path.clone())?;
-    
+
     // Set and get
     engine.set(b"key1", b"value1".to_vec())?;
-    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value1".to_vec()));
-    
+    assert_eq!(
+        engine.get(b"key1").map(|a| a.as_ref().to_vec()),
+        Some(b"value1".to_vec())
+    );
+
     // Delete
     engine.del(b"key1")?;
     assert_eq!(engine.get(b"key1"), None);
-    
+
     // Cleanup
     fs::remove_file(path)?;
-    
+
     Ok(())
 }
 
@@ -298,11 +322,17 @@ fn test_overwrite_key() -> Result<()> {
     let mut engine = Engine::new(path.clone())?;
 
     engine.set(b"key1", b"value1".to_vec())?;
-    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value1".to_vec()));
+    assert_eq!(
+        engine.get(b"key1").map(|a| a.as_ref().to_vec()),
+        Some(b"value1".to_vec())
+    );
 
     // Overwrite key1
     engine.set(b"key1", b"value_new".to_vec())?;
-    assert_eq!(engine.get(b"key1").map(|a| a.as_ref().to_vec()), Some(b"value_new".to_vec()));
+    assert_eq!(
+        engine.get(b"key1").map(|a| a.as_ref().to_vec()),
+        Some(b"value_new".to_vec())
+    );
 
     fs::remove_file(path)?;
     Ok(())
@@ -332,7 +362,9 @@ fn test_scan_empty_db() -> Result<()> {
     }
     let engine = Engine::new(path.clone())?;
 
-    let scan_result = engine.scan(b"a".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    let scan_result = engine
+        .scan(b"a".to_vec()..b"z".to_vec())?
+        .collect::<Vec<_>>();
     assert!(scan_result.is_empty());
 
     fs::remove_file(path)?;
@@ -351,7 +383,9 @@ fn test_scan_no_match() -> Result<()> {
     engine.set(b"key2", b"value2".to_vec())?;
 
     // Scan a range that won't match any existing keys
-    let scan_result = engine.scan(b"x".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    let scan_result = engine
+        .scan(b"x".to_vec()..b"z".to_vec())?
+        .collect::<Vec<_>>();
     assert!(scan_result.is_empty());
 
     fs::remove_file(path)?;
@@ -385,14 +419,15 @@ fn test_special_characters_keys_values() -> Result<()> {
 
     for i in 0..keys.len() {
         engine.set(&keys[i], values[i].clone())?;
-        assert_eq!(engine.get(&keys[i]).map(|a| a.as_ref().to_vec()), Some(values[i].clone()));
+        assert_eq!(
+            engine.get(&keys[i]).map(|a| a.as_ref().to_vec()),
+            Some(values[i].clone())
+        );
     }
 
     fs::remove_file(path)?;
     Ok(())
 }
-
-
 
 #[test]
 #[should_panic(expected = "range start is greater than range end in BTreeMap")]
@@ -409,13 +444,14 @@ fn test_scan_reverse_range() {
 
     // Start key is greater than end key
     // This should panic based on BTreeMap behavior
-    let _scan_result = engine.scan(b"c".to_vec()..b"a".to_vec()).unwrap().collect::<Vec<_>>();
-    
+    let _scan_result = engine
+        .scan(b"c".to_vec()..b"a".to_vec())
+        .unwrap()
+        .collect::<Vec<_>>();
+
     // The following lines will not be reached if the panic occurs as expected.
     fs::remove_file(path).unwrap();
 }
-
-
 
 #[test]
 fn test_scan_boundary_conditions() -> Result<()> {
@@ -430,7 +466,9 @@ fn test_scan_boundary_conditions() -> Result<()> {
     engine.set(b"key3", b"value3".to_vec())?;
 
     // Scan for "key1" (exclusive end for "key2")
-    let result1 = engine.scan(b"key1".to_vec()..b"key2".to_vec())?.collect::<Vec<_>>();
+    let result1 = engine
+        .scan(b"key1".to_vec()..b"key2".to_vec())?
+        .collect::<Vec<_>>();
     assert_eq!(result1.len(), 1);
     assert_eq!(result1[0].0, b"key1".to_vec());
     assert_eq!(result1[0].1.as_ref(), b"value1");
@@ -439,7 +477,9 @@ fn test_scan_boundary_conditions() -> Result<()> {
     // To include "key3", the end of the range must be > "key3"
     let mut end_key3_inclusive = b"key3".to_vec();
     end_key3_inclusive.push(0); // Makes it "key3\x00"
-    let result2 = engine.scan(b"key2".to_vec()..end_key3_inclusive)?.collect::<Vec<_>>();
+    let result2 = engine
+        .scan(b"key2".to_vec()..end_key3_inclusive)?
+        .collect::<Vec<_>>();
     assert_eq!(result2.len(), 2);
     assert_eq!(result2[0].0, b"key2".to_vec());
     assert_eq!(result2[0].1.as_ref(), b"value2");
@@ -449,25 +489,33 @@ fn test_scan_boundary_conditions() -> Result<()> {
     // Scan a range that includes nothing (e.g., between "key1" and "key2" but not including them)
     let mut start_after_key1 = b"key1".to_vec();
     start_after_key1.push(255); // e.g., "key1\xff"
-    let result3 = engine.scan(start_after_key1..b"key2".to_vec())?.collect::<Vec<_>>();
+    let result3 = engine
+        .scan(start_after_key1..b"key2".to_vec())?
+        .collect::<Vec<_>>();
     assert!(result3.is_empty());
 
     // Scan all keys (range from before "key1" to after "key3")
     let mut end_beyond_key3 = b"key3".to_vec();
-    end_beyond_key3.push(0); 
-    let result_all = engine.scan(b"key0".to_vec()..end_beyond_key3)?.collect::<Vec<_>>();
+    end_beyond_key3.push(0);
+    let result_all = engine
+        .scan(b"key0".to_vec()..end_beyond_key3)?
+        .collect::<Vec<_>>();
     assert_eq!(result_all.len(), 3);
     assert_eq!(result_all[0].0, b"key1".to_vec());
     assert_eq!(result_all[1].0, b"key2".to_vec());
     assert_eq!(result_all[2].0, b"key3".to_vec());
 
     // Scan with a start key that doesn't exist but is before the first key
-    let result_before_all = engine.scan(b"a".to_vec()..b"key2".to_vec())?.collect::<Vec<_>>();
+    let result_before_all = engine
+        .scan(b"a".to_vec()..b"key2".to_vec())?
+        .collect::<Vec<_>>();
     assert_eq!(result_before_all.len(), 1);
     assert_eq!(result_before_all[0].0, b"key1".to_vec());
 
     // Scan with an end key that includes the last key
-    let result_includes_last = engine.scan(b"key3".to_vec()..b"z".to_vec())?.collect::<Vec<_>>();
+    let result_includes_last = engine
+        .scan(b"key3".to_vec()..b"z".to_vec())?
+        .collect::<Vec<_>>();
     assert_eq!(result_includes_last.len(), 1);
     assert_eq!(result_includes_last[0].0, b"key3".to_vec());
 
@@ -493,8 +541,14 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
     // Session 2: Read data from session 1, modify some, add new
     {
         let mut engine = Engine::new(path.clone())?;
-        assert_eq!(engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()), Some(b"val1_session1".to_vec()));
-        assert_eq!(engine.get(b"iso_key2").map(|a| a.as_ref().to_vec()), Some(b"val2_session1".to_vec()));
+        assert_eq!(
+            engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()),
+            Some(b"val1_session1".to_vec())
+        );
+        assert_eq!(
+            engine.get(b"iso_key2").map(|a| a.as_ref().to_vec()),
+            Some(b"val2_session1".to_vec())
+        );
 
         engine.set(b"iso_key2", b"val2_session2_updated".to_vec())?;
         engine.set(b"iso_key3", b"val3_session2_new".to_vec())?;
@@ -504,9 +558,18 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
     // Session 3: Verify changes from session 2 and original from session 1
     {
         let engine = Engine::new(path.clone())?;
-        assert_eq!(engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()), Some(b"val1_session1".to_vec())); // Unchanged from session 1
-        assert_eq!(engine.get(b"iso_key2").map(|a| a.as_ref().to_vec()), Some(b"val2_session2_updated".to_vec())); // Updated in session 2
-        assert_eq!(engine.get(b"iso_key3").map(|a| a.as_ref().to_vec()), Some(b"val3_session2_new".to_vec()));   // Added in session 2
+        assert_eq!(
+            engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()),
+            Some(b"val1_session1".to_vec())
+        ); // Unchanged from session 1
+        assert_eq!(
+            engine.get(b"iso_key2").map(|a| a.as_ref().to_vec()),
+            Some(b"val2_session2_updated".to_vec())
+        ); // Updated in session 2
+        assert_eq!(
+            engine.get(b"iso_key3").map(|a| a.as_ref().to_vec()),
+            Some(b"val3_session2_new".to_vec())
+        ); // Added in session 2
         assert_eq!(engine.len(), 3);
         drop(engine);
     }
@@ -518,18 +581,21 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
 #[test]
 fn test_engine_value_size_limit() {
     let path = temp_db_path("value_limit");
-    if path.exists() { fs::remove_file(&path).unwrap(); }
+    if path.exists() {
+        fs::remove_file(&path).unwrap();
+    }
     // configure engine to allow only 1-byte values
     let mut config = EngineConfig::default();
     config.max_value_size = 1;
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     // setting oversized value should error
     let err = engine.set(b"k", vec![0, 1]);
-    assert!(err.is_err(), "Expected engine.set error for oversized value");
+    assert!(
+        err.is_err(),
+        "Expected engine.set error for oversized value"
+    );
     // valid value
     engine.set(b"k", vec![0]).unwrap();
     assert_eq!(engine.get(b"k").map(|a| a.as_ref().to_vec()), Some(vec![0]));
     fs::remove_file(path).unwrap();
 }
-
-

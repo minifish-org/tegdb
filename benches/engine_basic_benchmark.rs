@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rusqlite::{params, Connection};
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use tegdb::Engine;
 
 /// Creates a unique temporary file path for benchmarks
@@ -23,7 +23,9 @@ fn engine_benchmark(c: &mut Criterion) {
 
     c.bench_function("engine set", |b| {
         b.iter(|| {
-            engine.set(black_box(key), black_box(value.to_vec())).unwrap();
+            engine
+                .set(black_box(key), black_box(value.to_vec()))
+                .unwrap();
         })
     });
 
@@ -41,7 +43,7 @@ fn engine_benchmark(c: &mut Criterion) {
                 engine
                     .scan(black_box(start_key.to_vec())..black_box(end_key.to_vec()))
                     .unwrap()
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>(),
             );
         })
     });
@@ -51,7 +53,7 @@ fn engine_benchmark(c: &mut Criterion) {
             engine.del(black_box(key)).unwrap();
         })
     });
-    
+
     // Clean up test file at the end
     drop(engine); // Ensure the file is closed
     let _ = fs::remove_file(&path);
@@ -84,7 +86,7 @@ fn sled_benchmark(c: &mut Criterion) {
             black_box(
                 db.range::<&[u8], _>(black_box(b"a".as_ref())..black_box(b"z".as_ref()))
                     .map(|x| x.unwrap())
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>(),
             );
         })
     });
@@ -100,15 +102,10 @@ fn sled_benchmark(c: &mut Criterion) {
     std::fs::remove_dir_all(path_str).unwrap_or_default();
 }
 
-
-
 fn sqlite_benchmark(c: &mut Criterion) {
     let conn = Connection::open_in_memory().unwrap();
-    conn.execute(
-        "CREATE TABLE test (key BLOB PRIMARY KEY, value BLOB)",
-        [],
-    )
-    .unwrap();
+    conn.execute("CREATE TABLE test (key BLOB PRIMARY KEY, value BLOB)", [])
+        .unwrap();
     let key = b"key";
     let value = b"value";
 
@@ -138,9 +135,15 @@ fn sqlite_benchmark(c: &mut Criterion) {
                 .prepare("SELECT key, value FROM test WHERE key >= ? AND key <= ? ORDER BY key")
                 .unwrap();
             let rows = stmt
-                .query_map([black_box(b"a".as_slice()), black_box(b"z".as_slice())], |row| {
-                    Ok((row.get::<_, Vec<u8>>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap()))
-                })
+                .query_map(
+                    [black_box(b"a".as_slice()), black_box(b"z".as_slice())],
+                    |row| {
+                        Ok((
+                            row.get::<_, Vec<u8>>(0).unwrap(),
+                            row.get::<_, Vec<u8>>(1).unwrap(),
+                        ))
+                    },
+                )
                 .unwrap()
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap();
@@ -156,12 +159,5 @@ fn sqlite_benchmark(c: &mut Criterion) {
     });
 }
 
-
-
-criterion_group!(
-    benches,
-    engine_benchmark,
-    sled_benchmark,
-    sqlite_benchmark
-);
+criterion_group!(benches, engine_benchmark, sled_benchmark, sqlite_benchmark);
 criterion_main!(benches);

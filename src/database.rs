@@ -3,29 +3,47 @@
 //! This module provides a SQLite-like interface for TegDB, making it easy for users
 //! to interact with the database without dealing with low-level engine details.
 
-use crate::{engine::Engine, executor::{TableSchema, Executor}, parser::{parse_sql, SqlValue}, Result};
 use crate::planner::QueryPlanner;
-use std::{path::Path, collections::HashMap, sync::{Arc, RwLock}};
+use crate::{
+    engine::Engine,
+    executor::{Executor, TableSchema},
+    parser::{parse_sql, SqlValue},
+    Result,
+};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, RwLock},
+};
 
 /// Trait for types that can perform scanning operations (Engine or Transaction)
 pub trait Scannable {
-    fn scan(&self, range: std::ops::Range<Vec<u8>>) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>>;
+    fn scan(
+        &self,
+        range: std::ops::Range<Vec<u8>>,
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>>;
 }
 
 impl Scannable for crate::engine::Engine {
-    fn scan(&self, range: std::ops::Range<Vec<u8>>) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>> {
+    fn scan(
+        &self,
+        range: std::ops::Range<Vec<u8>>,
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>> {
         self.scan(range)
     }
 }
 
 impl Scannable for crate::engine::Transaction<'_> {
-    fn scan(&self, range: std::ops::Range<Vec<u8>>) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>> {
+    fn scan(
+        &self,
+        range: std::ops::Range<Vec<u8>>,
+    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>> {
         self.scan(range)
     }
 }
 
 /// Database connection, similar to sqlite::Connection
-/// 
+///
 /// This struct maintains a schema cache at the database level to avoid
 /// repeated schema loading from disk for every executor creation.
 /// Schemas are loaded once when the database is opened and kept in sync
@@ -41,30 +59,30 @@ impl Database {
     /// Create or open database
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let engine = Engine::new(path.as_ref().to_path_buf())?;
-        
+
         // Load all table schemas at database initialization
         let mut table_schemas = HashMap::new();
-        
+
         // Load schemas directly from engine (no transaction needed for reads)
         Self::load_schemas_from_engine(&engine, &mut table_schemas)?;
-        
-        Ok(Self { 
-            engine, 
+
+        Ok(Self {
+            engine,
             table_schemas: Arc::new(RwLock::new(table_schemas)),
         })
     }
-    
+
     /// Load schemas from engine into the provided HashMap
     fn load_schemas_from_engine(
         engine: &Engine,
-        schemas: &mut HashMap<String, TableSchema>
+        schemas: &mut HashMap<String, TableSchema>,
     ) -> Result<()> {
         // Scan for all schema keys
         let schema_prefix = "__schema__:".as_bytes().to_vec();
         let schema_end = "__schema__~".as_bytes().to_vec(); // '~' comes after ':'
-        
+
         let schema_entries = engine.scan(schema_prefix..schema_end)?;
-        
+
         for (key, value) in schema_entries {
             // Extract table name from key
             let key_str = String::from_utf8_lossy(&key);
@@ -76,10 +94,10 @@ impl Database {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Deserialize table schema from bytes (copied from Executor)
     fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
         let mut columns = Vec::new();
@@ -100,9 +118,9 @@ impl Database {
             Self::parse_column_part(column_part, &mut columns);
         }
 
-        Ok(TableSchema { 
+        Ok(TableSchema {
             name: "unknown".to_string(), // Will be set by caller
-            columns 
+            columns,
         })
     }
 
@@ -122,12 +140,15 @@ impl Database {
             };
 
             let constraints = if let Some(constraints_bytes) = parts.next() {
-                constraints_bytes.split(|&b| b == b',').filter_map(|c| match c {
-                    b"PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
-                    b"NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
-                    b"UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
-                    _ => None,
-                }).collect()
+                constraints_bytes
+                    .split(|&b| b == b',')
+                    .filter_map(|c| match c {
+                        b"PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
+                        b"NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
+                        b"UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
+                        _ => None,
+                    })
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -139,49 +160,59 @@ impl Database {
             });
         }
     }
-    
+
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let (_, statement) = parse_sql(sql)
-            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
-        
+        let (_, statement) =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+
         // Clone schemas for the executor
         let schemas = self.table_schemas.read().unwrap().clone();
-        
+
         // Use a single transaction for this operation
         let transaction = self.engine.begin_transaction();
-        
+
         // Use the new planner pipeline with executor
         let planner = QueryPlanner::new(schemas.clone());
         let mut executor = Executor::new_with_schemas(transaction, schemas.clone());
-        
+
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
         let result = executor.execute_plan(plan)?;
-        
+
         // Update our shared schemas cache for DDL operations
         match &statement {
             crate::parser::Statement::CreateTable(create_table) => {
                 let schema = crate::executor::TableSchema {
                     name: create_table.table.clone(),
-                    columns: create_table.columns.iter().map(|col| crate::executor::ColumnInfo {
-                        name: col.name.clone(),
-                        data_type: col.data_type.clone(),
-                        constraints: col.constraints.clone(),
-                    }).collect(),
+                    columns: create_table
+                        .columns
+                        .iter()
+                        .map(|col| crate::executor::ColumnInfo {
+                            name: col.name.clone(),
+                            data_type: col.data_type.clone(),
+                            constraints: col.constraints.clone(),
+                        })
+                        .collect(),
                 };
-                self.table_schemas.write().unwrap().insert(create_table.table.clone(), schema);
+                self.table_schemas
+                    .write()
+                    .unwrap()
+                    .insert(create_table.table.clone(), schema);
             }
             crate::parser::Statement::DropTable(drop_table) => {
                 // Remove table schema from cache when table is dropped
-                self.table_schemas.write().unwrap().remove(&drop_table.table);
+                self.table_schemas
+                    .write()
+                    .unwrap()
+                    .remove(&drop_table.table);
             }
             _ => {} // No schema changes for other statements
         }
-        
+
         // Actually commit the engine transaction
         executor.transaction_mut().commit()?;
-        
+
         match result {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
             crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
@@ -194,35 +225,41 @@ impl Database {
     /// Execute SQL query, return true streaming results that yield rows on-demand
     /// This is the new streaming API that doesn't materialize all rows upfront
     pub fn query(&mut self, sql: &str) -> Result<StreamingQuery> {
-        let (_, statement) = parse_sql(sql)
-            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
-        
+        let (_, statement) =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+
         // Parse the statement to determine if we can do true streaming
         match &statement {
             crate::parser::Statement::Select(select) => {
                 // Clone schemas for the streaming query
                 let schemas = self.table_schemas.read().unwrap().clone();
-                
+
                 let table_name = &select.table;
                 let selected_columns = if select.columns.is_empty() || select.columns[0] == "*" {
                     // Get all columns from schema
                     if let Some(schema) = schemas.get(table_name) {
                         schema.columns.iter().map(|col| col.name.clone()).collect()
                     } else {
-                        return Err(crate::Error::Other(format!("Table '{}' not found", table_name)));
+                        return Err(crate::Error::Other(format!(
+                            "Table '{}' not found",
+                            table_name
+                        )));
                     }
                 } else {
                     select.columns.clone()
                 };
-                
+
                 // Get table schema
-                let schema = schemas.get(table_name)
-                    .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table_name)))?
+                let schema = schemas
+                    .get(table_name)
+                    .ok_or_else(|| {
+                        crate::Error::Other(format!("Table '{}' not found", table_name))
+                    })?
                     .clone();
-                
+
                 // Extract condition from where clause
                 let condition = select.where_clause.as_ref().map(|wc| wc.condition.clone());
-                
+
                 // Create streaming query that borrows from this database
                 // Since TegDB is single-threaded, we can safely create a shared reference
                 let streaming_query = BaseStreamingQuery::new(
@@ -233,42 +270,44 @@ impl Database {
                     select.limit,
                     schema,
                 )?;
-                
+
                 Ok(streaming_query)
             }
             _ => {
                 // For non-SELECT statements, this doesn't make sense
-                Err(crate::Error::Other("query() should only be used for SELECT statements".to_string()))
+                Err(crate::Error::Other(
+                    "query() should only be used for SELECT statements".to_string(),
+                ))
             }
         }
     }
-    
+
     /// Begin a new database transaction
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
         let schemas = self.table_schemas.read().unwrap().clone();
         let transaction = self.engine.begin_transaction();
         let executor = Executor::new_with_schemas(transaction, schemas);
-        
+
         Ok(DatabaseTransaction {
             executor,
             table_schemas: Arc::clone(&self.table_schemas),
         })
     }
-    
+
     /// Reload table schemas from disk
     /// This can be useful if the database was modified externally
     pub fn refresh_schema_cache(&mut self) -> Result<()> {
         let mut schemas = HashMap::new();
-        
+
         // Reload schemas directly from engine
         Self::load_schemas_from_engine(&self.engine, &mut schemas)?;
-        
+
         // Update the shared cache
         *self.table_schemas.write().unwrap() = schemas;
-        
+
         Ok(())
     }
-    
+
     /// Get a copy of all cached table schemas
     /// Useful for debugging or introspection
     pub fn get_table_schemas(&self) -> HashMap<String, TableSchema> {
@@ -288,17 +327,17 @@ impl QueryResult {
     pub fn columns(&self) -> &[String] {
         &self.columns
     }
-    
+
     /// Get all rows
     pub fn rows(&self) -> &[Vec<SqlValue>] {
         &self.rows
     }
-    
+
     /// Get number of rows
     pub fn len(&self) -> usize {
         self.rows.len()
     }
-    
+
     /// Check if result is empty
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
@@ -345,12 +384,12 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
             finished: false,
         })
     }
-    
+
     /// Get column names
     pub fn columns(&self) -> &[String] {
         &self.columns
     }
-    
+
     /// Collect all remaining rows into a Vec (for compatibility)
     pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
         let mut rows = Vec::new();
@@ -359,20 +398,28 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
         }
         Ok(rows)
     }
-    
+
     /// Convert to the old QueryResult format (for backward compatibility)
     pub fn into_query_result(self) -> Result<QueryResult> {
         let columns = self.columns.clone();
         let rows = self.collect_rows()?;
         Ok(QueryResult { columns, rows })
     }
-    
+
     /// Apply filter condition to row data
-    fn evaluate_condition(&self, condition: &crate::parser::Condition, row_data: &std::collections::HashMap<String, SqlValue>) -> bool {
+    fn evaluate_condition(
+        &self,
+        condition: &crate::parser::Condition,
+        row_data: &std::collections::HashMap<String, SqlValue>,
+    ) -> bool {
         use crate::parser::Condition;
-        
+
         match condition {
-            Condition::Comparison { left, operator, right } => {
+            Condition::Comparison {
+                left,
+                operator,
+                right,
+            } => {
                 let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
                 Self::compare_values(row_value, operator, right)
             }
@@ -384,11 +431,15 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
             }
         }
     }
-    
+
     /// Compare two SqlValues using the given operator
-    fn compare_values(left: &SqlValue, operator: &crate::parser::ComparisonOperator, right: &SqlValue) -> bool {
+    fn compare_values(
+        left: &SqlValue,
+        operator: &crate::parser::ComparisonOperator,
+        right: &SqlValue,
+    ) -> bool {
         use crate::parser::ComparisonOperator::*;
-        
+
         match operator {
             Equal => left == right,
             NotEqual => left != right,
@@ -405,7 +456,7 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
                 (SqlValue::Real(a), SqlValue::Real(b)) => a <= b,
                 (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) <= *b,
                 (SqlValue::Real(a), SqlValue::Integer(b)) => *a <= (*b as f64),
-                (SqlValue::Text(a), SqlValue::Text(b)) => a <= b,   
+                (SqlValue::Text(a), SqlValue::Text(b)) => a <= b,
                 _ => false,
             },
             GreaterThan => match (left, right) {
@@ -441,12 +492,12 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
 
 impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
     type Item = Result<Vec<SqlValue>>;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
         }
-        
+
         // Check limit
         if let Some(limit) = self.limit {
             if self.count >= limit {
@@ -454,7 +505,7 @@ impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
                 return None;
             }
         }
-        
+
         // Determine scan range
         let start_key = match &self.last_key {
             Some(last) => {
@@ -469,15 +520,15 @@ impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
                 table_prefix.as_bytes().to_vec()
             }
         };
-        
+
         let end_key = format!("{}~", self.table_name).as_bytes().to_vec();
-        
+
         // Perform scan from current position
         let scan_result = match self.scanner.scan(start_key..end_key) {
             Ok(scan) => scan,
             Err(e) => return Some(Err(e)),
         };
-        
+
         // Process rows until we find one that matches the filter
         for (key, value) in scan_result {
             match self.storage_format.deserialize_row(&value, &self.schema) {
@@ -488,16 +539,15 @@ impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
                     } else {
                         true
                     };
-                    
+
                     if matches {
                         // Extract selected columns
                         let mut row_values = Vec::new();
                         for col_name in &self.selected_columns {
-                            row_values.push(
-                                row_data.get(col_name).cloned().unwrap_or(SqlValue::Null)
-                            );
+                            row_values
+                                .push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
                         }
-                        
+
                         self.count += 1;
                         self.last_key = Some(key);
                         return Some(Ok(row_values));
@@ -509,7 +559,7 @@ impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
                 Err(e) => return Some(Err(e)),
             }
         }
-        
+
         // No more rows found
         self.finished = true;
         None
@@ -521,7 +571,6 @@ impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
 pub type StreamingQuery<'a> = BaseStreamingQuery<'a, crate::engine::Engine>;
 pub type TransactionStreamingQuery<'a> = BaseStreamingQuery<'a, crate::engine::Transaction<'a>>;
 
-
 /// Transaction handle for batch operations
 pub struct DatabaseTransaction<'a> {
     executor: Executor<'a>,
@@ -531,36 +580,46 @@ pub struct DatabaseTransaction<'a> {
 impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let (_, statement) = parse_sql(sql)
-            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
-        
+        let (_, statement) =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+
         // Get schemas from shared cache
         let schemas = self.table_schemas.read().unwrap().clone();
-        
+
         // Use the planner pipeline
         let planner = QueryPlanner::new(schemas);
         let plan = planner.plan(statement.clone())?;
         let result = self.executor.execute_plan(plan)?;
-        
+
         // Update schema cache for DDL operations
         match &statement {
             crate::parser::Statement::CreateTable(create_table) => {
                 let schema = crate::executor::TableSchema {
                     name: create_table.table.clone(),
-                    columns: create_table.columns.iter().map(|col| crate::executor::ColumnInfo {
-                        name: col.name.clone(),
-                        data_type: col.data_type.clone(),
-                        constraints: col.constraints.clone(),
-                    }).collect(),
+                    columns: create_table
+                        .columns
+                        .iter()
+                        .map(|col| crate::executor::ColumnInfo {
+                            name: col.name.clone(),
+                            data_type: col.data_type.clone(),
+                            constraints: col.constraints.clone(),
+                        })
+                        .collect(),
                 };
-                self.table_schemas.write().unwrap().insert(create_table.table.clone(), schema);
+                self.table_schemas
+                    .write()
+                    .unwrap()
+                    .insert(create_table.table.clone(), schema);
             }
             crate::parser::Statement::DropTable(drop_table) => {
-                self.table_schemas.write().unwrap().remove(&drop_table.table);
+                self.table_schemas
+                    .write()
+                    .unwrap()
+                    .remove(&drop_table.table);
             }
             _ => {}
         }
-        
+
         match result {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
             crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
@@ -573,35 +632,41 @@ impl DatabaseTransaction<'_> {
     /// Execute SQL query within transaction using true streaming
     /// This provides the same streaming capability as Database::query but within a transaction context
     pub fn streaming_query(&mut self, sql: &str) -> Result<TransactionStreamingQuery> {
-        let (_, statement) = parse_sql(sql)
-            .map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
-        
+        let (_, statement) =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+
         // Parse the statement to determine if we can do true streaming
         match &statement {
             crate::parser::Statement::Select(select) => {
                 // Get schemas from shared cache
                 let schemas = self.table_schemas.read().unwrap().clone();
-                
+
                 let table_name = &select.table;
                 let selected_columns = if select.columns.is_empty() || select.columns[0] == "*" {
                     // Get all columns from schema
                     if let Some(schema) = schemas.get(table_name) {
                         schema.columns.iter().map(|col| col.name.clone()).collect()
                     } else {
-                        return Err(crate::Error::Other(format!("Table '{}' not found", table_name)));
+                        return Err(crate::Error::Other(format!(
+                            "Table '{}' not found",
+                            table_name
+                        )));
                     }
                 } else {
                     select.columns.clone()
                 };
-                
+
                 // Get table schema
-                let schema = schemas.get(table_name)
-                    .ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", table_name)))?
+                let schema = schemas
+                    .get(table_name)
+                    .ok_or_else(|| {
+                        crate::Error::Other(format!("Table '{}' not found", table_name))
+                    })?
                     .clone();
-                
+
                 // Extract condition from where clause
                 let condition = select.where_clause.as_ref().map(|wc| wc.condition.clone());
-                
+
                 // Create streaming query that uses the transaction's engine
                 let streaming_query = BaseStreamingQuery::new(
                     self.executor.transaction(),
@@ -611,25 +676,25 @@ impl DatabaseTransaction<'_> {
                     select.limit,
                     schema,
                 )?;
-                
+
                 Ok(streaming_query)
             }
             _ => {
                 // For non-SELECT statements, this doesn't make sense
-                Err(crate::Error::Other("streaming_query() should only be used for SELECT statements".to_string()))
+                Err(crate::Error::Other(
+                    "streaming_query() should only be used for SELECT statements".to_string(),
+                ))
             }
         }
     }
-    
+
     /// Commit the transaction
     pub fn commit(mut self) -> Result<()> {
         self.executor.transaction_mut().commit()
     }
-    
+
     /// Rollback the transaction
     pub fn rollback(mut self) -> Result<()> {
         self.executor.transaction_mut().rollback()
     }
 }
-
-

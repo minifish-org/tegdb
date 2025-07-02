@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use tegdb::Engine;
 
 /// Creates a unique temporary file path for benchmarks
@@ -16,7 +16,7 @@ fn pure_rollback_benchmark(c: &mut Criterion) {
     if path.exists() {
         fs::remove_file(&path).expect("Failed to remove existing test file");
     }
-    
+
     // Simple rollback with minimal setup
     c.bench_function("optimized rollback", |b| {
         b.iter(|| {

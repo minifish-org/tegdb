@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use tegdb::Engine;
 
 /// Creates a unique temporary file path for benchmarks
@@ -18,7 +18,7 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
     }
     let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
     let value = vec![0; value_size];
-    
+
     // Insert some test data before running get benchmarks
     for i in 0..1000 {
         let key_str = format!("key{}", i);
@@ -31,7 +31,9 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            engine.set(black_box(key), black_box(value.to_vec())).unwrap();
+            engine
+                .set(black_box(key), black_box(value.to_vec()))
+                .unwrap();
             i += 1;
         })
     });
@@ -66,13 +68,11 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
             i += 1;
         })
     });
-    
+
     // Clean up the test file after benchmarks
     drop(engine); // Ensure the file is closed
     let _ = fs::remove_file(&path);
 }
-
-
 
 fn sled_benchmark(c: &mut Criterion, value_size: usize) {
     let path = temp_db_path(&format!("sled_seq_{}", value_size));
@@ -82,7 +82,7 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
     }
     let db = sled::open(path_str).unwrap();
     let value = vec![0; value_size];
-    
+
     // Insert some test data before running get benchmarks
     for i in 0..1000 {
         let key_str = format!("key{}", i);
@@ -95,7 +95,8 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let key_str = format!("key{}", i);
             let key = key_str.as_bytes();
-            db.insert(black_box(key), black_box(value.as_slice())).unwrap();
+            db.insert(black_box(key), black_box(value.as_slice()))
+                .unwrap();
             i += 1;
         })
     });
@@ -115,7 +116,10 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         b.iter(|| {
             let start = format!("key{}", 0).into_bytes();
             let end = format!("key{}", 1000).into_bytes();
-            let result: Vec<_> = db.range(black_box(start..end)).map(|r| r.unwrap()).collect();
+            let result: Vec<_> = db
+                .range(black_box(start..end))
+                .map(|r| r.unwrap())
+                .collect();
             black_box(result);
         })
     });

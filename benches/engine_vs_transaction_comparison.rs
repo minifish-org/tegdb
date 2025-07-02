@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use tegdb::Engine;
 
 /// Creates a unique temporary file path for benchmarks
@@ -12,7 +12,7 @@ fn temp_db_path(prefix: &str) -> PathBuf {
 }
 
 /// Benchmark comparing direct engine operations vs transaction-wrapped operations
-/// 
+///
 /// Fairness improvements made:
 /// 1. Transaction creation/cleanup moved inside benchmark loops for GET operations
 /// 2. Consistent data preparation for DELETE operations
@@ -30,16 +30,18 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
         let tx_path = temp_db_path("engine_tx_set");
         let mut raw_engine = create_and_populate_raw_engine(&raw_path);
         let mut tx_engine = create_and_populate_tx_engine(&tx_path);
-        
+
         let key = b"benchmark_key";
         let value = b"benchmark_value";
-        
+
         c.bench_function("engine set", |b| {
             b.iter(|| {
-                raw_engine.set(black_box(key), black_box(value.to_vec())).unwrap();
+                raw_engine
+                    .set(black_box(key), black_box(value.to_vec()))
+                    .unwrap();
             })
         });
-        
+
         c.bench_function("transaction set (no commit)", |b| {
             b.iter(|| {
                 let mut tx = tx_engine.begin_transaction();
@@ -56,7 +58,7 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
                 tx.commit().unwrap();
             })
         });
-        
+
         // Clean up
         drop(raw_engine);
         drop(tx_engine);
@@ -70,9 +72,9 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
         let tx_path = temp_db_path("engine_tx_get");
         let raw_engine = create_and_populate_raw_engine(&raw_path);
         let mut tx_engine = create_and_populate_tx_engine(&tx_path);
-        
+
         let key = b"benchmark_key";
-        
+
         c.bench_function("engine get", |b| {
             b.iter(|| {
                 let _ = black_box(raw_engine.get(black_box(key)));
@@ -86,7 +88,7 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
                 drop(tx); // Explicit cleanup
             })
         });
-        
+
         // Clean up
         drop(raw_engine);
         drop(tx_engine);
@@ -100,9 +102,9 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
         let tx_path = temp_db_path("engine_tx_del");
         let mut raw_engine = create_and_populate_raw_engine(&raw_path);
         let mut tx_engine = create_and_populate_tx_engine(&tx_path);
-        
+
         let key = b"benchmark_key";
-        
+
         c.bench_function("engine delete", |b| {
             b.iter(|| {
                 // Ensure key exists before deleting
@@ -126,7 +128,7 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
                 tx.commit().unwrap();
             })
         });
-        
+
         // Clean up
         drop(raw_engine);
         drop(tx_engine);
@@ -140,12 +142,14 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
         let tx_path = temp_db_path("engine_tx_scan");
         let raw_engine = create_and_populate_raw_engine(&raw_path);
         let mut tx_engine = create_and_populate_tx_engine(&tx_path);
-        
+
         c.bench_function("engine scan", |b| {
             let start_key = b"key0".to_vec();
             let end_key = b"key9".to_vec();
             b.iter(|| {
-                let iter = raw_engine.scan(black_box(start_key.clone()..end_key.clone())).unwrap();
+                let iter = raw_engine
+                    .scan(black_box(start_key.clone()..end_key.clone()))
+                    .unwrap();
                 let results: Vec<_> = iter.collect();
                 black_box(results);
             })
@@ -162,7 +166,7 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
                 drop(tx); // Explicit cleanup
             })
         });
-        
+
         // Clean up
         drop(raw_engine);
         drop(tx_engine);
@@ -177,20 +181,22 @@ fn create_and_populate_raw_engine(path: &PathBuf) -> Engine {
     if path.exists() {
         fs::remove_file(path).expect("Failed to remove existing raw test file");
     }
-    
+
     let mut engine = Engine::new(path.clone()).expect("Failed to create raw engine");
-    
+
     // Pre-populate with test data using low-level API
     for i in 0..100 {
         let key = format!("key{}", i);
         let value = format!("value{}", i);
-        engine.set(key.as_bytes(), value.as_bytes().to_vec()).unwrap();
+        engine
+            .set(key.as_bytes(), value.as_bytes().to_vec())
+            .unwrap();
     }
-    
+
     let key = b"benchmark_key";
     let value = b"benchmark_value";
     engine.set(key, value.to_vec()).unwrap();
-    
+
     engine
 }
 
@@ -200,29 +206,29 @@ fn create_and_populate_tx_engine(path: &PathBuf) -> Engine {
     if path.exists() {
         fs::remove_file(path).expect("Failed to remove existing tx test file");
     }
-    
+
     let mut engine = Engine::new(path.clone()).expect("Failed to create tx engine");
-    
+
     // Pre-populate with test data using high-level transactional API
     // Batch all operations in a single transaction for efficiency
     {
         let mut tx = engine.begin_transaction();
-        
+
         // Add 100 test keys
         for i in 0..100 {
             let key = format!("key{}", i);
             let value = format!("value{}", i);
             tx.set(key.as_bytes(), value.as_bytes().to_vec()).unwrap();
         }
-        
+
         // Add the benchmark key
         let key = b"benchmark_key";
         let value = b"benchmark_value";
         tx.set(key, value.to_vec()).unwrap();
-        
+
         tx.commit().unwrap();
     } // tx is dropped here, releasing the borrow
-    
+
     engine
 }
 
@@ -230,7 +236,7 @@ fn batch_operations_comparison(c: &mut Criterion) {
     // Create separate engines for batch operations comparison
     let raw_batch_path = temp_db_path("batch_raw");
     let tx_batch_path = temp_db_path("batch_tx");
-    
+
     // Clean up any existing files
     if raw_batch_path.exists() {
         fs::remove_file(&raw_batch_path).expect("Failed to remove existing raw batch test file");
@@ -238,9 +244,11 @@ fn batch_operations_comparison(c: &mut Criterion) {
     if tx_batch_path.exists() {
         fs::remove_file(&tx_batch_path).expect("Failed to remove existing tx batch test file");
     }
-    
-    let mut raw_engine = Engine::new(raw_batch_path.clone()).expect("Failed to create raw batch engine");
-    let mut tx_engine = Engine::new(tx_batch_path.clone()).expect("Failed to create tx batch engine");
+
+    let mut raw_engine =
+        Engine::new(raw_batch_path.clone()).expect("Failed to create raw batch engine");
+    let mut tx_engine =
+        Engine::new(tx_batch_path.clone()).expect("Failed to create tx batch engine");
 
     let batch_sizes = [1, 10, 100];
 
@@ -251,7 +259,9 @@ fn batch_operations_comparison(c: &mut Criterion) {
                 for i in 0..size {
                     let key = format!("batch_key{}", i);
                     let value = format!("batch_value{}", i);
-                    raw_engine.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
+                    raw_engine
+                        .set(black_box(key.as_bytes()), black_box(value.into_bytes()))
+                        .unwrap();
                 }
             })
         });
@@ -262,7 +272,8 @@ fn batch_operations_comparison(c: &mut Criterion) {
                 for i in 0..size {
                     let key = format!("batch_key{}", i);
                     let value = format!("batch_value{}", i);
-                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
+                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
+                        .unwrap();
                 }
                 tx.commit().unwrap();
             })
@@ -274,7 +285,9 @@ fn batch_operations_comparison(c: &mut Criterion) {
                 for i in 0..size {
                     let key = format!("mixed_key{}", i);
                     let value = format!("mixed_value{}", i);
-                    raw_engine.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
+                    raw_engine
+                        .set(black_box(key.as_bytes()), black_box(value.into_bytes()))
+                        .unwrap();
                     let _ = black_box(raw_engine.get(black_box(key.as_bytes())));
                     if i % 2 == 0 {
                         raw_engine.del(black_box(key.as_bytes())).unwrap();
@@ -289,7 +302,8 @@ fn batch_operations_comparison(c: &mut Criterion) {
                 for i in 0..size {
                     let key = format!("mixed_key{}", i);
                     let value = format!("mixed_value{}", i);
-                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
+                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
+                        .unwrap();
                     let _ = black_box(tx.get(black_box(key.as_bytes())));
                     if i % 2 == 0 {
                         tx.delete(black_box(key.as_bytes())).unwrap();
@@ -311,28 +325,34 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
     // Create separate engines for overhead analysis
     let raw_overhead_path = temp_db_path("overhead_raw");
     let tx_overhead_path = temp_db_path("overhead_tx");
-    
+
     // Clean up any existing files
     if raw_overhead_path.exists() {
-        fs::remove_file(&raw_overhead_path).expect("Failed to remove existing raw overhead test file");
+        fs::remove_file(&raw_overhead_path)
+            .expect("Failed to remove existing raw overhead test file");
     }
     if tx_overhead_path.exists() {
-        fs::remove_file(&tx_overhead_path).expect("Failed to remove existing tx overhead test file");
+        fs::remove_file(&tx_overhead_path)
+            .expect("Failed to remove existing tx overhead test file");
     }
-    
-    let mut raw_engine = Engine::new(raw_overhead_path.clone()).expect("Failed to create raw overhead engine");
-    let mut tx_engine = Engine::new(tx_overhead_path.clone()).expect("Failed to create tx overhead engine");
+
+    let mut raw_engine =
+        Engine::new(raw_overhead_path.clone()).expect("Failed to create raw overhead engine");
+    let mut tx_engine =
+        Engine::new(tx_overhead_path.clone()).expect("Failed to create tx overhead engine");
 
     // Pre-populate both engines with test data
-    // Note: Using appropriate APIs - low-level for raw engine, high-level for tx engine  
-    
+    // Note: Using appropriate APIs - low-level for raw engine, high-level for tx engine
+
     // Raw engine uses low-level API
     for i in 0..50 {
         let key = format!("overhead_key{}", i);
         let value = format!("overhead_value{}", i);
-        raw_engine.set(key.as_bytes(), value.as_bytes().to_vec()).unwrap();
+        raw_engine
+            .set(key.as_bytes(), value.as_bytes().to_vec())
+            .unwrap();
     }
-    
+
     // TX engine uses high-level transactional API - batch multiple operations for efficiency
     {
         let mut tx = tx_engine.begin_transaction();
@@ -361,7 +381,7 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
 
     // ===== Compare read operations =====
     let test_key = b"overhead_key25";
-    
+
     c.bench_function("direct engine get", |b| {
         b.iter(|| {
             let _ = black_box(raw_engine.get(black_box(test_key)));
@@ -377,7 +397,7 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
     });
 
     // Note: SET operation benchmarks are already covered in engine_vs_transaction_comparison function
-    // Removed duplicated "engine set lifecycle", "transaction set lifecycle", 
+    // Removed duplicated "engine set lifecycle", "transaction set lifecycle",
     // "transaction rollback after set", and "transaction commit after set" benchmarks
 
     // Clean up test files
@@ -391,7 +411,7 @@ fn error_and_edge_case_comparison(c: &mut Criterion) {
     // Create separate engines for error case testing
     let raw_error_path = temp_db_path("error_raw");
     let tx_error_path = temp_db_path("error_tx");
-    
+
     // Clean up any existing files
     if raw_error_path.exists() {
         fs::remove_file(&raw_error_path).expect("Failed to remove existing raw error test file");
@@ -399,13 +419,15 @@ fn error_and_edge_case_comparison(c: &mut Criterion) {
     if tx_error_path.exists() {
         fs::remove_file(&tx_error_path).expect("Failed to remove existing tx error test file");
     }
-    
-    let mut raw_engine = Engine::new(raw_error_path.clone()).expect("Failed to create raw error engine");
-    let mut tx_engine = Engine::new(tx_error_path.clone()).expect("Failed to create tx error engine");
+
+    let mut raw_engine =
+        Engine::new(raw_error_path.clone()).expect("Failed to create raw error engine");
+    let mut tx_engine =
+        Engine::new(tx_error_path.clone()).expect("Failed to create tx error engine");
 
     // ===== Operations on non-existent keys =====
     let nonexistent_key = b"nonexistent_key_12345";
-    
+
     c.bench_function("engine get nonexistent", |b| {
         b.iter(|| {
             let _ = black_box(raw_engine.get(black_box(nonexistent_key)));
@@ -440,7 +462,9 @@ fn error_and_edge_case_comparison(c: &mut Criterion) {
         let start_key = b"zzz_nonexistent_start".to_vec();
         let end_key = b"zzz_nonexistent_end".to_vec();
         b.iter(|| {
-            let iter = raw_engine.scan(black_box(start_key.clone()..end_key.clone())).unwrap();
+            let iter = raw_engine
+                .scan(black_box(start_key.clone()..end_key.clone()))
+                .unwrap();
             let results: Vec<_> = iter.collect();
             black_box(results);
         })

@@ -43,7 +43,10 @@ fn test_parse_insert() {
             assert_eq!(insert.table, "users");
             assert_eq!(insert.columns, vec!["name".to_string(), "age".to_string()]);
             assert_eq!(insert.values.len(), 1);
-            assert_eq!(insert.values[0], vec![SqlValue::Text("John".to_string()), SqlValue::Integer(25)]);
+            assert_eq!(
+                insert.values[0],
+                vec![SqlValue::Text("John".to_string()), SqlValue::Integer(25)]
+            );
         }
         _ => panic!("Expected INSERT statement"),
     }
@@ -60,7 +63,10 @@ fn test_parse_update() {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 1);
             assert_eq!(update.assignments[0].column, "name");
-            assert_eq!(update.assignments[0].value, Expression::Value(SqlValue::Text("Jane".to_string())));
+            assert_eq!(
+                update.assignments[0].value,
+                Expression::Value(SqlValue::Text("Jane".to_string()))
+            );
             assert!(update.where_clause.is_some());
         }
         _ => panic!("Expected UPDATE statement"),
@@ -92,17 +98,23 @@ fn test_parse_create_table() {
         Statement::CreateTable(create) => {
             assert_eq!(create.table, "users");
             assert_eq!(create.columns.len(), 3);
-            
+
             // Test first column (id)
             assert_eq!(create.columns[0].name, "id");
             assert_eq!(create.columns[0].data_type, DataType::Integer);
-            assert_eq!(create.columns[0].constraints, vec![ColumnConstraint::PrimaryKey]);
-            
+            assert_eq!(
+                create.columns[0].constraints,
+                vec![ColumnConstraint::PrimaryKey]
+            );
+
             // Test second column (name)
             assert_eq!(create.columns[1].name, "name");
             assert_eq!(create.columns[1].data_type, DataType::Text);
-            assert_eq!(create.columns[1].constraints, vec![ColumnConstraint::NotNull]);
-            
+            assert_eq!(
+                create.columns[1].constraints,
+                vec![ColumnConstraint::NotNull]
+            );
+
             // Test third column (age)
             assert_eq!(create.columns[2].name, "age");
             assert_eq!(create.columns[2].data_type, DataType::Integer);
@@ -173,8 +185,14 @@ fn test_parse_insert_multiple_values() {
             assert_eq!(insert.table, "users");
             assert_eq!(insert.columns, vec!["name".to_string(), "age".to_string()]);
             assert_eq!(insert.values.len(), 2);
-            assert_eq!(insert.values[0], vec![SqlValue::Text("John".to_string()), SqlValue::Integer(25)]);
-            assert_eq!(insert.values[1], vec![SqlValue::Text("Jane".to_string()), SqlValue::Integer(30)]);
+            assert_eq!(
+                insert.values[0],
+                vec![SqlValue::Text("John".to_string()), SqlValue::Integer(25)]
+            );
+            assert_eq!(
+                insert.values[1],
+                vec![SqlValue::Text("Jane".to_string()), SqlValue::Integer(30)]
+            );
         }
         _ => panic!("Expected INSERT statement"),
     }
@@ -182,7 +200,8 @@ fn test_parse_insert_multiple_values() {
 
 #[test]
 fn test_parse_sql_values() {
-    let sql = "INSERT INTO test (int_col, real_col, text_col, null_col) VALUES (42, 3.14, 'hello', NULL)";
+    let sql =
+        "INSERT INTO test (int_col, real_col, text_col, null_col) VALUES (42, 3.14, 'hello', NULL)";
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
@@ -203,7 +222,7 @@ fn test_parse_case_insensitive() {
     let sql = "select * from users where age > 18";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    
+
     let sql2 = "SELECT * FROM USERS WHERE AGE > 18";
     let result2 = parse_sql(sql2);
     assert!(result2.is_ok());
@@ -229,12 +248,12 @@ fn test_parse_error_cases() {
     // Invalid SQL should return errors
     let invalid_sqls = vec![
         "INVALID STATEMENT",
-        "SELECT FROM users", // Missing column list
-        "SELECT * users",   // Missing FROM
+        "SELECT FROM users",       // Missing column list
+        "SELECT * users",          // Missing FROM
         "INSERT users VALUES (1)", // Missing INTO
-        "", // Empty string
+        "",                        // Empty string
     ];
-    
+
     for sql in invalid_sqls {
         let result = parse_sql(sql);
         assert!(result.is_err(), "Expected error for SQL: {}", sql);
@@ -251,12 +270,15 @@ fn test_parse_select_multiple_columns() {
     let (_, statement) = result.unwrap();
     match statement {
         Statement::Select(select) => {
-            assert_eq!(select.columns, vec![
-                "id".to_string(),
-                "name".to_string(), 
-                "email".to_string(),
-                "created_at".to_string()
-            ]);
+            assert_eq!(
+                select.columns,
+                vec![
+                    "id".to_string(),
+                    "name".to_string(),
+                    "email".to_string(),
+                    "created_at".to_string()
+                ]
+            );
             assert_eq!(select.table, "users");
         }
         _ => panic!("Expected SELECT statement"),
@@ -266,14 +288,38 @@ fn test_parse_select_multiple_columns() {
 #[test]
 fn test_parse_where_clause_operators() {
     let test_cases = vec![
-        ("SELECT * FROM users WHERE age = 25", ComparisonOperator::Equal),
-        ("SELECT * FROM users WHERE age != 25", ComparisonOperator::NotEqual),
-        ("SELECT * FROM users WHERE age <> 25", ComparisonOperator::NotEqual),
-        ("SELECT * FROM users WHERE age < 25", ComparisonOperator::LessThan),
-        ("SELECT * FROM users WHERE age > 25", ComparisonOperator::GreaterThan),
-        ("SELECT * FROM users WHERE age <= 25", ComparisonOperator::LessThanOrEqual),
-        ("SELECT * FROM users WHERE age >= 25", ComparisonOperator::GreaterThanOrEqual),
-        ("SELECT * FROM users WHERE name LIKE 'John%'", ComparisonOperator::Like),
+        (
+            "SELECT * FROM users WHERE age = 25",
+            ComparisonOperator::Equal,
+        ),
+        (
+            "SELECT * FROM users WHERE age != 25",
+            ComparisonOperator::NotEqual,
+        ),
+        (
+            "SELECT * FROM users WHERE age <> 25",
+            ComparisonOperator::NotEqual,
+        ),
+        (
+            "SELECT * FROM users WHERE age < 25",
+            ComparisonOperator::LessThan,
+        ),
+        (
+            "SELECT * FROM users WHERE age > 25",
+            ComparisonOperator::GreaterThan,
+        ),
+        (
+            "SELECT * FROM users WHERE age <= 25",
+            ComparisonOperator::LessThanOrEqual,
+        ),
+        (
+            "SELECT * FROM users WHERE age >= 25",
+            ComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            "SELECT * FROM users WHERE name LIKE 'John%'",
+            ComparisonOperator::Like,
+        ),
     ];
 
     for (sql, expected_op) in test_cases {
@@ -282,7 +328,11 @@ fn test_parse_where_clause_operators() {
         let (_, statement) = result.unwrap();
         match statement {
             Statement::Select(select) => {
-                assert!(select.where_clause.is_some(), "WHERE clause missing for: {}", sql);
+                assert!(
+                    select.where_clause.is_some(),
+                    "WHERE clause missing for: {}",
+                    sql
+                );
                 let where_clause = select.where_clause.unwrap();
                 match where_clause.condition {
                     Condition::Comparison { operator, .. } => {
@@ -310,11 +360,11 @@ fn test_parse_and_or_precedence() {
             match where_clause.condition {
                 Condition::Or(left, right) => {
                     match *left {
-                        Condition::And(_, _) => {}, // Expected
+                        Condition::And(_, _) => {} // Expected
                         _ => panic!("Expected AND condition on left side of OR"),
                     }
                     match *right {
-                        Condition::Comparison { .. } => {}, // Expected
+                        Condition::Comparison { .. } => {} // Expected
                         _ => panic!("Expected comparison on right side of OR"),
                     }
                 }
@@ -343,23 +393,32 @@ fn test_parse_create_table_various_types() {
         Statement::CreateTable(create) => {
             assert_eq!(create.table, "products");
             assert_eq!(create.columns.len(), 7);
-            
+
             // Check data types
             assert_eq!(create.columns[0].data_type, DataType::Integer); // id
-            assert_eq!(create.columns[1].data_type, DataType::Text);    // name (VARCHAR)
-            assert_eq!(create.columns[2].data_type, DataType::Real);    // price
-            assert_eq!(create.columns[3].data_type, DataType::Text);    // description
-            assert_eq!(create.columns[4].data_type, DataType::Blob);    // image
+            assert_eq!(create.columns[1].data_type, DataType::Text); // name (VARCHAR)
+            assert_eq!(create.columns[2].data_type, DataType::Real); // price
+            assert_eq!(create.columns[3].data_type, DataType::Text); // description
+            assert_eq!(create.columns[4].data_type, DataType::Blob); // image
             assert_eq!(create.columns[5].data_type, DataType::Integer); // stock (INT)
             assert_eq!(create.columns[6].data_type, DataType::Integer); // active
-            
+
             // Check constraints
-            assert_eq!(create.columns[0].constraints, vec![ColumnConstraint::PrimaryKey]);
-            assert_eq!(create.columns[1].constraints, vec![ColumnConstraint::NotNull]);
+            assert_eq!(
+                create.columns[0].constraints,
+                vec![ColumnConstraint::PrimaryKey]
+            );
+            assert_eq!(
+                create.columns[1].constraints,
+                vec![ColumnConstraint::NotNull]
+            );
             assert!(create.columns[2].constraints.is_empty());
             assert!(create.columns[3].constraints.is_empty());
             assert!(create.columns[4].constraints.is_empty());
-            assert_eq!(create.columns[5].constraints, vec![ColumnConstraint::Unique]);
+            assert_eq!(
+                create.columns[5].constraints,
+                vec![ColumnConstraint::Unique]
+            );
             assert!(create.columns[6].constraints.is_empty());
         }
         _ => panic!("Expected CREATE TABLE statement"),
@@ -393,15 +452,24 @@ fn test_parse_update_multiple_assignments() {
         Statement::Update(update) => {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 3);
-            
+
             assert_eq!(update.assignments[0].column, "name");
-            assert_eq!(update.assignments[0].value, Expression::Value(SqlValue::Text("Jane".to_string())));
-            
+            assert_eq!(
+                update.assignments[0].value,
+                Expression::Value(SqlValue::Text("Jane".to_string()))
+            );
+
             assert_eq!(update.assignments[1].column, "age");
-            assert_eq!(update.assignments[1].value, Expression::Value(SqlValue::Integer(30)));
-            
+            assert_eq!(
+                update.assignments[1].value,
+                Expression::Value(SqlValue::Integer(30))
+            );
+
             assert_eq!(update.assignments[2].column, "email");
-            assert_eq!(update.assignments[2].value, Expression::Value(SqlValue::Text("jane@example.com".to_string())));
+            assert_eq!(
+                update.assignments[2].value,
+                Expression::Value(SqlValue::Text("jane@example.com".to_string()))
+            );
         }
         _ => panic!("Expected UPDATE statement"),
     }
@@ -465,7 +533,10 @@ fn test_parse_update_without_where() {
             assert_eq!(update.table, "users");
             assert_eq!(update.assignments.len(), 1);
             assert_eq!(update.assignments[0].column, "active");
-            assert_eq!(update.assignments[0].value, Expression::Value(SqlValue::Integer(0)));
+            assert_eq!(
+                update.assignments[0].value,
+                Expression::Value(SqlValue::Integer(0))
+            );
             assert!(update.where_clause.is_none());
         }
         _ => panic!("Expected UPDATE statement"),
@@ -498,11 +569,14 @@ fn test_parse_identifiers_with_underscores() {
     let (_, statement) = result.unwrap();
     match statement {
         Statement::Select(select) => {
-            assert_eq!(select.columns, vec![
-                "user_id".to_string(),
-                "first_name".to_string(),
-                "last_name".to_string()
-            ]);
+            assert_eq!(
+                select.columns,
+                vec![
+                    "user_id".to_string(),
+                    "first_name".to_string(),
+                    "last_name".to_string()
+                ]
+            );
             assert_eq!(select.table, "user_profiles");
             assert!(select.where_clause.is_some());
         }
@@ -512,7 +586,8 @@ fn test_parse_identifiers_with_underscores() {
 
 #[test]
 fn test_parse_large_numbers() {
-    let sql = "INSERT INTO big_data (id, value) VALUES (9223372036854775807, 1.7976931348623157e308)";
+    let sql =
+        "INSERT INTO big_data (id, value) VALUES (9223372036854775807, 1.7976931348623157e308)";
     let result = parse_sql(sql);
     // Note: This might fail if the parser can't handle very large numbers
     // The test documents the current behavior
@@ -543,7 +618,7 @@ fn test_parse_empty_string_literal() {
         }
         _ => panic!("Expected INSERT statement"),
     }
-    
+
     // Test that empty string parsing fails gracefully if not supported
     let empty_sql = "INSERT INTO messages (content) VALUES ('')";
     let empty_result = parse_sql(empty_sql);
@@ -597,10 +672,10 @@ fn test_parse_syntax_error_cases() {
     // These are cases that should definitely fail parsing
     let definite_syntax_errors = vec![
         "INVALID STATEMENT",
-        "SELECT * users",   // Missing FROM
+        "SELECT * users",          // Missing FROM
         "INSERT users VALUES (1)", // Missing INTO
-        "", // Empty string
-        "SELECT FROM users", // Missing column list
+        "",                        // Empty string
+        "SELECT FROM users",       // Missing column list
     ];
 
     for sql in definite_syntax_errors {
@@ -709,11 +784,11 @@ fn test_parse_drop_table_various_table_names() {
 #[test]
 fn test_parse_drop_table_error_cases() {
     let error_cases = vec![
-        "DROP users",           // Missing TABLE keyword
-        "DROP TABLE",           // Missing table name
-        "DROP TABLE IF users",  // Missing EXISTS keyword after IF
+        "DROP users",              // Missing TABLE keyword
+        "DROP TABLE",              // Missing table name
+        "DROP TABLE IF users",     // Missing EXISTS keyword after IF
         "DROP TABLE EXISTS users", // Missing IF keyword before EXISTS
-        "DROP TABLE IF EXISTS", // Missing table name after IF EXISTS
+        "DROP TABLE IF EXISTS",    // Missing table name after IF EXISTS
     ];
 
     for sql in error_cases {
@@ -778,7 +853,10 @@ fn test_parse_string_literal_edge_cases() {
     match statement {
         Statement::Insert(insert) => {
             let values = &insert.values[0];
-            assert_eq!(values[0], SqlValue::Text("Hello, World! @#$%^&*()".to_string()));
+            assert_eq!(
+                values[0],
+                SqlValue::Text("Hello, World! @#$%^&*()".to_string())
+            );
         }
         _ => panic!("Expected INSERT statement"),
     }
@@ -807,7 +885,8 @@ fn test_parse_numeric_edge_cases() {
     }
 
     // Test very large positive and negative integers
-    let sql = "INSERT INTO data (big_int, small_int) VALUES (9223372036854775807, -9223372036854775808)";
+    let sql =
+        "INSERT INTO data (big_int, small_int) VALUES (9223372036854775807, -9223372036854775808)";
     let result = parse_sql(sql);
     // This should either succeed or fail gracefully
     if result.is_ok() {
@@ -843,7 +922,7 @@ fn test_parse_complex_where_conditions() {
     // Test what happens with parentheses in WHERE clause
     let sql = "SELECT * FROM users WHERE (age > 18)";
     let result = parse_sql(sql);
-    
+
     // Document current parser behavior with parentheses
     match result {
         Ok((remaining, statement)) => {
@@ -911,7 +990,10 @@ fn test_parse_identifier_edge_cases() {
     let (_, statement) = result.unwrap();
     match statement {
         Statement::Select(select) => {
-            assert_eq!(select.columns, vec!["field1".to_string(), "field2".to_string()]);
+            assert_eq!(
+                select.columns,
+                vec!["field1".to_string(), "field2".to_string()]
+            );
             assert_eq!(select.table, "table123");
         }
         _ => panic!("Expected SELECT statement"),
@@ -953,8 +1035,8 @@ fn test_parse_create_table_edge_cases() {
     match statement {
         Statement::CreateTable(create) => {
             assert_eq!(create.columns[0].data_type, DataType::Integer); // INT -> Integer
-            assert_eq!(create.columns[1].data_type, DataType::Text);    // VARCHAR -> Text  
-            assert_eq!(create.columns[2].data_type, DataType::Real);    // FLOAT -> Real
+            assert_eq!(create.columns[1].data_type, DataType::Text); // VARCHAR -> Text
+            assert_eq!(create.columns[2].data_type, DataType::Real); // FLOAT -> Real
         }
         _ => panic!("Expected CREATE TABLE statement"),
     }
@@ -1004,7 +1086,10 @@ fn test_parse_multiline_sql() {
     let (_, statement) = result.unwrap();
     match statement {
         Statement::Select(select) => {
-            assert_eq!(select.columns, vec!["name".to_string(), "age".to_string(), "email".to_string()]);
+            assert_eq!(
+                select.columns,
+                vec!["name".to_string(), "age".to_string(), "email".to_string()]
+            );
             assert_eq!(select.table, "users");
             assert!(select.where_clause.is_some());
             assert!(select.order_by.is_some());
@@ -1019,9 +1104,9 @@ fn test_parse_sql_keywords_as_identifiers() {
     // Test that non-reserved words can be used as identifiers
     // Note: Some of these might fail depending on parser implementation
     let test_cases = vec![
-        "SELECT count FROM statistics",  // 'count' as column name
-        "SELECT data FROM order",        // 'order' as table name might conflict
-        "SELECT value FROM group",       // 'group' as table name might conflict
+        "SELECT count FROM statistics", // 'count' as column name
+        "SELECT data FROM order",       // 'order' as table name might conflict
+        "SELECT value FROM group",      // 'group' as table name might conflict
     ];
 
     for sql in test_cases {

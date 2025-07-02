@@ -46,9 +46,9 @@
 //!
 //! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
 //! for direct engine manipulation.
+pub mod database;
 pub mod engine;
 pub mod error;
-pub mod database;
 pub mod native_row_format;
 pub mod storage_format;
 
@@ -67,25 +67,26 @@ mod executor;
 pub mod planner;
 
 // Only export the high-level Database API and essential error types
+pub use database::{Database, DatabaseTransaction, QueryResult};
 pub use error::{Error, Result};
-pub use database::{Database, QueryResult, DatabaseTransaction};
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
 pub use engine::{Engine, EngineConfig, Transaction};
 #[cfg(feature = "dev")]
-pub use executor::{Executor, ResultSet, TableSchema, ColumnInfo};
-#[cfg(feature = "dev")]
-pub use storage_format::StorageFormat;
+pub use executor::{ColumnInfo, Executor, ResultSet, TableSchema};
 #[cfg(feature = "dev")]
 pub use parser::{
-    parse_sql, Statement, DataType, ColumnConstraint, ComparisonOperator, 
-    OrderDirection, Condition, SelectStatement, InsertStatement, UpdateStatement, 
-    DeleteStatement, CreateTableStatement, DropTableStatement, ColumnDefinition, WhereClause, 
-    Assignment, OrderByClause
+    parse_sql, Assignment, ColumnConstraint, ColumnDefinition, ComparisonOperator, Condition,
+    CreateTableStatement, DataType, DeleteStatement, DropTableStatement, InsertStatement,
+    OrderByClause, OrderDirection, SelectStatement, Statement, UpdateStatement, WhereClause,
 };
 #[cfg(feature = "dev")]
-pub use planner::{QueryPlanner, ExecutionPlan, PlannerConfig, TableStatistics, ColumnStatistics, Cost};
+pub use planner::{
+    ColumnStatistics, Cost, ExecutionPlan, PlannerConfig, QueryPlanner, TableStatistics,
+};
+#[cfg(feature = "dev")]
+pub use storage_format::StorageFormat;
 
 // Export SqlValue unconditionally as it's needed for working with query results
 pub use parser::SqlValue;
@@ -93,8 +94,8 @@ pub use parser::SqlValue;
 // For backward compatibility, also expose via modules when dev feature is enabled
 #[cfg(feature = "dev")]
 pub mod low_level {
-    pub use crate::engine::{Engine, Transaction as EngineTransaction, EngineConfig};
-    pub use crate::executor::{Executor, ResultSet, TableSchema, ColumnInfo};
-    pub use crate::parser::{parse_sql, Statement, SqlValue};
-    pub use crate::planner::{QueryPlanner, ExecutionPlan, PlannerConfig};
+    pub use crate::engine::{Engine, EngineConfig, Transaction as EngineTransaction};
+    pub use crate::executor::{ColumnInfo, Executor, ResultSet, TableSchema};
+    pub use crate::parser::{parse_sql, SqlValue, Statement};
+    pub use crate::planner::{ExecutionPlan, PlannerConfig, QueryPlanner};
 }

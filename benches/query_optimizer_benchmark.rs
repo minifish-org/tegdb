@@ -1,13 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use tegdb::{Database, Result};
 use std::fs;
+use tegdb::{Database, Result};
 
 fn setup_test_database() -> Result<Database> {
     // Clean up any existing test database
     let _ = fs::remove_file("bench_optimizer_test.db");
-    
+
     let mut db = Database::open("bench_optimizer_test.db")?;
-    
+
     // Create a table with composite primary key
     db.execute("DROP TABLE IF EXISTS products")?;
     db.execute(
@@ -17,9 +17,9 @@ fn setup_test_database() -> Result<Database> {
             name TEXT NOT NULL,
             price REAL,
             description TEXT
-        )"
+        )",
     )?;
-    
+
     // Insert test data (smaller dataset for faster benchmarking)
     let categories = ["electronics", "books", "clothing"];
     for category in &categories {
@@ -27,7 +27,7 @@ fn setup_test_database() -> Result<Database> {
             let name = format!("{} Product {}", category, product_id);
             let price = 10.0 + (product_id as f64 * 0.1);
             let description = format!("Description for {} product {}", category, product_id);
-            
+
             db.execute(&format!(
                 "INSERT INTO products (category, product_id, name, price, description) 
                  VALUES ('{}', {}, '{}', {}, '{}')",
@@ -35,42 +35,58 @@ fn setup_test_database() -> Result<Database> {
             ))?;
         }
     }
-    
+
     Ok(db)
 }
 
 fn bench_optimizer_comparison(c: &mut Criterion) {
     let mut group = c.benchmark_group("query_optimizer");
-    
+
     // Setup database once and reuse
     let mut db = setup_test_database().expect("Failed to setup test database");
-    
+
     // PK lookup (optimized) - should be very fast
     group.bench_function("pk_exact_match", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42")).unwrap().into_query_result().unwrap();
+            let result = db
+                .query(black_box(
+                    "SELECT * FROM products WHERE category = 'electronics' AND product_id = 42",
+                ))
+                .unwrap()
+                .into_query_result()
+                .unwrap();
             black_box(result);
         });
     });
-    
+
     // Partial PK (not optimized) - should be slower
     group.bench_function("partial_pk_scan", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT * FROM products WHERE category = 'electronics'")).unwrap().into_query_result().unwrap();
+            let result = db
+                .query(black_box(
+                    "SELECT * FROM products WHERE category = 'electronics'",
+                ))
+                .unwrap()
+                .into_query_result()
+                .unwrap();
             black_box(result);
         });
     });
-    
+
     // Non-PK condition (not optimized) - should be slower
     group.bench_function("non_pk_scan", |b| {
         b.iter(|| {
-            let result = db.query(black_box("SELECT * FROM products WHERE price > 15.0")).unwrap().into_query_result().unwrap();
+            let result = db
+                .query(black_box("SELECT * FROM products WHERE price > 15.0"))
+                .unwrap()
+                .into_query_result()
+                .unwrap();
             black_box(result);
         });
     });
-    
+
     group.finish();
-    
+
     // Clean up
     let _ = fs::remove_file("bench_optimizer_test.db");
 }

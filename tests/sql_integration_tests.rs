@@ -8,12 +8,14 @@ fn test_sql_integration_basic_operations() {
     let mut db = Database::open(db_path).unwrap();
 
     // Create table
-    let create_sql = "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)";
+    let create_sql =
+        "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)";
     let result = db.execute(create_sql).unwrap();
     assert_eq!(result, 0); // CREATE TABLE returns 0 affected rows
 
     // Insert data
-    let insert_sql = "INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 999.99), (2, 'Mouse', 29.99)";
+    let insert_sql =
+        "INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 999.99), (2, 'Mouse', 29.99)";
     let result = db.execute(insert_sql).unwrap();
     assert_eq!(result, 2); // 2 rows inserted
 
@@ -24,7 +26,11 @@ fn test_sql_integration_basic_operations() {
 
     // Select with WHERE
     let select_where_sql = "SELECT name FROM products WHERE price > 50.0";
-    let result = db.query(select_where_sql).unwrap().into_query_result().unwrap();
+    let result = db
+        .query(select_where_sql)
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     assert_eq!(result.columns(), ["name"]);
     assert_eq!(result.len(), 1);
 
@@ -40,7 +46,11 @@ fn test_sql_integration_basic_operations() {
 
     // Verify final state
     let final_select_sql = "SELECT * FROM products";
-    let result = db.query(final_select_sql).unwrap().into_query_result().unwrap();
+    let result = db
+        .query(final_select_sql)
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     assert_eq!(result.len(), 1); // Only the laptop should remain
 }
 
@@ -51,7 +61,8 @@ fn test_sql_parser_edge_cases() {
     let mut db = Database::open(db_path).unwrap();
 
     // Test case-insensitive keywords
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER)").unwrap();
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER)")
+        .unwrap();
     let sql = "select * from users where age > 18";
     let result = db.query(sql);
     assert!(result.is_ok());
@@ -72,17 +83,24 @@ fn test_sql_integration_transaction_isolation() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_isolation.db");
     let mut db = Database::open(db_path).unwrap();
-    
+
     // Setup initial data
-    db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL)").unwrap();
-    db.execute("INSERT INTO accounts (id, balance) VALUES (1, 100.0), (2, 200.0)").unwrap();
+    db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL)")
+        .unwrap();
+    db.execute("INSERT INTO accounts (id, balance) VALUES (1, 100.0), (2, 200.0)")
+        .unwrap();
 
     // Test transaction isolation using explicit transactions
     {
         let mut tx = db.begin_transaction().unwrap();
-        tx.execute("UPDATE accounts SET balance = 150.0 WHERE id = 1").unwrap();
+        tx.execute("UPDATE accounts SET balance = 150.0 WHERE id = 1")
+            .unwrap();
 
-        let result = tx.streaming_query("SELECT balance FROM accounts WHERE id = 1").unwrap().into_query_result().unwrap();
+        let result = tx
+            .streaming_query("SELECT balance FROM accounts WHERE id = 1")
+            .unwrap()
+            .into_query_result()
+            .unwrap();
         // Within the transaction, the change should be visible
         assert_eq!(result.len(), 1);
 
@@ -97,7 +115,8 @@ fn test_sql_integration_constraints() {
     let mut db = Database::open(db_path).unwrap();
 
     // Create table with constraints
-    let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, age INTEGER)";
+    let create_sql =
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, age INTEGER)";
     db.execute(create_sql).unwrap();
 
     // Insert valid data
@@ -111,14 +130,15 @@ fn test_sql_integration_constraints() {
     assert!(result.is_err()); // Should fail due to primary key constraint
 }
 
-#[test] 
+#[test]
 fn test_sql_integration_complex_queries() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_complex.db");
     let mut db = Database::open(db_path).unwrap();
 
     // Create table
-    let create_sql = "CREATE TABLE sales (id INTEGER PRIMARY KEY, product TEXT, amount REAL, date TEXT)";
+    let create_sql =
+        "CREATE TABLE sales (id INTEGER PRIMARY KEY, product TEXT, amount REAL, date TEXT)";
     db.execute(create_sql).unwrap();
 
     // Insert test data
@@ -135,7 +155,11 @@ fn test_sql_integration_complex_queries() {
 
     // Test complex WHERE conditions
     let complex_where_sql = "SELECT * FROM sales WHERE amount > 100.0 AND product = 'Laptop'";
-    let result = db.query(complex_where_sql).unwrap().into_query_result().unwrap();
+    let result = db
+        .query(complex_where_sql)
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     assert_eq!(result.len(), 2); // Should find both laptop sales
 }
 

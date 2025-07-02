@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use tegdb::Engine;
 
 /// Creates a unique temporary file path for benchmarks
@@ -20,25 +20,26 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
 
     // Benchmark rollback with different numbers of pending operations
     let sizes = [0, 1, 10, 100, 1000];
-    
+
     for &size in &sizes {
         c.bench_function(&format!("rollback with {} pending ops", size), |b| {
             b.iter(|| {
                 let mut tx = engine.begin_transaction();
-                
+
                 // Add some pending operations
                 for i in 0..size {
                     let key = format!("pending_key{}", i);
                     let value = format!("pending_value{}", i);
-                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes())).unwrap();
+                    tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
+                        .unwrap();
                 }
-                
+
                 // Now benchmark the rollback
                 let _ = black_box(tx.rollback());
             })
         });
     }
-    
+
     // Benchmark just state change (minimal rollback)
     c.bench_function("rollback state change only", |b| {
         b.iter(|| {
@@ -47,7 +48,7 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
             let _ = black_box(tx.rollback());
         })
     });
-    
+
     // Benchmark automatic rollback on drop
     c.bench_function("automatic rollback on drop", |b| {
         b.iter(|| {

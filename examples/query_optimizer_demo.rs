@@ -1,5 +1,5 @@
-use tegdb::{Database, Result};
 use std::time::Instant;
+use tegdb::{Database, Result};
 
 fn main() -> Result<()> {
     let mut db = Database::open("query_optimizer_demo.db")?;
@@ -13,7 +13,7 @@ fn main() -> Result<()> {
             name TEXT NOT NULL,
             price REAL,
             description TEXT
-        )"
+        )",
     )?;
 
     println!("🏗️  Created products table with composite primary key (category, product_id)");
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
             let name = format!("{} Product {}", category, product_id);
             let price = 10.0 + (product_id as f64 * 0.5);
             let description = format!("Description for {} product {}", category, product_id);
-            
+
             db.execute(&format!(
                 "INSERT INTO products (category, product_id, name, price, description) 
                  VALUES ('{}', {}, '{}', {}, '{}')",
@@ -37,16 +37,28 @@ fn main() -> Result<()> {
         }
     }
 
-    println!("📦 Inserted {} products across {} categories", total_inserted, categories.len());
+    println!(
+        "📦 Inserted {} products across {} categories",
+        total_inserted,
+        categories.len()
+    );
 
     // Test 1: Optimized query with full primary key equality
     println!("\n🚀 Test 1: Query with complete PK equality (should use PK lookup)");
     let start = Instant::now();
-    let result = db.query("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42").unwrap().into_query_result().unwrap();
+    let result = db
+        .query("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     let duration = start.elapsed();
-    
+
     println!("   Query executed in {:?}", duration);
-    println!("   Found {} rows with {} columns", result.rows().len(), result.columns().len());
+    println!(
+        "   Found {} rows with {} columns",
+        result.rows().len(),
+        result.columns().len()
+    );
     if !result.rows().is_empty() {
         println!("   Sample row: {:?}", result.rows()[0]);
     }
@@ -55,34 +67,54 @@ fn main() -> Result<()> {
     // Test 2: Query with partial primary key (should fall back to scan)
     println!("\n📊 Test 2: Query with partial PK (should fall back to table scan)");
     let start = Instant::now();
-    let result = db.query("SELECT name, price FROM products WHERE category = 'books'").unwrap().into_query_result().unwrap();
+    let result = db
+        .query("SELECT name, price FROM products WHERE category = 'books'")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     let duration = start.elapsed();
-    
+
     println!("   Query executed in {:?}", duration);
-    println!("   Found {} rows with {} columns", result.rows().len(), result.columns().len());
+    println!(
+        "   Found {} rows with {} columns",
+        result.rows().len(),
+        result.columns().len()
+    );
     assert_eq!(result.rows().len(), 100, "Should find all books");
 
     // Test 3: Query with non-PK column (should fall back to scan)
     println!("\n🔍 Test 3: Query with non-PK column (should fall back to table scan)");
     let start = Instant::now();
-    let result = db.query("SELECT category, product_id, name FROM products WHERE price > 50.0").unwrap().into_query_result().unwrap();
+    let result = db
+        .query("SELECT category, product_id, name FROM products WHERE price > 50.0")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     let duration = start.elapsed();
-    
+
     println!("   Query executed in {:?}", duration);
     println!("   Found {} expensive products", result.rows().len());
 
     // Test 4: Complex AND condition with complete PK
     println!("\n⚡ Test 4: Complex AND with complete PK (should use PK lookup)");
     let start = Instant::now();
-    let result = db.query(
-        "SELECT name, price FROM products 
-         WHERE product_id = 50 AND category = 'clothing' AND price > 0"
-    ).unwrap().into_query_result().unwrap();
+    let result = db
+        .query(
+            "SELECT name, price FROM products 
+         WHERE product_id = 50 AND category = 'clothing' AND price > 0",
+        )
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     let duration = start.elapsed();
-    
+
     println!("   Query executed in {:?}", duration);
     println!("   Found {} rows", result.rows().len());
-    assert_eq!(result.rows().len(), 1, "Should find exactly one clothing item");
+    assert_eq!(
+        result.rows().len(),
+        1,
+        "Should find exactly one clothing item"
+    );
 
     println!("\n🎉 Query optimizer demonstration completed successfully!");
     println!("💡 The optimizer automatically chooses between PK lookup and table scan");

@@ -1,10 +1,10 @@
 // filepath: /Users/yusp/work/tegdb/src/engine.rs
+use fs2::FileExt;
+use std::collections::BTreeMap;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use fs2::FileExt;  // For file locking
+use std::sync::Arc; // For file locking
 
 use crate::error::{Error, Result};
 
@@ -33,8 +33,6 @@ impl Default for EngineConfig {
     }
 }
 
-
-
 /// The main database engine
 pub struct Engine {
     log: Log,
@@ -60,25 +58,25 @@ impl Engine {
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
         let mut log = Log::new(path)?;
         let key_map = log.build_key_map(&config)?;
-        
+
         let mut engine = Self {
             log,
             key_map,
             config,
         };
-        
+
         if engine.config.auto_compact {
             engine.compact()?;
         }
-        
+
         Ok(engine)
     }
 
     /// Begins a new write-through transaction
     pub fn begin_transaction(&mut self) -> Transaction<'_> {
         // Don't write begin marker - only write commit marker on commit
-        Transaction { 
-            engine: self, 
+        Transaction {
+            engine: self,
             undo_log: None, // Lazy initialization
             finalized: false,
         }
@@ -115,7 +113,7 @@ impl Engine {
         // store as shared buffer for cheap cloning on get
         let shared = Arc::from(value.into_boxed_slice());
         self.key_map.insert(key.to_vec(), shared);
-        
+
         Ok(())
     }
 
@@ -127,16 +125,15 @@ impl Engine {
 
         self.log.write_entry(key, &[])?;
         self.key_map.remove(key);
-        
+
         Ok(())
     }
 
     /// Scans a range of key-value pairs
-    pub fn scan(
-        &self,
-        range: Range<Vec<u8>>,
-    ) -> Result<ScanResult<'_>> {
-        let iter = self.key_map.range(range)
+    pub fn scan(&self, range: Range<Vec<u8>>) -> Result<ScanResult<'_>> {
+        let iter = self
+            .key_map
+            .range(range)
             // clone key Vec (small) and clone Arc (cheap refcount increment)
             .map(|(key, value)| (key.clone(), Arc::clone(value)));
         Ok(Box::new(iter))
@@ -152,7 +149,7 @@ impl Engine {
     pub fn compact(&mut self) -> Result<()> {
         let mut tmp_path = self.log.path.clone();
         tmp_path.set_extension("new");
-        
+
         let (mut new_log, new_key_map) = self.construct_log(tmp_path)?;
 
         std::fs::rename(&new_log.path, &self.log.path)?;
@@ -160,7 +157,7 @@ impl Engine {
 
         self.log = new_log;
         self.key_map = new_key_map;
-        
+
         Ok(())
     }
 
@@ -183,8 +180,8 @@ impl Engine {
             new_log.write_entry(key, value.as_ref())?;
             new_key_map.insert(key.clone(), value.clone());
         }
-         
-         Ok((new_log, new_key_map))
+
+        Ok((new_log, new_key_map))
     }
 }
 
@@ -205,26 +202,26 @@ struct UndoEntry {
 pub struct Transaction<'a> {
     engine: &'a mut Engine,
     undo_log: Option<Vec<UndoEntry>>, // Lazy initialization
-    finalized: bool, // Track if transaction has been committed or rolled back
+    finalized: bool,                  // Track if transaction has been committed or rolled back
 }
 
 impl Transaction<'_> {
     /// Records the current state for potential rollback and returns the old value
     fn record_undo(&mut self, key: &[u8]) -> Option<Arc<[u8]>> {
         let old_value = self.engine.key_map.get(key).cloned();
-        
+
         // Lazy initialization of undo_log
         if self.undo_log.is_none() {
             self.undo_log = Some(Vec::new());
         }
-        
+
         self.undo_log.as_mut().unwrap().push(UndoEntry {
             key: key.to_vec(),
             old_value: old_value.clone(),
         });
         old_value
     }
-    
+
     /// Sets a key-value pair directly in the engine with undo logging
     pub fn set(&mut self, key: &[u8], value: Vec<u8>) -> Result<()> {
         // Validate input sizes
@@ -234,25 +231,25 @@ impl Transaction<'_> {
         if value.len() > self.engine.config.max_value_size {
             return Err(Error::ValueTooLarge(value.len()));
         }
-        
+
         // Check if the value would actually change (same logic as engine.set())
         if value.is_empty() {
             return self.delete(key);
         }
-        
+
         // Check if value hasn't changed - if so, no undo recording needed
         if let Some(existing) = self.engine.key_map.get(key) {
             if existing.as_ref() == value.as_slice() {
                 return Ok(());
             }
         }
-        
+
         // Record undo information only when we're about to make a real change
         self.record_undo(key);
-        
+
         // Write-through: directly modify engine state
         self.engine.set(key, value)?;
-        
+
         Ok(())
     }
 
@@ -262,13 +259,13 @@ impl Transaction<'_> {
         if !self.engine.key_map.contains_key(key) {
             return Ok(());
         }
-        
+
         // Record undo information only when we're about to make a real change
         self.record_undo(key);
-        
+
         // Write-through: directly modify engine state
         self.engine.del(key)?;
-        
+
         Ok(())
     }
 
@@ -286,12 +283,12 @@ impl Transaction<'_> {
     pub fn has_pending_operations(&self) -> bool {
         !self.finalized && self.undo_log.as_ref().is_some_and(|log| !log.is_empty())
     }
-    
+
     /// Returns true if the transaction is clean (no pending operations)
     pub fn is_clean(&self) -> bool {
         self.finalized || self.undo_log.as_ref().map_or(true, |log| log.is_empty())
     }
-    
+
     /// Returns true if the transaction has been finalized (committed or rolled back)
     pub fn is_finalized(&self) -> bool {
         self.finalized
@@ -302,21 +299,21 @@ impl Transaction<'_> {
         if self.finalized {
             return Err(Error::Other("Transaction already finalized".to_string()));
         }
-        
+
         // Check if this is a read-only transaction (no write operations)
         let has_writes = self.undo_log.as_ref().is_some_and(|log| !log.is_empty());
-        
+
         if has_writes {
             // Write transaction commit marker directly to log (not to keymap) and always sync on commit
             self.engine.log.write_entry(TX_COMMIT_MARKER, &[])?;
-            
+
             // Clear the undo log
             if let Some(ref mut log) = self.undo_log {
                 log.clear();
             }
         }
         // For read-only transactions, no commit marker or sync needed
-        
+
         self.finalized = true;
         Ok(())
     }
@@ -326,7 +323,7 @@ impl Transaction<'_> {
         if self.finalized {
             return Err(Error::Other("Transaction already finalized".to_string()));
         }
-        
+
         // Check if there's anything to rollback
         let has_operations = self.undo_log.as_ref().is_some_and(|log| !log.is_empty());
         if !has_operations {
@@ -334,7 +331,7 @@ impl Transaction<'_> {
             self.finalized = true;
             return Ok(());
         }
-        
+
         // Restore original values in reverse order using engine's set/del methods
         if let Some(ref mut log) = self.undo_log {
             for undo_entry in log.drain(..).rev() {
@@ -350,7 +347,7 @@ impl Transaction<'_> {
                 }
             }
         }
-        
+
         // undo_log is now empty, transaction is rolled back
         self.finalized = true;
         Ok(())
@@ -386,11 +383,11 @@ impl Log {
             .truncate(false) // Don't truncate existing database files
             .open(&path)
             .map_err(Error::from)?;
-        
+
         // Try to obtain an exclusive lock
         file.try_lock_exclusive()
             .map_err(|e| Error::FileLocked(e.to_string()))?;
-        
+
         Ok(Self { path, file })
     }
 
@@ -417,7 +414,8 @@ impl Log {
             let value_len = u32::from_be_bytes(len_buf);
 
             // Basic validation
-            if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size {
+            if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size
+            {
                 break; // Invalid entry, treat as corruption
             }
 
@@ -446,7 +444,7 @@ impl Log {
                 };
                 uncommitted_changes.push((key, old_value));
             }
-            
+
             pos = reader.seek(SeekFrom::Current(0))?;
         }
 
@@ -460,18 +458,19 @@ impl Log {
                 }
             }
         }
-        
+
         Ok(key_map)
     }
-    
+
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         if key.len() > 1024 || value.len() > 256 * 1024 {
             return Err(Error::Other(format!(
-                "Key or value length exceeds limits: key_len={}, value_len={}", 
-                key.len(), value.len()
+                "Key or value length exceeds limits: key_len={}, value_len={}",
+                key.len(),
+                value.len()
             )));
         }
-        
+
         // Calculate entry size
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
@@ -483,7 +482,7 @@ impl Log {
         buffer.extend_from_slice(&value_len.to_be_bytes());
         buffer.extend_from_slice(key);
         buffer.extend_from_slice(value);
-        
+
         // Write to file
         self.file.seek(SeekFrom::End(0))?;
         {
@@ -491,9 +490,9 @@ impl Log {
             writer.write_all(&buffer)?;
             writer.flush()?;
         }
-        
+
         // Note: No fsync for performance - latest commits may not persist on crash
-        
+
         Ok(())
     }
 }

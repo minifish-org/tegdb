@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::path::PathBuf;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use tegdb::Engine;
 
 /// Creates a unique temporary file path for benchmarks
@@ -13,14 +13,14 @@ fn temp_db_path(prefix: &str) -> PathBuf {
 
 fn transaction_begin_scaling(c: &mut Criterion) {
     let sizes = [0, 10, 100, 1000, 10000];
-    
+
     for &size in &sizes {
         let path = temp_db_path(&format!("begin_scaling_{}", size));
         if path.exists() {
             fs::remove_file(&path).expect("Failed to remove existing test file");
         }
         let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
-        
+
         // Pre-populate with specified number of entries
         for i in 0..size {
             let key = format!("key{}", i);
@@ -34,7 +34,7 @@ fn transaction_begin_scaling(c: &mut Criterion) {
                 drop(tx); // Rollback automatically on drop
             })
         });
-        
+
         // Clean up test file
         drop(engine);
         let _ = fs::remove_file(&path);

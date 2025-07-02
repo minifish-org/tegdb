@@ -1,12 +1,12 @@
 //! SQL parser implementation using nom
-//! 
+//!
 //! This module provides a SQL parser for basic database operations including
 //! SELECT, INSERT, UPDATE, DELETE, and CREATE TABLE statements.
 
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_while1},
-    character::complete::{alpha1, alphanumeric1, char, multispace0, multispace1, digit1},
+    character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
     combinator::{map, opt, recognize},
     multi::{many0, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
@@ -177,44 +177,43 @@ impl Expression {
     pub fn evaluate(&self, context: &HashMap<String, SqlValue>) -> Result<SqlValue, String> {
         match self {
             Expression::Value(value) => Ok(value.clone()),
-            Expression::Column(column_name) => {
-                context.get(column_name)
-                    .cloned()
-                    .ok_or_else(|| format!("Column '{}' not found", column_name))
-            }
-            Expression::BinaryOp { left, operator, right } => {
+            Expression::Column(column_name) => context
+                .get(column_name)
+                .cloned()
+                .ok_or_else(|| format!("Column '{}' not found", column_name)),
+            Expression::BinaryOp {
+                left,
+                operator,
+                right,
+            } => {
                 let left_val = left.evaluate(context)?;
                 let right_val = right.evaluate(context)?;
-                
+
                 match (left_val, right_val) {
-                    (SqlValue::Integer(l), SqlValue::Integer(r)) => {
-                        match operator {
-                            ArithmeticOperator::Add => Ok(SqlValue::Integer(l + r)),
-                            ArithmeticOperator::Subtract => Ok(SqlValue::Integer(l - r)),
-                            ArithmeticOperator::Multiply => Ok(SqlValue::Integer(l * r)),
-                            ArithmeticOperator::Divide => {
-                                if r == 0 {
-                                    Err("Division by zero".to_string())
-                                } else {
-                                    Ok(SqlValue::Integer(l / r))
-                                }
+                    (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
+                        ArithmeticOperator::Add => Ok(SqlValue::Integer(l + r)),
+                        ArithmeticOperator::Subtract => Ok(SqlValue::Integer(l - r)),
+                        ArithmeticOperator::Multiply => Ok(SqlValue::Integer(l * r)),
+                        ArithmeticOperator::Divide => {
+                            if r == 0 {
+                                Err("Division by zero".to_string())
+                            } else {
+                                Ok(SqlValue::Integer(l / r))
                             }
                         }
-                    }
-                    (SqlValue::Real(l), SqlValue::Real(r)) => {
-                        match operator {
-                            ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
-                            ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
-                            ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
-                            ArithmeticOperator::Divide => {
-                                if r == 0.0 {
-                                    Err("Division by zero".to_string())
-                                } else {
-                                    Ok(SqlValue::Real(l / r))
-                                }
+                    },
+                    (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
+                        ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
+                        ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
+                        ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
+                        ArithmeticOperator::Divide => {
+                            if r == 0.0 {
+                                Err("Division by zero".to_string())
+                            } else {
+                                Ok(SqlValue::Real(l / r))
                             }
                         }
-                    }
+                    },
                     (SqlValue::Integer(l), SqlValue::Real(r)) => {
                         let l = l as f64;
                         match operator {
@@ -245,13 +244,11 @@ impl Expression {
                             }
                         }
                     }
-                    (SqlValue::Text(l), SqlValue::Text(r)) => {
-                        match operator {
-                            ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{}{}", l, r))),
-                            _ => Err("Only addition (+) is supported for text values".to_string())
-                        }
-                    }
-                    _ => Err("Unsupported operand types for arithmetic operation".to_string())
+                    (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
+                        ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{}{}", l, r))),
+                        _ => Err("Only addition (+) is supported for text values".to_string()),
+                    },
+                    _ => Err("Unsupported operand types for arithmetic operation".to_string()),
                 }
             }
         }
@@ -425,10 +422,7 @@ fn parse_create_table(input: &str) -> IResult<&str, CreateTableStatement> {
         char(')'),
     )(input)?;
 
-    Ok((
-        input,
-        CreateTableStatement { table, columns },
-    ))
+    Ok((input, CreateTableStatement { table, columns }))
 }
 
 // Parse DROP TABLE statement
@@ -437,7 +431,7 @@ fn parse_drop_table(input: &str) -> IResult<&str, DropTableStatement> {
     let (input, _) = multispace1(input)?;
     let (input, _) = tag_no_case("TABLE")(input)?;
     let (input, _) = multispace1(input)?;
-    
+
     // Try to parse optional "IF EXISTS"
     let (input, if_exists) = opt(tuple((
         tag_no_case("IF"),
@@ -445,7 +439,7 @@ fn parse_drop_table(input: &str) -> IResult<&str, DropTableStatement> {
         tag_no_case("EXISTS"),
         multispace1,
     )))(input)?;
-    
+
     let (input, table) = parse_drop_table_identifier(input)?;
 
     Ok((
@@ -461,12 +455,18 @@ fn parse_drop_table(input: &str) -> IResult<&str, DropTableStatement> {
 fn parse_drop_table_identifier(input: &str) -> IResult<&str, String> {
     // First check if the next token is a reserved keyword that would be invalid as a table name
     if let Ok((_, _)) = tag_no_case::<&str, &str, nom::error::Error<&str>>("IF")(input) {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
     }
     if let Ok((_, _)) = tag_no_case::<&str, &str, nom::error::Error<&str>>("EXISTS")(input) {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
     }
-    
+
     parse_identifier(input)
 }
 
@@ -474,7 +474,14 @@ fn parse_drop_table_identifier(input: &str) -> IResult<&str, String> {
 fn parse_begin(input: &str) -> IResult<&str, ()> {
     let (input, _) = alt((
         tag_no_case("BEGIN"),
-        map(tuple((tag_no_case("START"), multispace1, tag_no_case("TRANSACTION"))), |_| ""),
+        map(
+            tuple((
+                tag_no_case("START"),
+                multispace1,
+                tag_no_case("TRANSACTION"),
+            )),
+            |_| "",
+        ),
     ))(input)?;
     Ok((input, ()))
 }
@@ -694,52 +701,43 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
 fn parse_string_literal(input: &str) -> IResult<&str, String> {
     delimited(
         char('\''),
-        map(
-            take_while1(|c| c != '\''),
-            |s: &str| {
-                // Only intern very common, short strings to avoid overhead
-                if s.len() <= 16 && s.is_ascii() {
-                    match s {
-                        "active" | "inactive" | "pending" | "admin" | "user" | "guest" => intern_string(s),
-                        _ => s.to_string(),
+        map(take_while1(|c| c != '\''), |s: &str| {
+            // Only intern very common, short strings to avoid overhead
+            if s.len() <= 16 && s.is_ascii() {
+                match s {
+                    "active" | "inactive" | "pending" | "admin" | "user" | "guest" => {
+                        intern_string(s)
                     }
-                } else {
-                    s.to_string()
+                    _ => s.to_string(),
                 }
-            },
-        ),
+            } else {
+                s.to_string()
+            }
+        }),
         char('\''),
     )(input)
 }
 
 // Parse integer - optimized version
 fn parse_integer(input: &str) -> IResult<&str, i64> {
-    map(
-        recognize(pair(opt(char('-')), digit1)),
-        |s: &str| {
-            // Fast path for small positive integers
-            if s.len() <= 3 && !s.starts_with('-') {
-                let mut result = 0i64;
-                for byte in s.bytes() {
-                    result = result * 10 + (byte - b'0') as i64;
-                }
-                result
-            } else {
-                s.parse().unwrap()
+    map(recognize(pair(opt(char('-')), digit1)), |s: &str| {
+        // Fast path for small positive integers
+        if s.len() <= 3 && !s.starts_with('-') {
+            let mut result = 0i64;
+            for byte in s.bytes() {
+                result = result * 10 + (byte - b'0') as i64;
             }
-        },
-    )(input)
+            result
+        } else {
+            s.parse().unwrap()
+        }
+    })(input)
 }
 
 // Parse real number
 fn parse_real(input: &str) -> IResult<&str, f64> {
     map(
-        recognize(tuple((
-            opt(char('-')),
-            digit1,
-            char('.'),
-            digit1,
-        ))),
+        recognize(tuple((opt(char('-')), digit1, char('.'), digit1))),
         |s: &str| s.parse().unwrap(),
     )(input)
 }
@@ -755,7 +753,9 @@ fn parse_identifier(input: &str) -> IResult<&str, String> {
             // Only intern very common, short identifiers to avoid overhead
             if s.len() <= 8 && s.is_ascii() {
                 match s {
-                    "id" | "name" | "age" | "email" | "user" | "users" | "data" | "table" => intern_string(s),
+                    "id" | "name" | "age" | "email" | "user" | "users" | "data" | "table" => {
+                        intern_string(s)
+                    }
                     _ => s.to_string(),
                 }
             } else {
@@ -780,13 +780,13 @@ fn parse_additive_expression(input: &str) -> IResult<&str, Expression> {
 
     Ok((
         input,
-        rights.into_iter().fold(left, |acc, (op, right)| {
-            Expression::BinaryOp {
+        rights
+            .into_iter()
+            .fold(left, |acc, (op, right)| Expression::BinaryOp {
                 left: Box::new(acc),
                 operator: op,
                 right: Box::new(right),
-            }
-        }),
+            }),
     ))
 }
 
@@ -800,13 +800,13 @@ fn parse_multiplicative_expression(input: &str) -> IResult<&str, Expression> {
 
     Ok((
         input,
-        rights.into_iter().fold(left, |acc, (op, right)| {
-            Expression::BinaryOp {
+        rights
+            .into_iter()
+            .fold(left, |acc, (op, right)| Expression::BinaryOp {
                 left: Box::new(acc),
                 operator: op,
                 right: Box::new(right),
-            }
-        }),
+            }),
     ))
 }
 
@@ -841,4 +841,3 @@ fn parse_multiplicative_operator(input: &str) -> IResult<&str, ArithmeticOperato
         map(char('/'), |_| ArithmeticOperator::Divide),
     ))(input)
 }
-

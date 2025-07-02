@@ -1,14 +1,17 @@
-use tegdb::{Engine, executor::{Executor, ResultSet}};
-use tegdb::parser::{parse_sql, Statement};
-use tempfile::tempdir;
 use std::collections::HashMap;
+use tegdb::parser::{parse_sql, Statement};
+use tegdb::{
+    executor::{Executor, ResultSet},
+    Engine,
+};
+use tempfile::tempdir;
 
 #[test]
 fn test_drop_table_integration() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_drop_table.db");
     let mut engine = Engine::new(db_path).unwrap();
-    
+
     let transaction = engine.begin_transaction();
     let mut executor = Executor::new_with_schemas(transaction, HashMap::new());
 
@@ -32,7 +35,7 @@ fn test_drop_table_integration() {
         _ => panic!("Expected DROP TABLE statement"),
     };
     let drop_result = executor.execute_drop_table(drop_statement).unwrap();
-    
+
     match drop_result {
         ResultSet::DropTable => {
             // Table was successfully dropped
@@ -54,8 +57,10 @@ fn test_drop_table_integration() {
         Statement::DropTable(drop) => drop,
         _ => panic!("Expected DROP TABLE statement"),
     };
-    let drop_if_exists_result = executor.execute_drop_table(drop_if_exists_statement).unwrap();
-    
+    let drop_if_exists_result = executor
+        .execute_drop_table(drop_if_exists_statement)
+        .unwrap();
+
     match drop_if_exists_result {
         ResultSet::DropTable => {
             // Table drop was handled (whether it existed or not)

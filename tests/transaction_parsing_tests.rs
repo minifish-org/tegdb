@@ -112,19 +112,14 @@ fn test_parse_rollback() {
 fn test_transaction_statement_priority() {
     // Verify that transaction statements are parsed correctly
     // even when they might conflict with other keywords
-    
-    let statements = vec![
-        "BEGIN",
-        "COMMIT", 
-        "ROLLBACK",
-        "START TRANSACTION",
-    ];
+
+    let statements = vec!["BEGIN", "COMMIT", "ROLLBACK", "START TRANSACTION"];
 
     for sql in statements {
         let result = parse_sql(sql);
         assert!(result.is_ok(), "Failed to parse: {}", sql);
         let (_, statement) = result.unwrap();
-        
+
         match sql {
             "BEGIN" | "START TRANSACTION" => assert!(matches!(statement, Statement::Begin)),
             "COMMIT" => assert!(matches!(statement, Statement::Commit)),
@@ -138,13 +133,13 @@ fn test_transaction_statement_priority() {
 #[test]
 fn test_invalid_transaction_statements() {
     let invalid_statements = vec![
-        "BEGINS",           // Invalid variant
-        "COMMITS",          // Invalid variant  
-        "ROLLBACKS",        // Invalid variant
-        "START",            // Incomplete
-        "TRANSACTION",      // Incomplete
-        "BEGIN COMMIT",     // Mixed statements
-        "COMMIT ROLLBACK",  // Mixed statements
+        "BEGINS",          // Invalid variant
+        "COMMITS",         // Invalid variant
+        "ROLLBACKS",       // Invalid variant
+        "START",           // Incomplete
+        "TRANSACTION",     // Incomplete
+        "BEGIN COMMIT",    // Mixed statements
+        "COMMIT ROLLBACK", // Mixed statements
     ];
 
     for sql in invalid_statements {
@@ -152,7 +147,11 @@ fn test_invalid_transaction_statements() {
         // These should either fail to parse or parse as something else
         if let Ok((remaining, _)) = result {
             // If it parses, there should be remaining input indicating partial parse
-            assert!(!remaining.trim().is_empty(), "Unexpected successful parse for: {}", sql);
+            assert!(
+                !remaining.trim().is_empty(),
+                "Unexpected successful parse for: {}",
+                sql
+            );
         }
         // Otherwise it failed to parse, which is expected
     }

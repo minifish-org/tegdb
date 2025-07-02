@@ -1,25 +1,25 @@
 //! Simple test to validate native row format functionality
-//! 
+//!
 //! This tests basic operations to ensure the native format integration works correctly.
 
 use tegdb::Database;
 
 fn main() -> tegdb::Result<()> {
     println!("=== Native Binary Row Format Functionality Test ===\n");
-    
+
     // Clean up any existing database
     let _ = std::fs::remove_file("test_native.db");
-    
+
     // Test 1: Create database (now always uses native format)
     println!("1. Creating database with native binary row format...");
     let mut db = Database::open("test_native.db")?;
     println!("   ✓ Database created successfully");
-    
+
     // Test 2: Create table
     println!("2. Creating test table...");
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, score REAL)")?;
     println!("   ✓ Table created successfully");
-    
+
     // Test 3: Insert data
     println!("3. Inserting test data...");
     for i in 1..=1000 {
@@ -29,51 +29,73 @@ fn main() -> tegdb::Result<()> {
         ))?;
     }
     println!("   ✓ Inserted 1000 rows successfully");
-    
+
     // Test 4: Full table scan
     println!("4. Testing full table scan...");
-    let result = db.query("SELECT * FROM users").unwrap().into_query_result().unwrap();
+    let result = db
+        .query("SELECT * FROM users")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     println!("   ✓ Full scan returned {} rows", result.rows().len());
-    
+
     // Test 5: Selective column query (major benefit of native format)
     println!("5. Testing selective column query...");
-    let result = db.query("SELECT name, score FROM users").unwrap().into_query_result().unwrap();
-    println!("   ✓ Selective query returned {} rows with {} columns", 
-        result.rows().len(), result.columns().len());
-    
+    let result = db
+        .query("SELECT name, score FROM users")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
+    println!(
+        "   ✓ Selective query returned {} rows with {} columns",
+        result.rows().len(),
+        result.columns().len()
+    );
+
     // Test 6: Primary key lookup
     println!("6. Testing primary key lookup...");
-    let result = db.query("SELECT name, email FROM users WHERE id = 500").unwrap().into_query_result().unwrap();
-    println!("   ✓ Primary key lookup returned {} rows", result.rows().len());
+    let result = db
+        .query("SELECT name, email FROM users WHERE id = 500")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
+    println!(
+        "   ✓ Primary key lookup returned {} rows",
+        result.rows().len()
+    );
     if !result.rows().is_empty() {
         if let Some(name) = result.rows()[0].get(0) {
             println!("   Found user: {:?}", name);
         }
     }
-    
+
     // Test 7: LIMIT query
     println!("7. Testing LIMIT query...");
-    let result = db.query("SELECT name FROM users LIMIT 10").unwrap().into_query_result().unwrap();
+    let result = db
+        .query("SELECT name FROM users LIMIT 10")
+        .unwrap()
+        .into_query_result()
+        .unwrap();
     println!("   ✓ LIMIT query returned {} rows", result.rows().len());
-    
+
     // Test 8: Check database size
     println!("8. Checking storage efficiency...");
     let db_size = std::fs::metadata("test_native.db")?.len();
     println!("   ✓ Database size: {} bytes", db_size);
     println!("   ✓ Average bytes per row: {:.1}", db_size as f64 / 1000.0);
-    
+
     println!("\n=== NATIVE FORMAT BENEFITS DEMONSTRATED ===");
     println!("✓ Successful storage and retrieval using native binary format");
     println!("✓ Efficient selective column access (no full row deserialization)");
     println!("✓ Fast primary key lookups with optimized row format");
     println!("✓ Compact binary storage with variable-length encoding");
     println!("✓ LIMIT query optimization with early termination");
-    
+
     // Clean up
     drop(db);
     let _ = std::fs::remove_file("test_native.db");
-    
+
     println!("\n🎉 All tests passed! Native binary row format is working correctly.");
-    
+
     Ok(())
 }

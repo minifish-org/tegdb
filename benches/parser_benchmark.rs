@@ -1,13 +1,19 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use tegdb::parser::*;
 
 fn simple_sql_statements() -> Vec<(&'static str, &'static str)> {
     vec![
         ("simple_select", "SELECT id FROM users"),
         ("simple_insert", "INSERT INTO users (name) VALUES ('John')"),
-        ("simple_update", "UPDATE users SET name = 'Jane' WHERE id = 1"),
+        (
+            "simple_update",
+            "UPDATE users SET name = 'Jane' WHERE id = 1",
+        ),
         ("simple_delete", "DELETE FROM users WHERE id = 1"),
-        ("create_table", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"),
+        (
+            "create_table",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)",
+        ),
         ("drop_table", "DROP TABLE users"),
         ("begin_transaction", "BEGIN"),
         ("commit_transaction", "COMMIT"),
@@ -77,7 +83,7 @@ fn large_sql_statements() -> Vec<(&'static str, String)> {
 
 fn bench_simple_statements(c: &mut Criterion) {
     let mut group = c.benchmark_group("parser_simple");
-    
+
     for (name, sql) in simple_sql_statements() {
         group.bench_with_input(BenchmarkId::new("parse", name), sql, |b, sql| {
             b.iter(|| {
@@ -91,7 +97,7 @@ fn bench_simple_statements(c: &mut Criterion) {
 
 fn bench_complex_statements(c: &mut Criterion) {
     let mut group = c.benchmark_group("parser_complex");
-    
+
     for (name, sql) in complex_sql_statements() {
         group.bench_with_input(BenchmarkId::new("parse", name), sql, |b, sql| {
             b.iter(|| {
@@ -105,7 +111,7 @@ fn bench_complex_statements(c: &mut Criterion) {
 
 fn bench_large_statements(c: &mut Criterion) {
     let mut group = c.benchmark_group("parser_large");
-    
+
     for (name, sql) in large_sql_statements() {
         group.bench_with_input(BenchmarkId::new("parse", name), &sql, |b, sql| {
             b.iter(|| {
@@ -124,9 +130,9 @@ fn bench_repeated_parsing(c: &mut Criterion) {
         "UPDATE inventory SET quantity = 100 WHERE product_id = 1",
         "DELETE FROM logs WHERE created_at < '2023-01-01'",
     ];
-    
+
     let mut group = c.benchmark_group("parser_repeated");
-    
+
     for count in [10, 100, 1000].iter() {
         group.bench_with_input(
             BenchmarkId::new("batch_parse", count),
@@ -153,7 +159,7 @@ fn bench_statement_validation(c: &mut Criterion) {
         "UPDATE users SET name = 'Jane'",
         "DELETE FROM users WHERE id = 1",
     ];
-    
+
     let invalid_statements = vec![
         "INVALID SQL STATEMENT",
         "SELECT FROM WHERE",
@@ -161,9 +167,9 @@ fn bench_statement_validation(c: &mut Criterion) {
         "UPDATE SET",
         "DELETE FROM",
     ];
-    
+
     let mut group = c.benchmark_group("parser_validation");
-    
+
     group.bench_function("valid_statements", |b| {
         b.iter(|| {
             for sql in &valid_statements {
@@ -172,7 +178,7 @@ fn bench_statement_validation(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.bench_function("invalid_statements", |b| {
         b.iter(|| {
             for sql in &invalid_statements {
@@ -181,7 +187,7 @@ fn bench_statement_validation(c: &mut Criterion) {
             }
         })
     });
-    
+
     group.finish();
 }
 
@@ -189,14 +195,38 @@ fn bench_memory_usage(c: &mut Criterion) {
     // Test parsing with different data types and sizes
     let statements_by_size = vec![
         ("small_text", "SELECT 'small' FROM table".to_string()),
-        ("medium_text", format!("SELECT '{}' FROM table", "a".repeat(100))),
-        ("large_text", format!("SELECT '{}' FROM table", "a".repeat(1000))),
-        ("many_integers", format!("SELECT {} FROM table", (1..=50).map(|i| i.to_string()).collect::<Vec<_>>().join(", "))),
-        ("many_floats", format!("SELECT {} FROM table", (1..=50).map(|i| format!("{}.5", i)).collect::<Vec<_>>().join(", "))),
+        (
+            "medium_text",
+            format!("SELECT '{}' FROM table", "a".repeat(100)),
+        ),
+        (
+            "large_text",
+            format!("SELECT '{}' FROM table", "a".repeat(1000)),
+        ),
+        (
+            "many_integers",
+            format!(
+                "SELECT {} FROM table",
+                (1..=50)
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ),
+        (
+            "many_floats",
+            format!(
+                "SELECT {} FROM table",
+                (1..=50)
+                    .map(|i| format!("{}.5", i))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ),
     ];
-    
+
     let mut group = c.benchmark_group("parser_memory");
-    
+
     for (name, sql) in statements_by_size {
         group.bench_with_input(BenchmarkId::new("parse", name), &sql, |b, sql| {
             b.iter(|| {
