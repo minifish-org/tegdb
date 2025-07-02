@@ -330,7 +330,7 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     let result: Vec<_> = result.collect();
     drop(tx); // Drop the transaction to release the mutable borrow
 
-    let expected = vec![
+    let expected = [
         (b"a".to_vec(), b"1".to_vec()),
         (b"b".to_vec(), b"2_tx".to_vec()),
         (b"d".to_vec(), b"4".to_vec()),
@@ -348,7 +348,7 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     let base = engine
         .scan(b"a".to_vec()..b"z".to_vec())?
         .collect::<Vec<_>>();
-    let base_expected = vec![
+    let base_expected = [
         (b"a".to_vec(), b"1".to_vec()),
         (b"b".to_vec(), b"2".to_vec()),
         (b"c".to_vec(), b"3".to_vec()),
@@ -414,8 +414,7 @@ fn test_transaction_key_size_limit() {
     if path.exists() {
         fs::remove_file(&path).unwrap();
     }
-    let mut config = EngineConfig::default();
-    config.max_key_size = 1;
+    let config = EngineConfig { max_key_size: 1, ..Default::default() };
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
@@ -437,8 +436,7 @@ fn test_transaction_value_size_limit() {
     if path.exists() {
         fs::remove_file(&path).unwrap();
     }
-    let mut config = EngineConfig::default();
-    config.max_value_size = 1;
+    let config = EngineConfig { max_value_size: 1, ..Default::default() };
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
@@ -457,8 +455,7 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut config = EngineConfig::default();
-    config.max_key_size = 1;
+    let config = EngineConfig { max_key_size: 1, ..Default::default() };
     let mut engine = Engine::with_config(path.clone(), config)?;
     {
         let mut tx = engine.begin_transaction();
@@ -476,7 +473,7 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
         engine.get(b"b").map(|a| a.as_ref().to_vec()),
         Some(b"3".to_vec())
     );
-    assert_eq!(engine.get(&vec![0, 1]), None);
+    assert_eq!(engine.get(&[0, 1]), None);
     fs::remove_file(path)?;
     Ok(())
 }

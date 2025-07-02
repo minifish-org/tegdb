@@ -400,7 +400,7 @@ fn test_special_characters_keys_values() -> Result<()> {
     }
     let mut engine = Engine::new(path.clone())?;
 
-    let keys = vec![
+    let keys = [
         b"key with spaces".to_vec(),
         b"key/with/slashes".to_vec(),
         b"key\\with\\backslashes".to_vec(),
@@ -408,7 +408,7 @@ fn test_special_characters_keys_values() -> Result<()> {
         b"key\twith\nnewlines".to_vec(),
         vec![0, 1, 2, 3, 4, 5], // Non-UTF8 key
     ];
-    let values = vec![
+    let values = [
         b"value with spaces".to_vec(),
         b"value/with/slashes".to_vec(),
         b"value\\with\\backslashes".to_vec(),
@@ -585,8 +585,7 @@ fn test_engine_value_size_limit() {
         fs::remove_file(&path).unwrap();
     }
     // configure engine to allow only 1-byte values
-    let mut config = EngineConfig::default();
-    config.max_value_size = 1;
+    let config = EngineConfig { max_value_size: 1, ..Default::default() };
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     // setting oversized value should error
     let err = engine.set(b"k", vec![0, 1]);

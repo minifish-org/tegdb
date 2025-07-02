@@ -200,7 +200,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     drop(db);
     drop(engine);
     let _ = fs::remove_file(&path);
-    let _ = fs::remove_file(&temp_db_path("tx_test"));
+    let _ = fs::remove_file(temp_db_path("tx_test"));
 }
 
 criterion_group!(benches, bottleneck_analysis);

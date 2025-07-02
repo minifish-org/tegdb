@@ -64,7 +64,7 @@ fn main() -> tegdb::Result<()> {
         result.rows().len()
     );
     if !result.rows().is_empty() {
-        if let Some(name) = result.rows()[0].get(0) {
+        if let Some(name) = result.rows()[0].first() {
             println!("   Found user: {:?}", name);
         }
     }

@@ -56,7 +56,8 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
             // Add one operation
             tx.set(b"key", b"value".to_vec()).unwrap();
             // Drop without explicit rollback - should auto-rollback
-            black_box(drop(tx));
+            drop(tx);
+            black_box(());
         })
     });
 

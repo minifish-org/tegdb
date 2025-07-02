@@ -79,7 +79,7 @@ fn test_explicit_transaction_rollback() {
 
     // Original price should be unchanged
     let rows = result.rows();
-    if let Some(row) = rows.get(0) {
+    if let Some(row) = rows.first() {
         if let tegdb::parser::SqlValue::Real(price) = &row[2] {
             // Assuming price is 3rd column
             assert!((price - 999.99).abs() < 0.01);

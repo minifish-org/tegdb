@@ -16,12 +16,15 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+/// Type alias for scan iterator result
+type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
+
 /// Trait for types that can perform scanning operations (Engine or Transaction)
 pub trait Scannable {
     fn scan(
         &self,
         range: std::ops::Range<Vec<u8>>,
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>>;
+    ) -> Result<ScanIterator<'_>>;
 }
 
 impl Scannable for crate::engine::Engine {
@@ -408,7 +411,6 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
 
     /// Apply filter condition to row data
     fn evaluate_condition(
-        &self,
         condition: &crate::parser::Condition,
         row_data: &std::collections::HashMap<String, SqlValue>,
     ) -> bool {
@@ -424,10 +426,10 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
                 Self::compare_values(row_value, operator, right)
             }
             Condition::And(left, right) => {
-                self.evaluate_condition(left, row_data) && self.evaluate_condition(right, row_data)
+                Self::evaluate_condition(left, row_data) && Self::evaluate_condition(right, row_data)
             }
             Condition::Or(left, right) => {
-                self.evaluate_condition(left, row_data) || self.evaluate_condition(right, row_data)
+                Self::evaluate_condition(left, row_data) || Self::evaluate_condition(right, row_data)
             }
         }
     }
@@ -490,7 +492,7 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
     }
 }
 
-impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
+impl<S: Scannable> Iterator for BaseStreamingQuery<'_, S> {
     type Item = Result<Vec<SqlValue>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -535,7 +537,7 @@ impl<'a, S: Scannable> Iterator for BaseStreamingQuery<'a, S> {
                 Ok(row_data) => {
                     // Apply filter if present
                     let matches = if let Some(ref filter) = self.filter {
-                        self.evaluate_condition(filter, &row_data)
+                        Self::evaluate_condition(filter, &row_data)
                     } else {
                         true
                     };

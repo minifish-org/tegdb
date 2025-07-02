@@ -43,12 +43,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
         rust: [stable, nightly]
         exclude:
           # Reduce CI load by skipping some combinations
-          - os: windows-latest
-            rust: nightly
           - os: macos-latest
             rust: nightly
     

@@ -30,8 +30,8 @@ fn test_arithmetic_expressions_in_update() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Integer(15)); // 10 + 5 = 15
         }
     }
@@ -46,8 +46,8 @@ fn test_arithmetic_expressions_in_update() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Integer(17)); // 20 - 3 = 17
         }
     }
@@ -62,8 +62,8 @@ fn test_arithmetic_expressions_in_update() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Real(11.0)); // 5.5 * 2 = 11.0
         }
     }
@@ -78,8 +78,8 @@ fn test_arithmetic_expressions_in_update() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Real(3.6)); // 7.2 / 2 = 3.6
         }
     }
@@ -94,8 +94,8 @@ fn test_arithmetic_expressions_in_update() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Integer(35)); // 15 + (10 * 2) = 35
         }
     }
@@ -132,7 +132,7 @@ fn test_arithmetic_expression_parsing() {
 
     for (sql, expected) in tests {
         db.execute(sql)
-            .expect(&format!("Failed to execute: {}", sql));
+            .unwrap_or_else(|_| panic!("Failed to execute: {}", sql));
 
         let result = db
             .query("SELECT a FROM test WHERE id = 1")
@@ -140,8 +140,8 @@ fn test_arithmetic_expression_parsing() {
             .into_query_result()
             .unwrap();
 
-        if let Some(row) = result.rows().get(0) {
-            if let Some(value) = row.get(0) {
+        if let Some(row) = result.rows().first() {
+            if let Some(value) = row.first() {
                 assert_eq!(
                     *value,
                     SqlValue::Integer(expected),

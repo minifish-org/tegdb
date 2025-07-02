@@ -200,8 +200,10 @@ fn test_parse_insert_multiple_values() {
 
 #[test]
 fn test_parse_sql_values() {
-    let sql =
-        "INSERT INTO test (int_col, real_col, text_col, null_col) VALUES (42, 3.14, 'hello', NULL)";
+    let sql = &format!(
+        "INSERT INTO test (int_col, real_col, text_col, null_col) VALUES (42, {}, 'hello', NULL)",
+        std::f64::consts::PI
+    );
     let result = parse_sql(sql);
     assert!(result.is_ok());
     let (_, statement) = result.unwrap();
@@ -209,7 +211,7 @@ fn test_parse_sql_values() {
         Statement::Insert(insert) => {
             let values = &insert.values[0];
             assert_eq!(values[0], SqlValue::Integer(42));
-            assert_eq!(values[1], SqlValue::Real(3.14));
+            assert_eq!(values[1], SqlValue::Real(std::f64::consts::PI));
             assert_eq!(values[2], SqlValue::Text("hello".to_string()));
             assert_eq!(values[3], SqlValue::Null);
         }
@@ -693,7 +695,7 @@ fn test_parse_drop_table() {
     match statement {
         Statement::DropTable(drop) => {
             assert_eq!(drop.table, "users");
-            assert_eq!(drop.if_exists, false);
+            assert!(!drop.if_exists);
         }
         _ => panic!("Expected DROP TABLE statement"),
     }
@@ -708,7 +710,7 @@ fn test_parse_drop_table_if_exists() {
     match statement {
         Statement::DropTable(drop) => {
             assert_eq!(drop.table, "users");
-            assert_eq!(drop.if_exists, true);
+            assert!(drop.if_exists);
         }
         _ => panic!("Expected DROP TABLE statement"),
     }
@@ -751,7 +753,7 @@ fn test_parse_drop_table_with_whitespace() {
     match statement {
         Statement::DropTable(drop) => {
             assert_eq!(drop.table, "my_table");
-            assert_eq!(drop.if_exists, true);
+            assert!(drop.if_exists);
         }
         _ => panic!("Expected DROP TABLE statement"),
     }
@@ -774,7 +776,7 @@ fn test_parse_drop_table_various_table_names() {
         match statement {
             Statement::DropTable(drop) => {
                 assert_eq!(drop.table, expected_table);
-                assert_eq!(drop.if_exists, false);
+                assert!(!drop.if_exists);
             }
             _ => panic!("Expected DROP TABLE statement for: {}", sql),
         }

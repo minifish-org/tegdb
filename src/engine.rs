@@ -8,6 +8,9 @@ use std::sync::Arc; // For file locking
 
 use crate::error::{Error, Result};
 
+/// Type alias for uncommitted changes list
+type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
+
 /// Config options for the database engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -393,7 +396,7 @@ impl Log {
 
     fn build_key_map(&mut self, config: &EngineConfig) -> Result<KeyMap> {
         let mut key_map = KeyMap::new();
-        let mut uncommitted_changes: Vec<(Vec<u8>, Option<Arc<[u8]>>)> = Vec::new();
+        let mut uncommitted_changes: UncommittedChanges = Vec::new();
         let file_len = self.file.metadata()?.len();
         let mut reader = BufReader::new(&mut self.file);
         let mut pos = reader.seek(SeekFrom::Start(0))?;
@@ -445,7 +448,7 @@ impl Log {
                 uncommitted_changes.push((key, old_value));
             }
 
-            pos = reader.seek(SeekFrom::Current(0))?;
+            pos = reader.stream_position()?;
         }
 
         // Rollback uncommitted changes if any commit marker was seen

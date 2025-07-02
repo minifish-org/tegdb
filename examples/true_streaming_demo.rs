@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Process only the first 3 rows to demonstrate streaming
     println!("   - Processing first 3 rows on-demand:");
     let mut count = 0;
-    while let Some(row) = streaming_result.next() {
+    for row in streaming_result.by_ref() {
         let row = row?;
         println!(
             "     Row {}: id={:?}, data={:?}, value={:?}",
@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Show that we can continue processing from where we left off
     println!("   - Continuing to process remaining rows...");
-    while let Some(_row) = streaming_result.next() {
+    for _row in streaming_result {
         count += 1;
     }
     let complete_time = start.elapsed();
@@ -93,10 +93,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. Demonstrate early termination benefit
     println!("\n3. Demonstrating early termination with LIMIT:");
     let start = Instant::now();
-    let mut limited_stream = db.query("SELECT * FROM large_table LIMIT 5")?;
+    let limited_stream = db.query("SELECT * FROM large_table LIMIT 5")?;
 
     let mut limited_count = 0;
-    while let Some(row) = limited_stream.next() {
+    for row in limited_stream {
         let row = row?;
         println!("   Limited Row {}: id={:?}", limited_count + 1, row[0]);
         limited_count += 1;

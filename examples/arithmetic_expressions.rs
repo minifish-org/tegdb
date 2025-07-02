@@ -61,7 +61,7 @@ fn main() -> tegdb::Result<()> {
         .unwrap()
         .into_query_result()
         .unwrap();
-    if let Some(row) = result.rows().get(0) {
+    if let Some(row) = result.rows().first() {
         println!(
             "   Product '{}' now has price: {:?}",
             match &row[0] {

@@ -97,7 +97,7 @@ fn main() -> tegdb::Result<()> {
     let mut sum = 0.0;
     let mut count = 0;
     for row in values_result.rows() {
-        if let Some(SqlValue::Real(temp)) = row.get(0) {
+        if let Some(SqlValue::Real(temp)) = row.first() {
             sum += temp;
             count += 1;
         }
@@ -193,7 +193,7 @@ fn main() -> tegdb::Result<()> {
         println!(
             "    Row {}: ID={}, Sensor={}, Location={}",
             offset + i + 1,
-            format_sql_value(row.get(0)),
+            format_sql_value(row.first()),
             format_sql_value(row.get(1)),
             format_sql_value(row.get(2))
         );

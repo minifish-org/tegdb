@@ -53,8 +53,8 @@ fn test_operator_precedence() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Integer(14)); // 2 + (3 * 4) = 14
         }
     }
@@ -74,8 +74,8 @@ fn test_operator_precedence() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Integer(7)); // 10 - (6 / 2) = 7
         }
     }
@@ -108,8 +108,8 @@ fn test_text_concatenation() {
         .into_query_result()
         .unwrap();
 
-    if let Some(row) = result.rows().get(0) {
-        if let Some(value) = row.get(0) {
+    if let Some(row) = result.rows().first() {
+        if let Some(value) = row.first() {
             assert_eq!(*value, tegdb::SqlValue::Text("Hello World".to_string()));
         }
     }

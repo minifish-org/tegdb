@@ -633,8 +633,7 @@ fn measure_sql_execution(
         }
         _ => {
             // For mutations, execute and get affected rows
-            let affected = db.execute(sql)?;
-            affected
+            db.execute(sql)?
         }
     };
 

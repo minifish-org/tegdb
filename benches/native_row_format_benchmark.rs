@@ -108,45 +108,45 @@ fn test_native_format(
 
     // Test 1: Full table scan
     let full_scan_start = Instant::now();
-    let mut full_result = db.query("SELECT * FROM users")?;
+    let full_result = db.query("SELECT * FROM users")?;
     let mut full_rows = Vec::new();
-    while let Some(row) = full_result.next() {
+    for row in full_result {
         full_rows.push(row?);
     }
     let full_scan_time = full_scan_start.elapsed().as_nanos();
 
     // Test 2: Selective column scan (major optimization for native format)
     let selective_start = Instant::now();
-    let mut selective_result = db.query("SELECT name, score FROM users")?;
+    let selective_result = db.query("SELECT name, score FROM users")?;
     let mut selective_rows = Vec::new();
-    while let Some(row) = selective_result.next() {
+    for row in selective_result {
         selective_rows.push(row?);
     }
     let selective_scan_time = selective_start.elapsed().as_nanos();
 
     // Test 3: Primary key lookup
     let pk_start = Instant::now();
-    let mut pk_result = db.query("SELECT name, email FROM users WHERE id = 7500")?;
+    let pk_result = db.query("SELECT name, email FROM users WHERE id = 7500")?;
     let mut pk_rows = Vec::new();
-    while let Some(row) = pk_result.next() {
+    for row in pk_result {
         pk_rows.push(row?);
     }
     let pk_lookup_time = pk_start.elapsed().as_nanos();
 
     // Test 4: Limited scan (should benefit from early termination)
     let limited_start = Instant::now();
-    let mut limited_result = db.query("SELECT name, score FROM users LIMIT 100")?;
+    let limited_result = db.query("SELECT name, score FROM users LIMIT 100")?;
     let mut limited_rows = Vec::new();
-    while let Some(row) = limited_result.next() {
+    for row in limited_result {
         limited_rows.push(row?);
     }
     let limited_scan_time = limited_start.elapsed().as_nanos();
 
     // Test 5: Filtered scan
     let filtered_start = Instant::now();
-    let mut filtered_result = db.query("SELECT name FROM users WHERE active = 1")?;
+    let filtered_result = db.query("SELECT name FROM users WHERE active = 1")?;
     let mut filtered_rows = Vec::new();
-    while let Some(row) = filtered_result.next() {
+    for row in filtered_result {
         filtered_rows.push(row?);
     }
     let filtered_scan_time = filtered_start.elapsed().as_nanos();

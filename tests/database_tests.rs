@@ -230,7 +230,7 @@ fn test_database_data_types() -> Result<()> {
     )?;
 
     // Insert data with different types
-    db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (1, 'hello', 42, 3.14, NULL)")?;
+    db.execute(&format!("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (1, 'hello', 42, {}, NULL)", std::f64::consts::PI))?;
     db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (2, 'empty_test', -100, -2.5, NULL)")?;
     db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (3, 'world', 0, 0.0, 'not null')")?;
 
@@ -269,7 +269,7 @@ fn test_database_data_types() -> Result<()> {
     assert_eq!(row1[id_pos], SqlValue::Integer(1));
     assert_eq!(row1[text_pos], SqlValue::Text("hello".to_string()));
     assert_eq!(row1[int_pos], SqlValue::Integer(42));
-    assert_eq!(row1[real_pos], SqlValue::Real(3.14));
+    assert_eq!(row1[real_pos], SqlValue::Real(std::f64::consts::PI));
     assert_eq!(row1[null_pos], SqlValue::Null);
 
     // Test second row (edge cases)

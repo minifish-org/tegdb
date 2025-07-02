@@ -256,7 +256,7 @@ fn test_sqlite(row_count: usize) -> Result<BenchmarkResults, Box<dyn std::error:
     for i in 0..row_count {
         conn.execute(
             "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
-            &[
+            [
                 &i as &dyn rusqlite::ToSql,
                 &format!("User{:05}", i),
                 &format!("user{}@example.com", i),

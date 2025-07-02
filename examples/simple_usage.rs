@@ -40,7 +40,7 @@ fn main() -> tegdb::Result<()> {
 
     println!("   Users with score > 90:");
     for row in results.rows() {
-        if let (Some(name), Some(score)) = (row.get(0), row.get(1)) {
+        if let (Some(name), Some(score)) = (row.first(), row.get(1)) {
             println!("     {:?} - {:?}", name, score);
         }
     }
@@ -60,7 +60,7 @@ fn main() -> tegdb::Result<()> {
 
     println!("   All users:");
     for row in final_results.rows() {
-        if let (Some(name), Some(score)) = (row.get(0), row.get(1)) {
+        if let (Some(name), Some(score)) = (row.first(), row.get(1)) {
             println!("     {:?} - {:?}", name, score);
         }
     }

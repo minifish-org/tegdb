@@ -5,7 +5,6 @@ use tegdb::parser::*;
 
 #[cfg(feature = "dev")]
 #[test]
-#[cfg(feature = "dev")]
 fn test_parse_arithmetic_expressions() {
     // Test simple addition
     let sql = "UPDATE users SET age = age + 5";

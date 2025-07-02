@@ -89,7 +89,7 @@ fn main() -> tegdb::Result<()> {
     
     println!("Found {} users:", result.len());
     for row in result.rows() {
-        if let (Some(name), Some(age)) = (row.get(0), row.get(1)) {
+        if let (Some(name), Some(age)) = (row.first()), row.get(1)) {
             println!("User: {:?}, Age: {:?}", name, age);
         }
     }
