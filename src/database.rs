@@ -164,7 +164,7 @@ impl Database {
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Clone schemas for the executor
         let schemas = self.table_schemas.read().unwrap().clone();
@@ -217,7 +217,7 @@ impl Database {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
             crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
             crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::CreateTable { .. } => Ok(0),
+            crate::executor::ResultSet::CreateTable => Ok(0),
             _ => Ok(0),
         }
     }
@@ -226,7 +226,7 @@ impl Database {
     /// This is the new streaming API that doesn't materialize all rows upfront
     pub fn query(&mut self, sql: &str) -> Result<StreamingQuery> {
         let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Parse the statement to determine if we can do true streaming
         match &statement {
@@ -241,8 +241,7 @@ impl Database {
                         schema.columns.iter().map(|col| col.name.clone()).collect()
                     } else {
                         return Err(crate::Error::Other(format!(
-                            "Table '{}' not found",
-                            table_name
+                            "Table '{table_name}' not found"
                         )));
                     }
                 } else {
@@ -253,7 +252,7 @@ impl Database {
                 let schema = schemas
                     .get(table_name)
                     .ok_or_else(|| {
-                        crate::Error::Other(format!("Table '{}' not found", table_name))
+                        crate::Error::Other(format!("Table '{table_name}' not found"))
                     })?
                     .clone();
 
@@ -582,7 +581,7 @@ impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Get schemas from shared cache
         let schemas = self.table_schemas.read().unwrap().clone();
@@ -625,7 +624,7 @@ impl DatabaseTransaction<'_> {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
             crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
             crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::CreateTable { .. } => Ok(0),
+            crate::executor::ResultSet::CreateTable => Ok(0),
             _ => Ok(0),
         }
     }
@@ -634,7 +633,7 @@ impl DatabaseTransaction<'_> {
     /// This provides the same streaming capability as Database::query but within a transaction context
     pub fn streaming_query(&mut self, sql: &str) -> Result<TransactionStreamingQuery> {
         let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {:?}", e)))?;
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Parse the statement to determine if we can do true streaming
         match &statement {
@@ -649,8 +648,7 @@ impl DatabaseTransaction<'_> {
                         schema.columns.iter().map(|col| col.name.clone()).collect()
                     } else {
                         return Err(crate::Error::Other(format!(
-                            "Table '{}' not found",
-                            table_name
+                            "Table '{table_name}' not found"
                         )));
                     }
                 } else {
@@ -660,9 +658,7 @@ impl DatabaseTransaction<'_> {
                 // Get table schema
                 let schema = schemas
                     .get(table_name)
-                    .ok_or_else(|| {
-                        crate::Error::Other(format!("Table '{}' not found", table_name))
-                    })?
+                    .ok_or_else(|| crate::Error::Other(format!("Table '{table_name}' not found")))?
                     .clone();
 
                 // Extract condition from where clause

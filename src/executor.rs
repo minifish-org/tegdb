@@ -345,9 +345,9 @@ impl<'a> Executor<'a> {
         limit: Option<u64>,
     ) -> Result<ResultSet> {
         let schema = self.get_table_schema(table)?;
-        let table_prefix = format!("{}:", table);
+        let table_prefix = format!("{table}:");
         let start_key = table_prefix.as_bytes().to_vec();
-        let end_key = format!("{}~", table).as_bytes().to_vec();
+        let end_key = format!("{table}~").as_bytes().to_vec();
 
         let mut rows = Vec::new();
         let mut count = 0;
@@ -403,8 +403,7 @@ impl<'a> Executor<'a> {
             // Check for primary key conflicts
             if self.transaction.get(key.as_bytes()).is_some() {
                 return Err(Error::Other(format!(
-                    "Primary key constraint violation for table '{}'",
-                    table
+                    "Primary key constraint violation for table '{table}'"
                 )));
             }
 
@@ -462,7 +461,7 @@ impl<'a> Executor<'a> {
                     // Apply assignments
                     for assignment in assignments {
                         let new_value = assignment.value.evaluate(&row_data).map_err(|e| {
-                            crate::Error::Other(format!("Expression evaluation error: {}", e))
+                            crate::Error::Other(format!("Expression evaluation error: {e}"))
                         })?;
                         row_data.insert(assignment.column.clone(), new_value);
                     }
@@ -599,9 +598,9 @@ impl<'a> Executor<'a> {
                 limit,
                 ..
             } => {
-                let table_prefix = format!("{}:", table);
+                let table_prefix = format!("{table}:");
                 let start_key = table_prefix.as_bytes().to_vec();
-                let end_key = format!("{}~", table).as_bytes().to_vec();
+                let end_key = format!("{table}~").as_bytes().to_vec();
                 let mut count = 0;
 
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
@@ -638,9 +637,9 @@ impl<'a> Executor<'a> {
                 // NOTE: This is a temporary implementation.
                 // Once secondary indexes are fully supported, this should use an index scan.
                 let schema = self.get_table_schema(table)?;
-                let table_prefix = format!("{}:", table);
+                let table_prefix = format!("{table}:");
                 let start_key = table_prefix.as_bytes().to_vec();
-                let end_key = format!("{}~", table).as_bytes().to_vec();
+                let end_key = format!("{table}~").as_bytes().to_vec();
                 let mut count = 0;
 
                 let table_scan_iter = self.transaction.scan(start_key..end_key)?;
@@ -771,7 +770,7 @@ impl<'a> Executor<'a> {
         self.table_schemas
             .get(table_name)
             .cloned()
-            .ok_or_else(|| Error::Other(format!("Table '{}' not found", table_name)))
+            .ok_or_else(|| Error::Other(format!("Table '{table_name}' not found")))
     }
 
     /// Validate row data against schema
@@ -786,10 +785,7 @@ impl<'a> Executor<'a> {
             schema.columns.iter().map(|col| &col.name).collect();
         for column_name in row_data.keys() {
             if !valid_columns.contains(column_name) {
-                return Err(Error::Other(format!(
-                    "Unknown column '{}' for table '{}'",
-                    column_name, table_name
-                )));
+                return Err(Error::Other(format!( "Unknown column '{column_name}' for table '{table_name}'")));
             }
         }
 
@@ -852,10 +848,7 @@ impl<'a> Executor<'a> {
             schema.columns.iter().map(|col| &col.name).collect();
         for column_name in row_data.keys() {
             if !valid_columns.contains(column_name) {
-                return Err(Error::Other(format!(
-                    "Unknown column '{}' for table '{}'",
-                    column_name, table_name
-                )));
+                return Err(Error::Other(format!( "Unknown column '{column_name}' for table '{table_name}'")));
             }
         }
 
@@ -1045,17 +1038,13 @@ impl<'a> Executor<'a> {
             .collect();
 
         if pk_columns.is_empty() {
-            return Err(Error::Other(format!(
-                "Table '{}' has no primary key",
-                table_name
-            )));
+            return Err(Error::Other(format!( "Table '{table_name}' has no primary key")));
         }
 
         // TegDB only supports single-column primary keys
         if pk_columns.len() > 1 {
             return Err(Error::Other(format!(
-                "Table '{}' has composite primary key, but TegDB only supports single-column primary keys", 
-                table_name
+                "Table '{table_name}' has composite primary key, but TegDB only supports single-column primary keys"
             )));
         }
 

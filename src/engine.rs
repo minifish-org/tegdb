@@ -289,7 +289,7 @@ impl Transaction<'_> {
 
     /// Returns true if the transaction is clean (no pending operations)
     pub fn is_clean(&self) -> bool {
-        self.finalized || self.undo_log.as_ref().map_or(true, |log| log.is_empty())
+        self.finalized || self.undo_log.as_ref().is_none_or(|log| log.is_empty())
     }
 
     /// Returns true if the transaction has been finalized (committed or rolled back)

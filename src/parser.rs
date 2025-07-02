@@ -180,7 +180,7 @@ impl Expression {
             Expression::Column(column_name) => context
                 .get(column_name)
                 .cloned()
-                .ok_or_else(|| format!("Column '{}' not found", column_name)),
+                .ok_or_else(|| format!("Column '{column_name}' not found")),
             Expression::BinaryOp {
                 left,
                 operator,
@@ -245,7 +245,7 @@ impl Expression {
                         }
                     }
                     (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
-                        ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{}{}", l, r))),
+                        ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{l}{r}"))),
                         _ => Err("Only addition (+) is supported for text values".to_string()),
                     },
                     _ => Err("Unsupported operand types for arithmetic operation".to_string()),

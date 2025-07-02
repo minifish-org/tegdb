@@ -21,12 +21,12 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Io(err) => write!(f, "I/O error: {}", err),
-            Error::KeyTooLarge(size) => write!(f, "Key too large: {} bytes (max 1KB)", size),
-            Error::ValueTooLarge(size) => write!(f, "Value too large: {} bytes (max 256KB)", size),
-            Error::FileLocked(msg) => write!(f, "Database file is locked: {}", msg),
-            Error::Corrupted(msg) => write!(f, "Database corrupted: {}", msg),
-            Error::Other(msg) => write!(f, "Database error: {}", msg),
+            Error::Io(err) => write!(f, "I/O error: {err}"),
+            Error::KeyTooLarge(size) => write!(f, "Key too large: {size} bytes (max 1KB)"),
+            Error::ValueTooLarge(size) => write!(f, "Value too large: {size} bytes (max 256KB)"),
+            Error::FileLocked(msg) => write!(f, "Database file is locked: {msg}"),
+            Error::Corrupted(msg) => write!(f, "Database corrupted: {msg}"),
+            Error::Other(msg) => write!(f, "Database error: {msg}"),
         }
     }
 }
