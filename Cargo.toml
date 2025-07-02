@@ -17,7 +17,6 @@ license = "AGPL-3.0"
 [dependencies]
 fs2 = "0.4.3"  # Required for file locking in production code
 nom = "7.1"   # SQL parser
-chrono = "0.4"  # For timestamps
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
