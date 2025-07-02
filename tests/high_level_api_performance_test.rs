@@ -409,7 +409,7 @@ fn test_concurrent_schema_access_performance() -> Result<()> {
     let start = Instant::now();
     let table_ops = 20;
     for i in 0..table_ops {
-        db.execute(&format!("CREATE TABLE temp_table_{} (id INTEGER, name TEXT)", i))?;
+        db.execute(&format!("CREATE TABLE temp_table_{} (id INTEGER PRIMARY KEY, name TEXT)", i))?;
         db.execute(&format!("DROP TABLE temp_table_{}", i))?;
     }
     metrics.push(PerformanceMetrics::new("Schema Modifications", start.elapsed(), table_ops * 2));

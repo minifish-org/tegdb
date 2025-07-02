@@ -103,6 +103,25 @@ impl<'a> Executor<'a> {
 
     /// Execute CREATE TABLE statement
     pub fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
+        // Validate that we don't have composite primary keys
+        let pk_count = create.columns.iter()
+            .filter(|col| col.constraints.contains(&ColumnConstraint::PrimaryKey))
+            .count();
+            
+        if pk_count > 1 {
+            return Err(Error::Other(format!(
+                "Table '{}' has composite primary key, but TegDB only supports single-column primary keys", 
+                create.table
+            )));
+        }
+        
+        if pk_count == 0 {
+            return Err(Error::Other(format!(
+                "Table '{}' must have exactly one primary key column", 
+                create.table
+            )));
+        }
+        
         // Convert to internal schema format
         let columns: Vec<ColumnInfo> = create.columns.iter().map(|col| ColumnInfo {
             name: col.name.clone(),
@@ -906,6 +925,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Build primary key string for a row
+    /// Note: TegDB only supports single-column primary keys
     fn build_primary_key(
         &self,
         table_name: &str,
@@ -923,18 +943,22 @@ impl<'a> Executor<'a> {
             )));
         }
         
-        let mut key_parts = Vec::new();
-        for pk_col in pk_columns {
-            if let Some(value) = row_data.get(&pk_col.name) {
-                key_parts.push(self.value_to_key_string(value));
-            } else {
-                return Err(Error::Other(format!(
-                    "Missing primary key value for column '{}'", pk_col.name
-                )));
-            }
+        // TegDB only supports single-column primary keys
+        if pk_columns.len() > 1 {
+            return Err(Error::Other(format!(
+                "Table '{}' has composite primary key, but TegDB only supports single-column primary keys", 
+                table_name
+            )));
         }
         
-        Ok(format!("{}:{}", table_name, key_parts.join(":")))
+        let pk_col = &pk_columns[0];
+        if let Some(value) = row_data.get(&pk_col.name) {
+            Ok(format!("{}:{}", table_name, self.value_to_key_string(value)))
+        } else {
+            Err(Error::Other(format!(
+                "Missing primary key value for column '{}'", pk_col.name
+            )))
+        }
     }
 
     /// Convert SqlValue to key string representation
