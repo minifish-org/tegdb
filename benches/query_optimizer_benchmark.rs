@@ -24,14 +24,13 @@ fn setup_test_database() -> Result<Database> {
     let categories = ["electronics", "books", "clothing"];
     for category in &categories {
         for product_id in 1..=100 {
-            let name = format!("{} Product {}", category, product_id);
+            let name = format!("{category} Product {product_id}");
             let price = 10.0 + (product_id as f64 * 0.1);
-            let description = format!("Description for {} product {}", category, product_id);
+            let description = format!("Description for {category} product {product_id}");
 
             db.execute(&format!(
                 "INSERT INTO products (category, product_id, name, price, description) 
-                 VALUES ('{}', {}, '{}', {}, '{}')",
-                category, product_id, name, price, description
+                 VALUES ('{category}', {product_id}, '{name}', {price}, '{description}')"
             ))?;
         }
     }

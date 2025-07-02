@@ -37,11 +37,11 @@ fn main() -> Result<()> {
 
         // Try UPDATE within transaction
         let updated = tx.execute("UPDATE users SET age = 31 WHERE name = 'Alice'")?;
-        println!("UPDATE affected {} rows", updated);
+        println!("UPDATE affected {updated} rows");
 
         // Try DELETE within transaction
         let deleted = tx.execute("DELETE FROM users WHERE name = 'Bob'")?;
-        println!("DELETE affected {} rows", deleted);
+        println!("DELETE affected {deleted} rows");
 
         // Try SELECT within transaction to see changes
         let tx_result = tx
@@ -66,7 +66,7 @@ fn main() -> Result<()> {
     println!("\n=== Testing simple operations ===");
     db.execute("INSERT INTO users (id, name, age) VALUES (4, 'David', 28)")?;
     let updated = db.execute("UPDATE users SET age = 36 WHERE name = 'Carol'")?;
-    println!("Simple UPDATE affected {} rows", updated);
+    println!("Simple UPDATE affected {updated} rows");
 
     let simple_result = db
         .query("SELECT id, name, age FROM users")?
@@ -100,6 +100,6 @@ fn print_query_result(result: &tegdb::QueryResult) {
             _ => 0,
         };
 
-        println!("  ID: {}, Name: {}, Age: {}", id, name, age);
+        println!("  ID: {id}, Name: {name}, Age: {age}");
     }
 }

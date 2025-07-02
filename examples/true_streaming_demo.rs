@@ -39,12 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let count = result_iter.collect::<Result<Vec<_>, _>>()?.len();
     let total_time = start.elapsed();
 
-    println!("   - Time to create iterator: {:?}", materialized_time);
-    println!("   - Time to process all {} rows: {:?}", count, total_time);
-    println!(
-        "   - Memory usage: All {} rows materialized in memory",
-        count
-    );
+    println!("   - Time to create iterator: {materialized_time:?}");
+    println!("   - Time to process all {count} rows: {total_time:?}");
+    println!("   - Memory usage: All {count} rows materialized in memory");
 
     // 2. True streaming API (yields rows on-demand)
     println!("\n2. Using new query() API (true streaming):");
@@ -52,10 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut streaming_result = db.query("SELECT * FROM large_table WHERE value < 5")?;
     let streaming_create_time = start.elapsed();
 
-    println!(
-        "   - Time to create streaming iterator: {:?}",
-        streaming_create_time
-    );
+    println!("   - Time to create streaming iterator: {streaming_create_time:?}");
     println!("   - Memory usage: No rows materialized yet");
 
     // Process only the first 3 rows to demonstrate streaming
@@ -77,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let partial_time = start.elapsed();
-    println!("   - Time to process first 3 rows: {:?}", partial_time);
+    println!("   - Time to process first 3 rows: {partial_time:?}");
     println!("   - Memory usage: Only 3 rows processed, rest remain unread");
 
     // Show that we can continue processing from where we left off
@@ -87,8 +81,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let complete_time = start.elapsed();
 
-    println!("   - Total rows processed: {}", count);
-    println!("   - Total time to process all rows: {:?}", complete_time);
+    println!("   - Total rows processed: {count}");
+    println!("   - Total time to process all rows: {complete_time:?}");
 
     // 3. Demonstrate early termination benefit
     println!("\n3. Demonstrating early termination with LIMIT:");
@@ -103,14 +97,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let limited_time = start.elapsed();
 
-    println!(
-        "   - Time to process {} rows with LIMIT: {:?}",
-        limited_count, limited_time
-    );
-    println!(
-        "   - Memory efficiency: Only {} rows ever existed in memory",
-        limited_count
-    );
+    println!("   - Time to process {limited_count} rows with LIMIT: {limited_time:?}");
+    println!("   - Memory efficiency: Only {limited_count} rows ever existed in memory");
 
     // 4. Show memory efficiency comparison
     println!("\n=== MEMORY EFFICIENCY COMPARISON ===");

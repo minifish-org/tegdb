@@ -61,7 +61,7 @@ fn large_sql_statements() -> Vec<(&'static str, String)> {
             format!(
                 "INSERT INTO test_table (col1, col2, col3, col4, col5) VALUES {}",
                 (0..50)
-                    .map(|i| format!("({}, 'text{}', {}.5, 'value{}', 'data{}')", i, i, i, i, i))
+                    .map(|i| format!("({i}, 'text{i}', {i}.5, 'value{i}', 'data{i}')"))
                     .collect::<Vec<_>>()
                     .join(", ")
             )
@@ -70,8 +70,8 @@ fn large_sql_statements() -> Vec<(&'static str, String)> {
             "select_many_columns",
             format!(
                 "SELECT {} FROM large_table WHERE id > 1000 ORDER BY {} LIMIT 1000",
-                (1..=30).map(|i| format!("col{}", i)).collect::<Vec<_>>().join(", "),
-                (1..=5).map(|i| format!("col{} ASC", i)).collect::<Vec<_>>().join(", ")
+                (1..=30).map(|i| format!("col{i}")).collect::<Vec<_>>().join(", "),
+                (1..=5).map(|i| format!("col{i} ASC")).collect::<Vec<_>>().join(", ")
             )
         ),
         (
@@ -218,7 +218,7 @@ fn bench_memory_usage(c: &mut Criterion) {
             format!(
                 "SELECT {} FROM table",
                 (1..=50)
-                    .map(|i| format!("{}.5", i))
+                    .map(|i| format!("{i}.5"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

@@ -21,7 +21,7 @@ fn main() -> Result<()> {
         .unwrap();
     println!("Columns: {:?}", result.columns());
     for row in result.rows().iter() {
-        println!("Row: {:?}", row);
+        println!("Row: {row:?}");
     }
 
     println!("Querying with SELECT *...");
@@ -32,7 +32,7 @@ fn main() -> Result<()> {
         .unwrap();
     println!("Columns: {:?}", result.columns());
     for row in result.rows().iter() {
-        println!("Row: {:?}", row);
+        println!("Row: {row:?}");
     }
 
     Ok(())

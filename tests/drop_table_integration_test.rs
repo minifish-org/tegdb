@@ -26,7 +26,7 @@ fn test_drop_table_integration() {
         _ => panic!("Expected CREATE TABLE statement"),
     };
     let create_result = executor.execute_create_table(create_statement).unwrap();
-    assert!(matches!(create_result, ResultSet::CreateTable { .. }));
+    assert!(matches!(create_result, ResultSet::CreateTable));
 
     // Drop the table
     let drop_sql = "DROP TABLE test_table";

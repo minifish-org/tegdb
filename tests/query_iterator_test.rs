@@ -67,8 +67,7 @@ fn test_query_iterator_streaming() {
         .unwrap();
     for i in 1..=5 {
         db.execute(&format!(
-            "INSERT INTO streaming_test (id, data) VALUES ({}, 'data_{}')",
-            i, i
+            "INSERT INTO streaming_test (id, data) VALUES ({i}, 'data_{i}')"
         ))
         .unwrap();
     }

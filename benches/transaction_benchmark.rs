@@ -20,8 +20,8 @@ fn transaction_basic_operations(c: &mut Criterion) {
 
     // Pre-populate with some data for get operations
     for i in 0..100 {
-        let key = format!("key{}", i);
-        let value = format!("value{}", i);
+        let key = format!("key{i}");
+        let value = format!("value{i}");
         engine.set(key.as_bytes(), value.into_bytes()).unwrap();
     }
 
@@ -103,8 +103,8 @@ fn transaction_batch_operations(c: &mut Criterion) {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
             for i in 0..10 {
-                let key = format!("small_key{}", i);
-                let value = format!("small_value{}", i);
+                let key = format!("small_key{i}");
+                let value = format!("small_value{i}");
                 tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                     .unwrap();
             }
@@ -117,8 +117,8 @@ fn transaction_batch_operations(c: &mut Criterion) {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
             for i in 0..100 {
-                let key = format!("medium_key{}", i);
-                let value = format!("medium_value{}", i);
+                let key = format!("medium_key{i}");
+                let value = format!("medium_value{i}");
                 tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                     .unwrap();
             }
@@ -131,8 +131,8 @@ fn transaction_batch_operations(c: &mut Criterion) {
         b.iter(|| {
             let mut tx = engine.begin_transaction();
             for i in 0..1000 {
-                let key = format!("large_key{}", i);
-                let value = format!("large_value{}", i);
+                let key = format!("large_key{i}");
+                let value = format!("large_value{i}");
                 tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                     .unwrap();
             }
@@ -154,8 +154,8 @@ fn transaction_mixed_operations(c: &mut Criterion) {
 
     // Pre-populate with some data
     for i in 0..50 {
-        let key = format!("existing_key{}", i);
-        let value = format!("existing_value{}", i);
+        let key = format!("existing_key{i}");
+        let value = format!("existing_value{i}");
         engine.set(key.as_bytes(), value.into_bytes()).unwrap();
     }
 
@@ -169,8 +169,8 @@ fn transaction_mixed_operations(c: &mut Criterion) {
                 let idx = (counter * 20 + i) % 50;
 
                 // Set new key
-                let new_key = format!("new_key{}_{}", counter, i);
-                let new_value = format!("new_value{}_{}", counter, i);
+                let new_key = format!("new_key{counter}_{i}");
+                let new_value = format!("new_value{counter}_{i}");
                 tx.set(
                     black_box(new_key.as_bytes()),
                     black_box(new_value.into_bytes()),
@@ -178,12 +178,12 @@ fn transaction_mixed_operations(c: &mut Criterion) {
                 .unwrap();
 
                 // Get existing key
-                let existing_key = format!("existing_key{}", idx);
+                let existing_key = format!("existing_key{idx}");
                 let _ = black_box(tx.get(black_box(existing_key.as_bytes())));
 
                 // Delete every 4th iteration
                 if i % 4 == 0 {
-                    let delete_key = format!("existing_key{}", idx);
+                    let delete_key = format!("existing_key{idx}");
                     tx.delete(black_box(delete_key.as_bytes())).unwrap();
                 }
             }
@@ -212,8 +212,8 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
 
     // Pre-populate with data
     for i in 0..100 {
-        let key = format!("conflict_key{}", i);
-        let value = format!("original_value{}", i);
+        let key = format!("conflict_key{i}");
+        let value = format!("original_value{i}");
         engine.set(key.as_bytes(), value.into_bytes()).unwrap();
     }
 
@@ -225,7 +225,7 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
             // Overwrite existing keys
             for i in 0..10 {
                 let key = format!("conflict_key{}", i % 100);
-                let value = format!("updated_value{}_{}", counter, i);
+                let value = format!("updated_value{counter}_{i}");
                 tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                     .unwrap();
             }
@@ -251,7 +251,7 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
                 let new_value = if let Some(val) = current {
                     format!("{}_modified_{}", String::from_utf8_lossy(&val), counter)
                 } else {
-                    format!("new_value_{}", counter)
+                    format!("new_value_{counter}")
                 };
 
                 tx.set(black_box(key.as_bytes()), black_box(new_value.into_bytes()))

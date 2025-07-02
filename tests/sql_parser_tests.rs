@@ -258,7 +258,7 @@ fn test_parse_error_cases() {
 
     for sql in invalid_sqls {
         let result = parse_sql(sql);
-        assert!(result.is_err(), "Expected error for SQL: {}", sql);
+        assert!(result.is_err(), "Expected error for SQL: {sql}");
     }
 }
 
@@ -326,24 +326,23 @@ fn test_parse_where_clause_operators() {
 
     for (sql, expected_op) in test_cases {
         let result = parse_sql(sql);
-        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        assert!(result.is_ok(), "Failed to parse: {sql}");
         let (_, statement) = result.unwrap();
         match statement {
             Statement::Select(select) => {
                 assert!(
                     select.where_clause.is_some(),
-                    "WHERE clause missing for: {}",
-                    sql
+                    "WHERE clause missing for: {sql}"
                 );
                 let where_clause = select.where_clause.unwrap();
                 match where_clause.condition {
                     Condition::Comparison { operator, .. } => {
-                        assert_eq!(operator, expected_op, "Wrong operator for: {}", sql);
+                        assert_eq!(operator, expected_op, "Wrong operator for: {sql}");
                     }
-                    _ => panic!("Expected comparison condition for: {}", sql),
+                    _ => panic!("Expected comparison condition for: {sql}"),
                 }
             }
-            _ => panic!("Expected SELECT statement for: {}", sql),
+            _ => panic!("Expected SELECT statement for: {sql}"),
         }
     }
 }
@@ -682,7 +681,7 @@ fn test_parse_syntax_error_cases() {
 
     for sql in definite_syntax_errors {
         let result = parse_sql(sql);
-        assert!(result.is_err(), "Expected syntax error for: {}", sql);
+        assert!(result.is_err(), "Expected syntax error for: {sql}");
     }
 }
 
@@ -730,7 +729,7 @@ fn test_parse_drop_table_case_insensitive() {
 
     for sql in test_cases {
         let result = parse_sql(sql);
-        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        assert!(result.is_ok(), "Failed to parse: {sql}");
         let (_, statement) = result.unwrap();
         match statement {
             Statement::DropTable(drop) => {
@@ -739,7 +738,7 @@ fn test_parse_drop_table_case_insensitive() {
                 let expected_if_exists = sql.to_lowercase().contains("if exists");
                 assert_eq!(drop.if_exists, expected_if_exists);
             }
-            _ => panic!("Expected DROP TABLE statement for: {}", sql),
+            _ => panic!("Expected DROP TABLE statement for: {sql}"),
         }
     }
 }
@@ -771,14 +770,14 @@ fn test_parse_drop_table_various_table_names() {
 
     for (sql, expected_table) in test_cases {
         let result = parse_sql(sql);
-        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        assert!(result.is_ok(), "Failed to parse: {sql}");
         let (_, statement) = result.unwrap();
         match statement {
             Statement::DropTable(drop) => {
                 assert_eq!(drop.table, expected_table);
                 assert!(!drop.if_exists);
             }
-            _ => panic!("Expected DROP TABLE statement for: {}", sql),
+            _ => panic!("Expected DROP TABLE statement for: {sql}"),
         }
     }
 }
@@ -795,7 +794,7 @@ fn test_parse_drop_table_error_cases() {
 
     for sql in error_cases {
         let result = parse_sql(sql);
-        assert!(result.is_err(), "Expected error for: {}", sql);
+        assert!(result.is_err(), "Expected error for: {sql}");
     }
 }
 
@@ -865,7 +864,7 @@ fn test_parse_string_literal_edge_cases() {
 
     // Test very long string
     let long_string = "a".repeat(1000);
-    let sql = format!("INSERT INTO messages (content) VALUES ('{}')", long_string);
+    let sql = format!("INSERT INTO messages (content) VALUES ('{long_string}')");
     let result = parse_sql(&sql);
     assert!(result.is_ok());
 }
@@ -932,7 +931,7 @@ fn test_parse_complex_where_conditions() {
             match statement {
                 Statement::Select(_select) => {
                     // The parser might parse up to the parenthesis and leave the rest
-                    println!("Remaining unparsed: '{}'", remaining);
+                    println!("Remaining unparsed: '{remaining}'");
                     // This documents that parentheses are not handled correctly
                 }
                 _ => panic!("Expected SELECT statement"),
@@ -1003,7 +1002,7 @@ fn test_parse_identifier_edge_cases() {
 
     // Test very long identifier
     let long_name = "very_long_identifier_name_that_exceeds_normal_length_limits".to_string();
-    let sql = format!("SELECT {} FROM users", long_name);
+    let sql = format!("SELECT {long_name} FROM users");
     let result = parse_sql(&sql);
     assert!(result.is_ok());
 }

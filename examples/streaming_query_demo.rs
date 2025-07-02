@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let all_rows = query_iter.collect_rows()?;
 
-    println!("All rows collected: {:?}", all_rows);
+    println!("All rows collected: {all_rows:?}");
 
     println!("\n=== Backward Compatibility ===");
 

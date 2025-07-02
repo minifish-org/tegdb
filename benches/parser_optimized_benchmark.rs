@@ -83,18 +83,14 @@ fn bench_optimization_impact(c: &mut Criterion) {
 
 fn bench_memory_efficiency(c: &mut Criterion) {
     let repeated_identifier = "user_id"; // Should benefit from string interning
-    let unique_identifiers = (0..100)
-        .map(|i| format!("column_{}", i))
-        .collect::<Vec<_>>();
+    let unique_identifiers = (0..100).map(|i| format!("column_{i}")).collect::<Vec<_>>();
 
     let mut group = c.benchmark_group("memory_efficiency");
 
     // Test string interning benefit
     group.bench_function("repeated_identifiers", |b| {
-        let sql = format!(
-            "SELECT {} FROM table WHERE {} = 1",
-            repeated_identifier, repeated_identifier
-        );
+        let sql =
+            format!("SELECT {repeated_identifier} FROM table WHERE {repeated_identifier} = 1");
         b.iter(|| {
             for _ in 0..10 {
                 let result = parse_sql(black_box(&sql));
@@ -107,7 +103,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
     group.bench_function("unique_identifiers", |b| {
         b.iter(|| {
             for identifier in &unique_identifiers[..10] {
-                let sql = format!("SELECT {} FROM table", identifier);
+                let sql = format!("SELECT {identifier} FROM table");
                 let result = parse_sql(black_box(&sql));
                 let _ = black_box(result);
             }

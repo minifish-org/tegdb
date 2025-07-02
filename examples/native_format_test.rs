@@ -65,7 +65,7 @@ fn main() -> tegdb::Result<()> {
     );
     if !result.rows().is_empty() {
         if let Some(name) = result.rows()[0].first() {
-            println!("   Found user: {:?}", name);
+            println!("   Found user: {name:?}");
         }
     }
 
@@ -81,7 +81,7 @@ fn main() -> tegdb::Result<()> {
     // Test 8: Check database size
     println!("8. Checking storage efficiency...");
     let db_size = std::fs::metadata("test_native.db")?.len();
-    println!("   ✓ Database size: {} bytes", db_size);
+    println!("   ✓ Database size: {db_size} bytes");
     println!("   ✓ Average bytes per row: {:.1}", db_size as f64 / 1000.0);
 
     println!("\n=== NATIVE FORMAT BENEFITS DEMONSTRATED ===");

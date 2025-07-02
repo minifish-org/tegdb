@@ -117,14 +117,14 @@ fn test_transaction_statement_priority() {
 
     for sql in statements {
         let result = parse_sql(sql);
-        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        assert!(result.is_ok(), "Failed to parse: {sql}");
         let (_, statement) = result.unwrap();
 
         match sql {
             "BEGIN" | "START TRANSACTION" => assert!(matches!(statement, Statement::Begin)),
             "COMMIT" => assert!(matches!(statement, Statement::Commit)),
             "ROLLBACK" => assert!(matches!(statement, Statement::Rollback)),
-            _ => panic!("Unexpected SQL statement: {}", sql),
+            _ => panic!("Unexpected SQL statement: {sql}"),
         }
     }
 }
@@ -149,8 +149,7 @@ fn test_invalid_transaction_statements() {
             // If it parses, there should be remaining input indicating partial parse
             assert!(
                 !remaining.trim().is_empty(),
-                "Unexpected successful parse for: {}",
-                sql
+                "Unexpected successful parse for: {sql}"
             );
         }
         // Otherwise it failed to parse, which is expected

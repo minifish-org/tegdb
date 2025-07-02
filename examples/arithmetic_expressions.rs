@@ -105,7 +105,7 @@ fn print_products(db: &mut Database) -> tegdb::Result<()> {
             _ => "?",
         };
         let price = match &row[1] {
-            SqlValue::Real(f) => format!("{:.2}", f),
+            SqlValue::Real(f) => format!("{f:.2}"),
             SqlValue::Integer(i) => i.to_string(),
             _ => "?".to_string(),
         };
@@ -114,15 +114,12 @@ fn print_products(db: &mut Database) -> tegdb::Result<()> {
             _ => "?".to_string(),
         };
         let discount = match &row[3] {
-            SqlValue::Real(f) => format!("{:.2}", f),
+            SqlValue::Real(f) => format!("{f:.2}"),
             SqlValue::Integer(i) => i.to_string(),
             _ => "?".to_string(),
         };
 
-        println!(
-            "   | {:<8} | ${:<7} | {:<8} | ${:<7} |",
-            name, price, quantity, discount
-        );
+        println!("   | {name:<8} | ${price:<7} | {quantity:<8} | ${discount:<7} |");
     }
     println!();
 

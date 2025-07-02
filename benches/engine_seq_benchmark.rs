@@ -12,7 +12,7 @@ fn temp_db_path(prefix: &str) -> PathBuf {
 }
 
 fn engine_benchmark(c: &mut Criterion, value_size: usize) {
-    let path = temp_db_path(&format!("seq_{}", value_size));
+    let path = temp_db_path(&format!("seq_{value_size}"));
     if path.exists() {
         fs::remove_file(&path).expect("Failed to remove existing test file");
     }
@@ -21,15 +21,15 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
 
     // Insert some test data before running get benchmarks
     for i in 0..1000 {
-        let key_str = format!("key{}", i);
+        let key_str = format!("key{i}");
         let key = key_str.as_bytes();
         engine.set(key, value.to_vec()).unwrap();
     }
 
-    c.bench_function(&format!("engine seq set {}", value_size), |b| {
+    c.bench_function(&format!("engine seq set {value_size}"), |b| {
         let mut i = 0;
         b.iter(|| {
-            let key_str = format!("key{}", i);
+            let key_str = format!("key{i}");
             let key = key_str.as_bytes();
             engine
                 .set(black_box(key), black_box(value.to_vec()))
@@ -38,7 +38,7 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-    c.bench_function(&format!("engine seq get {}", value_size), |b| {
+    c.bench_function(&format!("engine seq get {value_size}"), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
@@ -49,7 +49,7 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
     });
 
     // Add sequential scan benchmark for engine
-    c.bench_function(&format!("engine seq scan {}", value_size), |b| {
+    c.bench_function(&format!("engine seq scan {value_size}"), |b| {
         b.iter(|| {
             let start = format!("key{}", 0).into_bytes();
             let end = format!("key{}", 1000).into_bytes();
@@ -59,7 +59,7 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-    c.bench_function(&format!("engine seq del {}", value_size), |b| {
+    c.bench_function(&format!("engine seq del {value_size}"), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
@@ -75,7 +75,7 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
 }
 
 fn sled_benchmark(c: &mut Criterion, value_size: usize) {
-    let path = temp_db_path(&format!("sled_seq_{}", value_size));
+    let path = temp_db_path(&format!("sled_seq_{value_size}"));
     let path_str = path.to_str().expect("Invalid path");
     if path.exists() {
         std::fs::remove_dir_all(path_str).unwrap_or_default();
@@ -85,15 +85,15 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
 
     // Insert some test data before running get benchmarks
     for i in 0..1000 {
-        let key_str = format!("key{}", i);
+        let key_str = format!("key{i}");
         let key = key_str.as_bytes();
         db.insert(key, value.as_slice()).unwrap();
     }
 
-    c.bench_function(&format!("sled seq insert {}", value_size), |b| {
+    c.bench_function(&format!("sled seq insert {value_size}"), |b| {
         let mut i = 0;
         b.iter(|| {
-            let key_str = format!("key{}", i);
+            let key_str = format!("key{i}");
             let key = key_str.as_bytes();
             db.insert(black_box(key), black_box(value.as_slice()))
                 .unwrap();
@@ -101,7 +101,7 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-    c.bench_function(&format!("sled seq get {}", value_size), |b| {
+    c.bench_function(&format!("sled seq get {value_size}"), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added
@@ -112,7 +112,7 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
     });
 
     // Add sequential scan benchmark for sled
-    c.bench_function(&format!("sled seq scan {}", value_size), |b| {
+    c.bench_function(&format!("sled seq scan {value_size}"), |b| {
         b.iter(|| {
             let start = format!("key{}", 0).into_bytes();
             let end = format!("key{}", 1000).into_bytes();
@@ -124,7 +124,7 @@ fn sled_benchmark(c: &mut Criterion, value_size: usize) {
         })
     });
 
-    c.bench_function(&format!("sled seq remove {}", value_size), |b| {
+    c.bench_function(&format!("sled seq remove {value_size}"), |b| {
         let mut i = 0;
         b.iter(|| {
             let key_str = format!("key{}", i % 1000); // Cycle through the 1000 keys we added

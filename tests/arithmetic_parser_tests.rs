@@ -47,17 +47,17 @@ fn test_parse_all_arithmetic_operators() {
 
     for (sql, expected_op) in test_cases {
         let result = parse_sql(sql);
-        assert!(result.is_ok(), "Failed to parse: {}", sql);
+        assert!(result.is_ok(), "Failed to parse: {sql}");
         let (_, statement) = result.unwrap();
 
         match statement {
             Statement::Update(update) => match &update.assignments[0].value {
                 Expression::BinaryOp { operator, .. } => {
-                    assert_eq!(*operator, expected_op, "Wrong operator for: {}", sql);
+                    assert_eq!(*operator, expected_op, "Wrong operator for: {sql}");
                 }
-                _ => panic!("Expected BinaryOp for: {}", sql),
+                _ => panic!("Expected BinaryOp for: {sql}"),
             },
-            _ => panic!("Expected UPDATE statement for: {}", sql),
+            _ => panic!("Expected UPDATE statement for: {sql}"),
         }
     }
 }

@@ -22,24 +22,24 @@ fn test_insert_validation() -> Result<()> {
     // Test valid insert
     let result =
         db.execute("INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")?;
-    println!("Valid insert result: {:?}", result);
+    println!("Valid insert result: {result:?}");
 
     // Test NOT NULL constraint violation
     let result = db.execute("INSERT INTO users (id, email) VALUES (2, 'bob@example.com')");
     assert!(result.is_err(), "Should fail for NOT NULL violation");
-    println!("NOT NULL validation: {:?}", result);
+    println!("NOT NULL validation: {result:?}");
 
     // Test UNIQUE constraint violation
     let result = db
         .execute("INSERT INTO users (id, name, email) VALUES (3, 'Charlie', 'alice@example.com')");
     assert!(result.is_err(), "Should fail for UNIQUE violation");
-    println!("UNIQUE validation: {:?}", result);
+    println!("UNIQUE validation: {result:?}");
 
     // Test unknown column
     let result =
         db.execute("INSERT INTO users (id, name, unknown_column) VALUES (4, 'David', 'something')");
     assert!(result.is_err(), "Should fail for unknown column");
-    println!("Unknown column validation: {:?}", result);
+    println!("Unknown column validation: {result:?}");
 
     Ok(())
 }
@@ -54,18 +54,18 @@ fn test_update_validation() -> Result<()> {
 
     // Test valid update
     let result = db.execute("UPDATE users SET name = 'Alice Updated' WHERE id = 1");
-    assert!(result.is_ok(), "Valid update should succeed: {:?}", result);
-    println!("Valid update result: {:?}", result);
+    assert!(result.is_ok(), "Valid update should succeed: {result:?}");
+    println!("Valid update result: {result:?}");
 
     // Test NOT NULL constraint violation
     let result = db.execute("UPDATE users SET name = NULL WHERE id = 1");
     assert!(result.is_err(), "Should fail for NOT NULL violation");
-    println!("NOT NULL update validation: {:?}", result);
+    println!("NOT NULL update validation: {result:?}");
 
     // Test UNIQUE constraint violation
     let result = db.execute("UPDATE users SET email = 'bob@example.com' WHERE id = 1");
     assert!(result.is_err(), "Should fail for UNIQUE violation");
-    println!("UNIQUE update validation: {:?}", result);
+    println!("UNIQUE update validation: {result:?}");
 
     Ok(())
 }
@@ -77,22 +77,21 @@ fn test_select_memory_optimization() -> Result<()> {
     // Insert test data
     for i in 1..=100 {
         db.execute(&format!(
-            "INSERT INTO users (id, name, email) VALUES ({}, 'User{}', 'user{}@example.com')",
-            i, i, i
+            "INSERT INTO users (id, name, email) VALUES ({i}, 'User{i}', 'user{i}@example.com')"
         ))?;
     }
 
     // Test LIMIT optimization (should only process limited rows)
     let result = db.execute("SELECT * FROM users LIMIT 5")?;
-    println!("Limited select result: {:?}", result);
+    println!("Limited select result: {result:?}");
 
     // Test WHERE optimization (should filter early)
     let result = db.execute("SELECT * FROM users WHERE id = 42")?;
-    println!("Filtered select result: {:?}", result);
+    println!("Filtered select result: {result:?}");
 
     // Test combined LIMIT and WHERE
     let result = db.execute("SELECT * FROM users WHERE id > 50 LIMIT 3")?;
-    println!("Combined optimization result: {:?}", result);
+    println!("Combined optimization result: {result:?}");
 
     Ok(())
 }

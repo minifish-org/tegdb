@@ -24,14 +24,13 @@ fn main() -> Result<()> {
 
     for category in &categories {
         for product_id in 1..=100 {
-            let name = format!("{} Product {}", category, product_id);
+            let name = format!("{category} Product {product_id}");
             let price = 10.0 + (product_id as f64 * 0.5);
-            let description = format!("Description for {} product {}", category, product_id);
+            let description = format!("Description for {category} product {product_id}");
 
             db.execute(&format!(
                 "INSERT INTO products (category, product_id, name, price, description) 
-                 VALUES ('{}', {}, '{}', {}, '{}')",
-                category, product_id, name, price, description
+                 VALUES ('{category}', {product_id}, '{name}', {price}, '{description}')"
             ))?;
             total_inserted += 1;
         }
@@ -53,7 +52,7 @@ fn main() -> Result<()> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("   Query executed in {:?}", duration);
+    println!("   Query executed in {duration:?}");
     println!(
         "   Found {} rows with {} columns",
         result.rows().len(),
@@ -74,7 +73,7 @@ fn main() -> Result<()> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("   Query executed in {:?}", duration);
+    println!("   Query executed in {duration:?}");
     println!(
         "   Found {} rows with {} columns",
         result.rows().len(),
@@ -92,7 +91,7 @@ fn main() -> Result<()> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("   Query executed in {:?}", duration);
+    println!("   Query executed in {duration:?}");
     println!("   Found {} expensive products", result.rows().len());
 
     // Test 4: Complex AND condition with complete PK
@@ -108,7 +107,7 @@ fn main() -> Result<()> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("   Query executed in {:?}", duration);
+    println!("   Query executed in {duration:?}");
     println!("   Found {} rows", result.rows().len());
     assert_eq!(
         result.rows().len(),

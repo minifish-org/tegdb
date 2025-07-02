@@ -227,8 +227,7 @@ impl QueryPlanner {
         // Validate table exists
         if !self.table_schemas.contains_key(table_name) {
             return Err(crate::Error::Other(format!(
-                "Table '{}' not found",
-                table_name
+                "Table '{table_name}' not found"
             )));
         }
 
@@ -516,8 +515,7 @@ impl QueryPlanner {
                 Ok(schema.columns.iter().map(|c| c.name.clone()).collect())
             } else {
                 Err(crate::Error::Other(format!(
-                    "Table '{}' not found",
-                    table_name
+                    "Table '{table_name}' not found"
                 )))
             }
         } else {
@@ -552,8 +550,7 @@ impl QueryPlanner {
             Ok(pk_columns)
         } else {
             Err(crate::Error::Other(format!(
-                "Table '{}' not found",
-                table_name
+                "Table '{table_name}' not found"
             )))
         }
     }
@@ -676,7 +673,7 @@ impl ExecutionPlan {
             ExecutionPlan::IndexScan {
                 table, index_name, ..
             } => {
-                format!("Index Scan on {}.{}", table, index_name)
+                format!("Index Scan on {table}.{index_name}")
             }
             ExecutionPlan::TableScan {
                 table,
@@ -684,9 +681,9 @@ impl ExecutionPlan {
                 ..
             } => {
                 if *early_termination {
-                    format!("Table Scan on {} (with early termination)", table)
+                    format!("Table Scan on {table} (with early termination)")
                 } else {
-                    format!("Table Scan on {}", table)
+                    format!("Table Scan on {table}")
                 }
             }
             ExecutionPlan::Insert { table, rows, .. } => {
@@ -703,10 +700,10 @@ impl ExecutionPlan {
                 format!("Delete from {} via {}", table, scan_plan.describe())
             }
             ExecutionPlan::CreateTable { table, .. } => {
-                format!("Create Table {}", table)
+                format!("Create Table {table}")
             }
             ExecutionPlan::DropTable { table, .. } => {
-                format!("Drop Table {}", table)
+                format!("Drop Table {table}")
             }
             ExecutionPlan::Begin => "Begin Transaction".to_string(),
             ExecutionPlan::Commit => "Commit Transaction".to_string(),

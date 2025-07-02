@@ -132,7 +132,7 @@ fn test_arithmetic_expression_parsing() {
 
     for (sql, expected) in tests {
         db.execute(sql)
-            .unwrap_or_else(|_| panic!("Failed to execute: {}", sql));
+            .unwrap_or_else(|_| panic!("Failed to execute: {sql}"));
 
         let result = db
             .query("SELECT a FROM test WHERE id = 1")
@@ -142,12 +142,7 @@ fn test_arithmetic_expression_parsing() {
 
         if let Some(row) = result.rows().first() {
             if let Some(value) = row.first() {
-                assert_eq!(
-                    *value,
-                    SqlValue::Integer(expected),
-                    "Failed for SQL: {}",
-                    sql
-                );
+                assert_eq!(*value, SqlValue::Integer(expected), "Failed for SQL: {sql}");
             }
         }
     }

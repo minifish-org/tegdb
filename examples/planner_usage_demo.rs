@@ -83,7 +83,7 @@ fn main() -> Result<()> {
         let update_time = start.elapsed();
 
         println!("   Update: UPDATE benchmark_test SET score = 100.0 WHERE id = 1");
-        println!("   → Updated {} rows in {:?}", affected, update_time);
+        println!("   → Updated {affected} rows in {update_time:?}");
         println!("   → Plan type: PrimaryKeyLookup + Update");
 
         // Delete (should use optimized delete plan)
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
         let delete_time = start.elapsed();
 
         println!("\n   Delete: DELETE FROM benchmark_test WHERE score < 10.0");
-        println!("   → Deleted {} rows in {:?}", affected, delete_time);
+        println!("   → Deleted {affected} rows in {delete_time:?}");
         println!("   → Plan type: TableScan + Bulk Delete");
 
         // Verify final state

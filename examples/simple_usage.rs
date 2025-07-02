@@ -41,14 +41,14 @@ fn main() -> tegdb::Result<()> {
     println!("   Users with score > 90:");
     for row in results.rows() {
         if let (Some(name), Some(score)) = (row.first(), row.get(1)) {
-            println!("     {:?} - {:?}", name, score);
+            println!("     {name:?} - {score:?}");
         }
     }
 
     // 5. Update data
     println!("5. Updating data...");
     let affected = db.execute("UPDATE users SET score = 89.2 WHERE name = 'Bob'")?;
-    println!("   ✓ Updated {} row", affected);
+    println!("   ✓ Updated {affected} row");
 
     // 6. Final query
     println!("6. Final results...");
@@ -61,7 +61,7 @@ fn main() -> tegdb::Result<()> {
     println!("   All users:");
     for row in final_results.rows() {
         if let (Some(name), Some(score)) = (row.first(), row.get(1)) {
-            println!("     {:?} - {:?}", name, score);
+            println!("     {name:?} - {score:?}");
         }
     }
 

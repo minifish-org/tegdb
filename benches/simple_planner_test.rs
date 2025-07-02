@@ -36,7 +36,7 @@ fn simple_planner_test(c: &mut Criterion) {
 
     // Insert small amount of test data
     for i in 1..=100 {
-        let insert_sql = format!("INSERT INTO users (id, name) VALUES ({}, 'User {}')", i, i);
+        let insert_sql = format!("INSERT INTO users (id, name) VALUES ({i}, 'User {i}')");
         tegdb.execute(&insert_sql).unwrap();
         sqlite
             .execute(
@@ -53,7 +53,7 @@ fn simple_planner_test(c: &mut Criterion) {
         b.iter(|| {
             let id = black_box(50);
             let result = tegdb
-                .query(&format!("SELECT name FROM users WHERE id = {}", id))
+                .query(&format!("SELECT name FROM users WHERE id = {id}"))
                 .unwrap()
                 .into_query_result()
                 .unwrap();

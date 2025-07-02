@@ -243,8 +243,7 @@ fn test_concurrent_transaction_patterns() -> Result<()> {
     for i in 1..=5 {
         let mut tx = db.begin_transaction()?;
         tx.execute(&format!(
-            "UPDATE shared_counter SET value = {} WHERE id = 1",
-            i
+            "UPDATE shared_counter SET value = {i} WHERE id = 1"
         ))?;
         tx.commit()?;
     }

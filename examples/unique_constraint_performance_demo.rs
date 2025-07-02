@@ -23,14 +23,13 @@ fn main() -> Result<()> {
 
     for i in 1..=1000 {
         let insert_sql = format!(
-            "INSERT INTO users (id, email, name) VALUES ({}, 'user{}@example.com', 'User {}')",
-            i, i, i
+            "INSERT INTO users (id, email, name) VALUES ({i}, 'user{i}@example.com', 'User {i}')"
         );
         db.execute(&insert_sql)?;
     }
 
     let insert_time = start_time.elapsed();
-    println!("   ✅ Inserted 1000 rows in {:?}", insert_time);
+    println!("   ✅ Inserted 1000 rows in {insert_time:?}");
 
     // Test unique constraint violation detection speed
     println!("3. Testing unique constraint violation detection...");
@@ -43,11 +42,8 @@ fn main() -> Result<()> {
         Ok(_) => println!("   ❌ ERROR: Unique constraint violation not detected!"),
         Err(e) => {
             let violation_check_time = start_time.elapsed();
-            println!(
-                "   ✅ Unique constraint violation detected in {:?}",
-                violation_check_time
-            );
-            println!("   ✅ Error: {}", e);
+            println!("   ✅ Unique constraint violation detected in {violation_check_time:?}");
+            println!("   ✅ Error: {e}");
         }
     }
 
@@ -60,10 +56,9 @@ fn main() -> Result<()> {
         Err(e) => {
             let update_violation_time = start_time.elapsed();
             println!(
-                "   ✅ Update unique constraint violation detected in {:?}",
-                update_violation_time
+                "   ✅ Update unique constraint violation detected in {update_violation_time:?}"
             );
-            println!("   ✅ Error: {}", e);
+            println!("   ✅ Error: {e}");
         }
     }
 
@@ -74,12 +69,9 @@ fn main() -> Result<()> {
     match db.execute("UPDATE users SET email = 'updated@example.com' WHERE id = 1") {
         Ok(_) => {
             let successful_update_time = start_time.elapsed();
-            println!(
-                "   ✅ Successful update completed in {:?}",
-                successful_update_time
-            );
+            println!("   ✅ Successful update completed in {successful_update_time:?}");
         }
-        Err(e) => println!("   ❌ ERROR: Successful update failed: {}", e),
+        Err(e) => println!("   ❌ ERROR: Successful update failed: {e}"),
     }
 
     // Verify the update worked

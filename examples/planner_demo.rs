@@ -116,13 +116,10 @@ fn demonstrate_planning_concept() -> Result<()> {
     ];
 
     for (sql, strategy, description) in queries_and_strategies {
-        println!("   Query: {}", sql);
-        println!("   Strategy: {}", strategy);
-        println!("   Description: {}", description);
-        println!(
-            "   Pipeline: SQL → Parse → Plan({}) → Execute → Result",
-            strategy
-        );
+        println!("   Query: {sql}");
+        println!("   Strategy: {strategy}");
+        println!("   Description: {description}");
+        println!("   Pipeline: SQL → Parse → Plan({strategy}) → Execute → Result");
         println!();
     }
 
@@ -189,7 +186,7 @@ fn demonstrate_execution_comparison() -> Result<()> {
     ];
 
     for (query_type, sql) in test_queries {
-        println!("   Testing {}: {}", query_type, sql);
+        println!("   Testing {query_type}: {sql}");
 
         let start = std::time::Instant::now();
         let result = db.query(sql)?.into_query_result()?;

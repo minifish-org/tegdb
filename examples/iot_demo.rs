@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     println!("3. Testing primary key constraint...");
     match db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Duplicate', 40)") {
         Ok(_) => println!("ERROR: Duplicate primary key was allowed!"),
-        Err(e) => println!("✓ Primary key constraint working: {}", e),
+        Err(e) => println!("✓ Primary key constraint working: {e}"),
     }
 
     // Query data (should be efficiently organized by primary key)
@@ -50,14 +50,14 @@ fn main() -> Result<()> {
             _ => 0,
         };
 
-        println!("  ID: {}, Name: {}, Age: {}", id, name, age);
+        println!("  ID: {id}, Name: {name}, Age: {age}");
     }
 
     // Test table without primary key (should fail)
     println!("5. Testing table creation without PRIMARY KEY...");
     match db.execute("CREATE TABLE invalid_table (name TEXT, value TEXT)") {
         Ok(_) => println!("ERROR: Table without primary key was allowed!"),
-        Err(e) => println!("✓ Primary key requirement enforced: {}", e),
+        Err(e) => println!("✓ Primary key requirement enforced: {e}"),
     }
 
     println!("\n=== IOT Benefits ===");

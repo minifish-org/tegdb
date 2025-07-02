@@ -26,24 +26,24 @@ fn main() -> Result<()> {
         quantity INTEGER,
         price REAL
     )";
-    println!("   {}", create_sql);
+    println!("   {create_sql}");
     db.execute(create_sql)?;
 
     // Insert some test data
     println!("\n2. Inserting test data:");
     let insert_sql = "INSERT INTO orders (customer_id, order_id, product_name, quantity, price) 
                      VALUES (1, 101, 'Laptop', 2, 999.99)";
-    println!("   {}", insert_sql);
+    println!("   {insert_sql}");
     db.execute(insert_sql)?;
 
     let insert_sql2 = "INSERT INTO orders (customer_id, order_id, product_name, quantity, price) 
                       VALUES (1, 102, 'Mouse', 5, 25.50)";
-    println!("   {}", insert_sql2);
+    println!("   {insert_sql2}");
     db.execute(insert_sql2)?;
 
     let insert_sql3 = "INSERT INTO orders (customer_id, order_id, product_name, quantity, price) 
                       VALUES (2, 201, 'Keyboard', 1, 89.99)";
-    println!("   {}", insert_sql3);
+    println!("   {insert_sql3}");
     db.execute(insert_sql3)?;
 
     // Query the data to verify IOT works correctly

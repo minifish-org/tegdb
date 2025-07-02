@@ -10,7 +10,7 @@ fn benchmark_streaming_vs_traditional(c: &mut Criterion) {
         .map(|i| {
             vec![
                 SqlValue::Integer(i),
-                SqlValue::Text(format!("User{}", i)),
+                SqlValue::Text(format!("User{i}")),
                 SqlValue::Integer(20 + (i % 50)),
             ]
         })
@@ -118,7 +118,7 @@ fn benchmark_memory_usage(c: &mut Criterion) {
         .map(|i| {
             vec![
                 SqlValue::Integer(i),
-                SqlValue::Text(format!("Data{}", i)),
+                SqlValue::Text(format!("Data{i}")),
                 SqlValue::Real(i as f64 * 1.5),
             ]
         })

@@ -22,14 +22,14 @@ fn rollback_benchmark_detailed(c: &mut Criterion) {
     let sizes = [0, 1, 10, 100, 1000];
 
     for &size in &sizes {
-        c.bench_function(&format!("rollback with {} pending ops", size), |b| {
+        c.bench_function(&format!("rollback with {size} pending ops"), |b| {
             b.iter(|| {
                 let mut tx = engine.begin_transaction();
 
                 // Add some pending operations
                 for i in 0..size {
-                    let key = format!("pending_key{}", i);
-                    let value = format!("pending_value{}", i);
+                    let key = format!("pending_key{i}");
+                    let value = format!("pending_value{i}");
                     tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                         .unwrap();
                 }

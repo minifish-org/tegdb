@@ -26,12 +26,11 @@ fn main() -> tegdb::Result<()> {
         let location = format!("Building_{}", (sensor_id - 1) / 10 + 1); // 10 sensors per building
 
         db.execute(&format!(
-            "INSERT INTO sensor_data (id, sensor_id, timestamp, value, location) VALUES ({}, {}, {}, {}, '{}')",
-            i, sensor_id, timestamp, value, location
+            "INSERT INTO sensor_data (id, sensor_id, timestamp, value, location) VALUES ({i}, {sensor_id}, {timestamp}, {value}, '{location}')"
         ))?;
     }
     let insert_time = start.elapsed();
-    println!("✓ Inserted 1,000 rows in {:?}\n", insert_time);
+    println!("✓ Inserted 1,000 rows in {insert_time:?}\n");
 
     // Demonstrate 1: Current approach vs what streaming would provide
     println!("=== 1. Memory Efficiency Analysis ===");
@@ -106,12 +105,9 @@ fn main() -> tegdb::Result<()> {
 
     if count > 0 {
         let average = sum / count as f64;
-        println!("  ✓ Average temperature: {:.2}°C", average);
-        println!("  ✓ Processed {} readings in {:?}", count, avg_time);
-        println!(
-            "  ✓ With streaming: Would use O(1) memory instead of O({})",
-            count
-        );
+        println!("  ✓ Average temperature: {average:.2}°C");
+        println!("  ✓ Processed {count} readings in {avg_time:?}");
+        println!("  ✓ With streaming: Would use O(1) memory instead of O({count})");
     }
 
     // Demonstrate 4: Filtering efficiency
@@ -143,10 +139,7 @@ fn main() -> tegdb::Result<()> {
         }
     }
     let filter_time = start.elapsed();
-    println!(
-        "  ✓ Found {} high temperature readings in {:?}",
-        high_temp_count, filter_time
-    );
+    println!("  ✓ Found {high_temp_count} high temperature readings in {filter_time:?}");
     println!("  ✓ Memory used: All {} rows loaded", all_data.len());
 
     println!("\nWhat streaming would provide:");
@@ -160,13 +153,12 @@ fn main() -> tegdb::Result<()> {
     let page_size = 50;
     let page_number = 3;
 
-    println!("Getting page {} (simulating pagination):", page_number);
+    println!("Getting page {page_number} (simulating pagination):");
     let start = Instant::now();
     let offset = (page_number - 1) * page_size;
     let page_result = db
         .query(&format!(
-            "SELECT id, sensor_id, location FROM sensor_data LIMIT {} OFFSET {}",
-            page_size, offset
+            "SELECT id, sensor_id, location FROM sensor_data LIMIT {page_size} OFFSET {offset}"
         ))
         .unwrap()
         .into_query_result()
@@ -181,10 +173,7 @@ fn main() -> tegdb::Result<()> {
     );
 
     println!("\nWhat streaming would provide:");
-    println!(
-        "  ✓ iterator.skip({}).take({}) - only processes needed rows",
-        offset, page_size
-    );
+    println!("  ✓ iterator.skip({offset}).take({page_size}) - only processes needed rows");
     println!("  ✓ No memory allocation for skipped rows");
     println!("  ✓ Perfect for large dataset pagination");
 
@@ -261,7 +250,7 @@ fn main() -> tegdb::Result<()> {
 fn format_sql_value(value: Option<&SqlValue>) -> String {
     match value {
         Some(SqlValue::Integer(i)) => i.to_string(),
-        Some(SqlValue::Real(r)) => format!("{:.1}", r),
+        Some(SqlValue::Real(r)) => format!("{r:.1}"),
         Some(SqlValue::Text(t)) => t.clone(),
         Some(SqlValue::Null) => "NULL".to_string(),
         None => "NULL".to_string(),

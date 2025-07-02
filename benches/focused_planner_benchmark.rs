@@ -81,10 +81,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let id = black_box(250);
             let result = tegdb
-                .query(&format!(
-                    "SELECT name, price FROM products WHERE id = {}",
-                    id
-                ))
+                .query(&format!("SELECT name, price FROM products WHERE id = {id}"))
                 .unwrap()
                 .into_query_result()
                 .unwrap();
@@ -121,8 +118,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
             let end = black_box(110);
             let result = tegdb
                 .query(&format!(
-                    "SELECT id, name FROM products WHERE id >= {} AND id <= {}",
-                    start, end
+                    "SELECT id, name FROM products WHERE id >= {start} AND id <= {end}"
                 ))
                 .unwrap()
                 .into_query_result()
@@ -161,8 +157,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
             let category = black_box("Electronics");
             let result = tegdb
                 .query(&format!(
-                    "SELECT id, name FROM products WHERE category = '{}'",
-                    category
+                    "SELECT id, name FROM products WHERE category = '{category}'"
                 ))
                 .unwrap()
                 .into_query_result()
@@ -195,8 +190,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
             let id = black_box(300);
             let result = tegdb
                 .query(&format!(
-                    "SELECT name, category FROM products WHERE id = {}",
-                    id
+                    "SELECT name, category FROM products WHERE id = {id}"
                 ))
                 .unwrap()
                 .into_query_result()

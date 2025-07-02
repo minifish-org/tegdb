@@ -16,7 +16,7 @@ fn main() -> Result<()> {
 
     // Insert data
     let affected = db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
-    println!("Inserted {} rows", affected);
+    println!("Inserted {affected} rows");
 
     // Insert more data individually to test
     db.execute("INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")?;
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
             _ => 0,
         };
 
-        println!("User: {} (ID: {}, Age: {})", name, id, age);
+        println!("User: {name} (ID: {id}, Age: {age})");
     }
 
     // Use transaction with simpler operations

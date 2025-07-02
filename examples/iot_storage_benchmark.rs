@@ -42,15 +42,14 @@ fn main() -> Result<()> {
     for user_id in 1..=100 {
         for session_id in 1..=10 {
             let sql = format!(
-                "INSERT INTO user_sessions (user_id, session_id, login_time, last_activity, ip_address, user_agent, is_active) VALUES ({}, {}, 'login_time', 'last_activity', 'ip_address', 'user_agent', 1)",
-                user_id, session_id
+                "INSERT INTO user_sessions (user_id, session_id, login_time, last_activity, ip_address, user_agent, is_active) VALUES ({user_id}, {session_id}, 'login_time', 'last_activity', 'ip_address', 'user_agent', 1)"
             );
             db.execute(&sql)?;
         }
     }
 
     let insert_time = start_time.elapsed();
-    println!("✅ Inserted {} records in {:?}", num_records, insert_time);
+    println!("✅ Inserted {num_records} records in {insert_time:?}");
 
     // Test query performance
     let start_time = Instant::now();
@@ -74,7 +73,7 @@ fn main() -> Result<()> {
         .into_query_result()
         .unwrap();
     let pk_lookup_time = start_time.elapsed();
-    println!("✅ Primary key lookup completed in {:?}", pk_lookup_time);
+    println!("✅ Primary key lookup completed in {pk_lookup_time:?}");
 
     if let Some(row) = result.rows().first() {
         let user_id_pos = result
@@ -115,16 +114,10 @@ fn main() -> Result<()> {
     let savings_percentage = (savings_per_row as f64 / old_total_per_row as f64) * 100.0;
 
     println!("📊 Estimated storage comparison:");
-    println!("   Old approach: ~{} bytes per row", old_total_per_row);
-    println!("   New approach: ~{} bytes per row", new_total_per_row);
-    println!(
-        "   Savings:      ~{} bytes per row ({:.1}%)",
-        savings_per_row, savings_percentage
-    );
-    println!(
-        "   Total saved:  ~{} bytes for {} records",
-        total_savings, num_records
-    );
+    println!("   Old approach: ~{old_total_per_row} bytes per row");
+    println!("   New approach: ~{new_total_per_row} bytes per row");
+    println!("   Savings:      ~{savings_per_row} bytes per row ({savings_percentage:.1}%)");
+    println!("   Total saved:  ~{total_savings} bytes for {num_records} records");
 
     println!("\n🚀 IOT Optimization Benefits:");
     println!("   ✅ Eliminated primary key redundancy in stored values");

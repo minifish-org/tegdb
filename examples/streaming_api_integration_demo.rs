@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let insert_duration = start_insert.elapsed();
-    println!("  ✓ Total insertion time: {:?}\n", insert_duration);
+    println!("  ✓ Total insertion time: {insert_duration:?}\n");
 
     // Test streaming query performance
     println!("3. Testing streaming query performance...");
@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("✓ Query executed in: {:?}", duration);
+    println!("✓ Query executed in: {duration:?}");
     println!("✓ Returned {} rows", result.rows().len());
     println!("✓ Memory usage optimized through streaming execution");
 
@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("✓ Filtered query executed in: {:?}", duration);
+    println!("✓ Filtered query executed in: {duration:?}");
     println!("✓ Returned {} premium items", result.rows().len());
     println!("✓ Streaming allows early filtering without loading all data");
 
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("✓ Limited query executed in: {:?}", duration);
+    println!("✓ Limited query executed in: {duration:?}");
     println!("✓ Returned {} rows (limited)", result.rows().len());
     println!("✓ Streaming enables early termination for LIMIT queries");
 
@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("✓ Complex query executed in: {:?}", duration);
+    println!("✓ Complex query executed in: {duration:?}");
     println!("✓ Found {} items with value > 1000.0", result.rows().len());
     println!("✓ Streaming processes filter conditions efficiently");
 
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     let duration = start.elapsed();
 
-    println!("✓ Transaction queries executed in: {:?}", duration);
+    println!("✓ Transaction queries executed in: {duration:?}");
     println!(
         "✓ Standard items sample: {} rows returned",
         result1.rows().len()

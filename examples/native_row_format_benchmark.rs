@@ -38,7 +38,7 @@ fn main() -> tegdb::Result<()> {
     println!("\n=== MEMORY USAGE ===");
     println!("Database size: ~{} bytes", results.db_size_estimate);
     let bytes_per_row = results.db_size_estimate as f64 / test_data.len() as f64;
-    println!("Average bytes per row: ~{:.1} bytes", bytes_per_row);
+    println!("Average bytes per row: ~{bytes_per_row:.1} bytes");
 
     println!("\n=== PERFORMANCE ANALYSIS ===");
 
@@ -47,34 +47,22 @@ fn main() -> tegdb::Result<()> {
     let selective_scan_ms = results.selective_scan_time as f64 / 1_000_000.0;
     let selective_improvement = full_scan_ms / selective_scan_ms;
 
-    println!(
-        "• Selective column queries: {:.1}x faster than full table scan",
-        selective_improvement
-    );
+    println!("• Selective column queries: {selective_improvement:.1}x faster than full table scan");
     println!("  Benefit: Avoiding full row deserialization for unused columns");
 
     let limited_scan_ms = results.limited_scan_time as f64 / 1_000_000.0;
     let limited_improvement = full_scan_ms / limited_scan_ms;
-    println!(
-        "• Limited queries (LIMIT): {:.1}x faster than full scan",
-        limited_improvement
-    );
+    println!("• Limited queries (LIMIT): {limited_improvement:.1}x faster than full scan");
     println!("  Benefit: Early termination and efficient row filtering");
 
     let pk_lookup_ms = results.pk_lookup_time as f64 / 1_000_000.0;
     let pk_improvement = full_scan_ms / pk_lookup_ms;
-    println!(
-        "• Primary key lookups: {:.1}x faster than full scan",
-        pk_improvement
-    );
+    println!("• Primary key lookups: {pk_improvement:.1}x faster than full scan");
     println!("  Benefit: Direct row access without scanning");
 
     let condition_ms = results.condition_query_time as f64 / 1_000_000.0;
     let condition_improvement = full_scan_ms / condition_ms;
-    println!(
-        "• Condition-based queries: {:.1}x faster than full scan",
-        condition_improvement
-    );
+    println!("• Condition-based queries: {condition_improvement:.1}x faster than full scan");
     println!("  Benefit: Fast condition evaluation without full row reconstruction");
 
     println!("\n=== NATIVE FORMAT BENEFITS ===");
@@ -88,8 +76,8 @@ fn main() -> tegdb::Result<()> {
     let insert_rate = test_data.len() as f64 / (results.insert_time as f64 / 1_000_000_000.0);
     let scan_rate = test_data.len() as f64 / (results.full_scan_time as f64 / 1_000_000_000.0);
 
-    println!("Insert throughput: ~{:.0} rows/second", insert_rate);
-    println!("Full scan throughput: ~{:.0} rows/second", scan_rate);
+    println!("Insert throughput: ~{insert_rate:.0} rows/second");
+    println!("Full scan throughput: ~{scan_rate:.0} rows/second");
 
     Ok(())
 }
@@ -128,8 +116,7 @@ fn test_storage_format(
 
     for (id, name, email, score, active) in test_data.iter() {
         db.execute(&format!(
-            "INSERT INTO users (id, name, email, score, active) VALUES ({}, '{}', '{}', {}, {})",
-            id, name, email, score, active
+            "INSERT INTO users (id, name, email, score, active) VALUES ({id}, '{name}', '{email}', {score}, {active})"
         ))?;
     }
 
@@ -206,8 +193,8 @@ fn generate_test_data(count: usize) -> Vec<(i64, String, String, f64, i64)> {
 
     for i in 0..count {
         let id = i as i64;
-        let name = format!("User{:05}", i);
-        let email = format!("user{}@example.com", i);
+        let name = format!("User{i:05}");
+        let email = format!("user{i}@example.com");
         let score = 50.0 + (i % 50) as f64 + (i as f64 * 0.01) % 1.0; // Realistic score range
         let active = if i % 3 == 0 { 1 } else { 0 }; // Mix of active/inactive
 
@@ -219,5 +206,5 @@ fn generate_test_data(count: usize) -> Vec<(i64, String, String, f64, i64)> {
 
 fn print_performance_metric(operation: &str, time_ns: u128) {
     let time_ms = time_ns as f64 / 1_000_000.0;
-    println!("{:<25} | {:>8.2}ms", operation, time_ms);
+    println!("{operation:<25} | {time_ms:>8.2}ms");
 }

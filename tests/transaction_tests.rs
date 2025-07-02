@@ -253,8 +253,8 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     {
         let mut tx = engine.begin_transaction();
         for i in 0..5000 {
-            let key = format!("key{}", i).into_bytes();
-            let value = format!("val{}", i).into_bytes();
+            let key = format!("key{i}").into_bytes();
+            let value = format!("val{i}").into_bytes();
             tx.set(&key, value)?;
         }
         tx.commit()?;
@@ -337,12 +337,11 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     ];
     assert_eq!(result.len(), expected.len());
     for (i, (actual, expected)) in result.iter().zip(expected.iter()).enumerate() {
-        assert_eq!(actual.0, expected.0, "Key mismatch at index {}", i);
+        assert_eq!(actual.0, expected.0, "Key mismatch at index {i}");
         assert_eq!(
             actual.1.as_ref(),
             expected.1.as_slice(),
-            "Value mismatch at index {}",
-            i
+            "Value mismatch at index {i}"
         );
     }
     let base = engine
@@ -355,12 +354,11 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     ];
     assert_eq!(base.len(), base_expected.len());
     for (i, (actual, expected)) in base.iter().zip(base_expected.iter()).enumerate() {
-        assert_eq!(actual.0, expected.0, "Key mismatch at index {}", i);
+        assert_eq!(actual.0, expected.0, "Key mismatch at index {i}");
         assert_eq!(
             actual.1.as_ref(),
             expected.1.as_slice(),
-            "Value mismatch at index {}",
-            i
+            "Value mismatch at index {i}"
         );
     }
     fs::remove_file(path)?;

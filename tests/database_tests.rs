@@ -845,9 +845,7 @@ fn test_database_acid_consistency() -> Result<()> {
         };
         assert!(
             quantity >= min_stock,
-            "Consistency violated: quantity {} < min_stock {}",
-            quantity,
-            min_stock
+            "Consistency violated: quantity {quantity} < min_stock {min_stock}"
         );
 
         tx.commit()?;
@@ -902,7 +900,7 @@ fn test_database_acid_isolation() -> Result<()> {
 
     // Note: The actual behavior depends on implementation
     // Some databases might show the updated value, others might not
-    println!("Value within transaction: {}", value_in_tx);
+    println!("Value within transaction: {value_in_tx}");
 
     // Commit the transaction
     tx1.commit()?;
@@ -922,10 +920,7 @@ fn test_database_acid_isolation() -> Result<()> {
                 _ => panic!("Expected integer"),
             };
 
-            println!(
-                "Value from second connection after commit: {}",
-                value_from_db2
-            );
+            println!("Value from second connection after commit: {value_from_db2}");
             assert_eq!(
                 value_from_db2, 200,
                 "Committed changes should be visible to other connections"
@@ -947,7 +942,7 @@ fn test_database_acid_isolation() -> Result<()> {
             };
 
             // Changes should be visible since transaction was already committed
-            println!("Value after commit: {}", value_after_commit);
+            println!("Value after commit: {value_after_commit}");
             assert_eq!(value_after_commit, 200);
         }
     }
@@ -980,8 +975,7 @@ fn test_database_acid_durability() -> Result<()> {
 
         for (id, desc, value) in &test_data {
             tx.execute(&format!(
-                "INSERT INTO durable_test (id, description, value) VALUES ({}, '{}', {})",
-                id, desc, value
+                "INSERT INTO durable_test (id, description, value) VALUES ({id}, '{desc}', {value})"
             ))?;
         }
 
@@ -1206,8 +1200,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
 
         for i in 1..=batch_size {
             tx.execute(&format!(
-                "INSERT INTO large_tx_test (id, batch_id, value) VALUES ({}, 1, 'item-{}')",
-                i, i
+                "INSERT INTO large_tx_test (id, batch_id, value) VALUES ({i}, 1, 'item-{i}')"
             ))?;
         }
 
@@ -1238,8 +1231,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
         // Add another batch
         for i in (batch_size + 1)..=(batch_size * 2) {
             tx.execute(&format!(
-                "INSERT INTO large_tx_test (id, batch_id, value) VALUES ({}, 2, 'rollback-item-{}')",
-                i, i
+                "INSERT INTO large_tx_test (id, batch_id, value) VALUES ({i}, 2, 'rollback-item-{i}')"
             ))?;
         }
 

@@ -35,7 +35,7 @@ fn main() -> Result<()> {
         "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (100, 1, 5, 35.00)",
     ) {
         Ok(_) => println!("ERROR: Duplicate composite primary key was allowed!"),
-        Err(e) => println!("✓ Composite primary key constraint working: {}", e),
+        Err(e) => println!("✓ Composite primary key constraint working: {e}"),
     }
 
     // Query all data
@@ -61,10 +61,7 @@ fn main() -> Result<()> {
             _ => 0.0,
         };
 
-        println!(
-            "  Order: {}, Product: {}, Qty: {}, Price: ${:.2}",
-            order_id, product_id, quantity, price
-        );
+        println!("  Order: {order_id}, Product: {product_id}, Qty: {quantity}, Price: ${price:.2}");
     }
 
     // Test WHERE clause with partial primary key
@@ -86,7 +83,7 @@ fn main() -> Result<()> {
             _ => &0,
         };
 
-        println!("  Product: {}, Qty: {}", product_id, quantity);
+        println!("  Product: {product_id}, Qty: {quantity}");
     }
 
     println!("\n=== Composite Primary Key Benefits ===");

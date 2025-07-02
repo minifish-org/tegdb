@@ -14,10 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing TegDB's Native Binary Row Format against SQLite\n");
 
     let row_count = 25000;
-    println!(
-        "Dataset: {} rows with 5 columns (id, name, email, score, active)",
-        row_count
-    );
+    println!("Dataset: {row_count} rows with 5 columns (id, name, email, score, active)");
 
     // Clean up any existing databases
     let _ = std::fs::remove_file("tegdb_native.db");
@@ -80,10 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let size_ratio = sqlite_results.db_size as f64 / tegdb_results.db_size as f64;
     if size_ratio > 1.0 {
-        println!(
-            "TegDB storage is {:.1}x more compact than SQLite",
-            size_ratio
-        );
+        println!("TegDB storage is {size_ratio:.1}x more compact than SQLite");
     } else {
         println!(
             "SQLite storage is {:.1}x more compact than TegDB",
@@ -168,14 +162,13 @@ fn test_tegdb_native(row_count: usize) -> Result<BenchmarkResults, Box<dyn std::
     // Bulk insert
     let insert_start = Instant::now();
     for i in 0..row_count {
-        let name = format!("User{:05}", i);
-        let email = format!("user{}@example.com", i);
+        let name = format!("User{i:05}");
+        let email = format!("user{i}@example.com");
         let score = 50.0 + (i % 50) as f64;
         let active = if i % 3 == 0 { 1 } else { 0 };
 
         db.execute(&format!(
-            "INSERT INTO users (id, name, email, score, active) VALUES ({}, '{}', '{}', {}, {})",
-            i, name, email, score, active
+            "INSERT INTO users (id, name, email, score, active) VALUES ({i}, '{name}', '{email}', {score}, {active})"
         ))?;
     }
     let insert_time = insert_start.elapsed().as_nanos();
@@ -258,8 +251,8 @@ fn test_sqlite(row_count: usize) -> Result<BenchmarkResults, Box<dyn std::error:
             "INSERT INTO users VALUES (?, ?, ?, ?, ?)",
             [
                 &i as &dyn rusqlite::ToSql,
-                &format!("User{:05}", i),
-                &format!("user{}@example.com", i),
+                &format!("User{i:05}"),
+                &format!("user{i}@example.com"),
                 &(50.0 + (i % 50) as f64),
                 &(if i % 3 == 0 { 1 } else { 0 }),
             ],
@@ -336,8 +329,5 @@ fn print_comparison_row(operation: &str, tegdb_ns: u128, sqlite_ns: u128) {
         f64::INFINITY
     };
 
-    println!(
-        "{:<25} | {:>10.2} | {:>10.2} | {:>10.1}x",
-        operation, tegdb_ms, sqlite_ms, ratio
-    );
+    println!("{operation:<25} | {tegdb_ms:>10.2} | {sqlite_ms:>10.2} | {ratio:>10.1}x");
 }

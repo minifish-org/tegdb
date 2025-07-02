@@ -15,7 +15,7 @@ fn transaction_begin_scaling(c: &mut Criterion) {
     let sizes = [0, 10, 100, 1000, 10000];
 
     for &size in &sizes {
-        let path = temp_db_path(&format!("begin_scaling_{}", size));
+        let path = temp_db_path(&format!("begin_scaling_{size}"));
         if path.exists() {
             fs::remove_file(&path).expect("Failed to remove existing test file");
         }
@@ -23,12 +23,12 @@ fn transaction_begin_scaling(c: &mut Criterion) {
 
         // Pre-populate with specified number of entries
         for i in 0..size {
-            let key = format!("key{}", i);
-            let value = format!("value{}", i);
+            let key = format!("key{i}");
+            let value = format!("value{i}");
             engine.set(key.as_bytes(), value.into_bytes()).unwrap();
         }
 
-        c.bench_function(&format!("transaction begin with {} entries", size), |b| {
+        c.bench_function(&format!("transaction begin with {size} entries"), |b| {
             b.iter(|| {
                 let tx = black_box(engine.begin_transaction());
                 drop(tx); // Rollback automatically on drop

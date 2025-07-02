@@ -25,11 +25,11 @@ fn main() -> Result<()> {
 
         // INSERT through transaction (uses planner pipeline)
         let rows = tx.execute("INSERT INTO users (id, name, age) VALUES (3, 'Carol', 35)")?;
-        println!("   → Inserted {} rows via transaction planner", rows);
+        println!("   → Inserted {rows} rows via transaction planner");
 
         // UPDATE through transaction (uses planner pipeline)
         let rows = tx.execute("UPDATE users SET age = 31 WHERE id = 1")?;
-        println!("   → Updated {} rows via transaction planner", rows);
+        println!("   → Updated {rows} rows via transaction planner");
 
         tx.commit()?;
     }
@@ -64,7 +64,7 @@ fn main() -> Result<()> {
                 tegdb::SqlValue::Integer(v) => *v,
                 _ => 0,
             };
-            println!("     • {} (ID: {}, Age: {})", name, id, age);
+            println!("     • {name} (ID: {id}, Age: {age})");
         }
 
         tx.commit()?;
@@ -89,7 +89,7 @@ fn main() -> Result<()> {
             .into_query_result()
             .unwrap();
         let count = result.rows().len();
-        println!("   → Count within transaction: {}", count);
+        println!("   → Count within transaction: {count}");
 
         // Rollback the transaction
         tx.rollback()?;
@@ -103,7 +103,7 @@ fn main() -> Result<()> {
         .into_query_result()
         .unwrap();
     let final_count = result.rows().len();
-    println!("   → Final count after rollback: {}", final_count);
+    println!("   → Final count after rollback: {final_count}");
 
     println!("\n=== Transaction Planner Integration Confirmed ===");
     println!("✓ Transaction.execute() uses QueryPlanner + PlanExecutor");

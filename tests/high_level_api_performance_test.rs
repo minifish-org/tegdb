@@ -97,8 +97,7 @@ impl SqlExecutionMetrics {
         let execute_pct = (self.execute_duration.as_secs_f64() * 1_000_000.0 / total_us) * 100.0;
 
         println!(
-            "  Breakdown: Parse {:.1}% | Plan {:.1}% | Execute {:.1}%",
-            parse_pct, plan_pct, execute_pct
+            "  Breakdown: Parse {parse_pct:.1}% | Plan {plan_pct:.1}% | Execute {execute_pct:.1}%"
         );
     }
 }
@@ -120,8 +119,7 @@ fn setup_test_table(
 
     // Create table
     let create_sql = format!(
-        "CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data TEXT)",
-        table_name
+        "CREATE TABLE {table_name} (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data TEXT)"
     );
     db.execute(&create_sql)?;
 
@@ -167,8 +165,7 @@ fn test_basic_crud_performance() -> Result<()> {
     let record_count = 1000;
     for i in 0..record_count {
         db.execute(&format!(
-            "INSERT INTO perf_test (id, name, value) VALUES ({}, 'user{}', {})",
-            i, i, i
+            "INSERT INTO perf_test (id, name, value) VALUES ({i}, 'user{i}', {i})"
         ))?;
     }
     metrics.push(PerformanceMetrics::new(
@@ -288,8 +285,7 @@ fn test_transaction_performance() -> Result<()> {
     let record_count = 1000;
     for i in 0..record_count {
         db.execute(&format!(
-            "INSERT INTO tx_test (id, name, value) VALUES ({}, 'user{}', {})",
-            i, i, i
+            "INSERT INTO tx_test (id, name, value) VALUES ({i}, 'user{i}', {i})"
         ))?;
     }
     metrics.push(PerformanceMetrics::new(
@@ -306,8 +302,7 @@ fn test_transaction_performance() -> Result<()> {
     let mut tx = db.begin_transaction()?;
     for i in 0..record_count {
         tx.execute(&format!(
-            "INSERT INTO tx_test (id, name, value) VALUES ({}, 'user{}', {})",
-            i, i, i
+            "INSERT INTO tx_test (id, name, value) VALUES ({i}, 'user{i}', {i})"
         ))?;
     }
     tx.commit()?;
@@ -370,8 +365,7 @@ fn test_schema_operations_performance() -> Result<()> {
     let table_count = 50;
     for i in 0..table_count {
         let create_sql = format!(
-            "CREATE TABLE table_{} (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data BLOB)",
-            i
+            "CREATE TABLE table_{i} (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data BLOB)"
         );
         db.execute(&create_sql)?;
     }
@@ -402,7 +396,7 @@ fn test_schema_operations_performance() -> Result<()> {
     // Test table drops
     let start = Instant::now();
     for i in 0..table_count {
-        db.execute(&format!("DROP TABLE table_{}", i))?;
+        db.execute(&format!("DROP TABLE table_{i}"))?;
     }
     metrics.push(PerformanceMetrics::new(
         "Multiple DROP TABLE",
@@ -494,8 +488,7 @@ fn test_concurrent_schema_access_performance() -> Result<()> {
     // Insert some data
     for i in 0..1000 {
         db.execute(&format!(
-            "INSERT INTO concurrent_test (id, data) VALUES ({}, 'data_{}')",
-            i, i
+            "INSERT INTO concurrent_test (id, data) VALUES ({i}, 'data_{i}')"
         ))?;
     }
 
@@ -518,10 +511,9 @@ fn test_concurrent_schema_access_performance() -> Result<()> {
     let table_ops = 20;
     for i in 0..table_ops {
         db.execute(&format!(
-            "CREATE TABLE temp_table_{} (id INTEGER PRIMARY KEY, name TEXT)",
-            i
+            "CREATE TABLE temp_table_{i} (id INTEGER PRIMARY KEY, name TEXT)"
         ))?;
-        db.execute(&format!("DROP TABLE temp_table_{}", i))?;
+        db.execute(&format!("DROP TABLE temp_table_{i}"))?;
     }
     metrics.push(PerformanceMetrics::new(
         "Schema Modifications",
@@ -608,7 +600,7 @@ fn measure_sql_execution(
     // Parse timing
     let parse_start = Instant::now();
     let (_, statement) =
-        parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {:?}", e)))?;
+        parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {e:?}")))?;
     let parse_duration = parse_start.elapsed();
 
     // Get schemas for planner
@@ -692,7 +684,7 @@ fn measure_transaction_sql_execution(
     // Parse timing
     let parse_start = Instant::now();
     let (_, statement) =
-        parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {:?}", e)))?;
+        parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {e:?}")))?;
     let parse_duration = parse_start.elapsed();
 
     // Execute timing (includes planning)
@@ -1059,7 +1051,7 @@ fn test_parser_complexity_performance() -> Result<()> {
     println!("\nSQL Length vs Parse Time Correlation:");
     println!("=====================================");
     for (length, time) in complexity_analysis {
-        println!("Length: {:3} chars -> Parse time: {:.1}µs", length, time);
+        println!("Length: {length:3} chars -> Parse time: {time:.1}µs");
     }
 
     Ok(())

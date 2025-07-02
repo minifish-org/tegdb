@@ -27,8 +27,8 @@ fn main() -> Result<()> {
     for (key, value) in scan_results {
         let key_str = String::from_utf8_lossy(&key);
         let value_str = String::from_utf8_lossy(&value);
-        println!("Key: {}", key_str);
-        println!("Value: {}", value_str);
+        println!("Key: {key_str}");
+        println!("Value: {value_str}");
     }
 
     Ok(())

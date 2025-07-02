@@ -186,8 +186,8 @@ fn create_and_populate_raw_engine(path: &PathBuf) -> Engine {
 
     // Pre-populate with test data using low-level API
     for i in 0..100 {
-        let key = format!("key{}", i);
-        let value = format!("value{}", i);
+        let key = format!("key{i}");
+        let value = format!("value{i}");
         engine
             .set(key.as_bytes(), value.as_bytes().to_vec())
             .unwrap();
@@ -216,8 +216,8 @@ fn create_and_populate_tx_engine(path: &PathBuf) -> Engine {
 
         // Add 100 test keys
         for i in 0..100 {
-            let key = format!("key{}", i);
-            let value = format!("value{}", i);
+            let key = format!("key{i}");
+            let value = format!("value{i}");
             tx.set(key.as_bytes(), value.as_bytes().to_vec()).unwrap();
         }
 
@@ -254,11 +254,11 @@ fn batch_operations_comparison(c: &mut Criterion) {
 
     for &size in &batch_sizes {
         // ===== Engine Individual Operations vs Transaction Batch =====
-        c.bench_function(&format!("engine individual ops ({})", size), |b| {
+        c.bench_function(&format!("engine individual ops ({size})"), |b| {
             b.iter(|| {
                 for i in 0..size {
-                    let key = format!("batch_key{}", i);
-                    let value = format!("batch_value{}", i);
+                    let key = format!("batch_key{i}");
+                    let value = format!("batch_value{i}");
                     raw_engine
                         .set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                         .unwrap();
@@ -266,12 +266,12 @@ fn batch_operations_comparison(c: &mut Criterion) {
             })
         });
 
-        c.bench_function(&format!("transaction batch commit ({})", size), |b| {
+        c.bench_function(&format!("transaction batch commit ({size})"), |b| {
             b.iter(|| {
                 let mut tx = tx_engine.begin_transaction();
                 for i in 0..size {
-                    let key = format!("batch_key{}", i);
-                    let value = format!("batch_value{}", i);
+                    let key = format!("batch_key{i}");
+                    let value = format!("batch_value{i}");
                     tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                         .unwrap();
                 }
@@ -280,11 +280,11 @@ fn batch_operations_comparison(c: &mut Criterion) {
         });
 
         // ===== Mixed operations comparison =====
-        c.bench_function(&format!("engine mixed ops ({})", size), |b| {
+        c.bench_function(&format!("engine mixed ops ({size})"), |b| {
             b.iter(|| {
                 for i in 0..size {
-                    let key = format!("mixed_key{}", i);
-                    let value = format!("mixed_value{}", i);
+                    let key = format!("mixed_key{i}");
+                    let value = format!("mixed_value{i}");
                     raw_engine
                         .set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                         .unwrap();
@@ -296,12 +296,12 @@ fn batch_operations_comparison(c: &mut Criterion) {
             })
         });
 
-        c.bench_function(&format!("transaction mixed ops ({})", size), |b| {
+        c.bench_function(&format!("transaction mixed ops ({size})"), |b| {
             b.iter(|| {
                 let mut tx = tx_engine.begin_transaction();
                 for i in 0..size {
-                    let key = format!("mixed_key{}", i);
-                    let value = format!("mixed_value{}", i);
+                    let key = format!("mixed_key{i}");
+                    let value = format!("mixed_value{i}");
                     tx.set(black_box(key.as_bytes()), black_box(value.into_bytes()))
                         .unwrap();
                     let _ = black_box(tx.get(black_box(key.as_bytes())));
@@ -346,8 +346,8 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
 
     // Raw engine uses low-level API
     for i in 0..50 {
-        let key = format!("overhead_key{}", i);
-        let value = format!("overhead_value{}", i);
+        let key = format!("overhead_key{i}");
+        let value = format!("overhead_value{i}");
         raw_engine
             .set(key.as_bytes(), value.as_bytes().to_vec())
             .unwrap();
@@ -357,8 +357,8 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
     {
         let mut tx = tx_engine.begin_transaction();
         for i in 0..50 {
-            let key = format!("overhead_key{}", i);
-            let value = format!("overhead_value{}", i);
+            let key = format!("overhead_key{i}");
+            let value = format!("overhead_value{i}");
             tx.set(key.as_bytes(), value.as_bytes().to_vec()).unwrap();
         }
         tx.commit().unwrap();

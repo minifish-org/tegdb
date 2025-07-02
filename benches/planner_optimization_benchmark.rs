@@ -96,7 +96,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let id = black_box(5000); // Middle of dataset
             let result = tegdb
-                .query(&format!("SELECT * FROM products WHERE id = {}", id))
+                .query(&format!("SELECT * FROM products WHERE id = {id}"))
                 .unwrap()
                 .into_query_result()
                 .unwrap();
@@ -138,8 +138,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let end = black_box(1010); // Small range - 10 records
             let result = tegdb
                 .query(&format!(
-                    "SELECT id, name, price FROM products WHERE id >= {} AND id <= {}",
-                    start, end
+                    "SELECT id, name, price FROM products WHERE id >= {start} AND id <= {end}"
                 ))
                 .unwrap()
                 .into_query_result()
@@ -184,8 +183,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
                 let min_price = black_box(50.0);
                 let result = tegdb
                     .query(&format!(
-                        "SELECT name, price FROM products WHERE id = {} AND price > {}",
-                        id, min_price
+                        "SELECT name, price FROM products WHERE id = {id} AND price > {min_price}"
                     ))
                     .unwrap()
                     .into_query_result()
@@ -230,8 +228,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let category = black_box("Electronics");
             let result = tegdb
                 .query(&format!(
-                    "SELECT id, name FROM products WHERE category = '{}'",
-                    category
+                    "SELECT id, name FROM products WHERE category = '{category}'"
                 ))
                 .unwrap()
                 .into_query_result()
@@ -269,10 +266,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             ];
             for id in ids {
                 let result = tegdb
-                    .query(&format!(
-                        "SELECT name, price FROM products WHERE id = {}",
-                        id
-                    ))
+                    .query(&format!("SELECT name, price FROM products WHERE id = {id}"))
                     .unwrap()
                     .into_query_result()
                     .unwrap();
@@ -320,8 +314,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let end = black_box(2000);
             let result = tegdb
                 .query(&format!(
-                    "SELECT id FROM products WHERE id >= {} AND id <= {}",
-                    start, end
+                    "SELECT id FROM products WHERE id >= {start} AND id <= {end}"
                 ))
                 .unwrap()
                 .into_query_result()
@@ -359,8 +352,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let min_price = black_box(100.0);
             let min_stock = black_box(10);
             let result = tegdb.query(&format!(
-                "SELECT name, price, stock FROM products WHERE id = {} AND price > {} AND stock >= {}", 
-                id, min_price, min_stock
+                "SELECT name, price, stock FROM products WHERE id = {id} AND price > {min_price} AND stock >= {min_stock}"
             )).unwrap().into_query_result().unwrap();
             black_box(result);
         });

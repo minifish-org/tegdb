@@ -785,7 +785,9 @@ impl<'a> Executor<'a> {
             schema.columns.iter().map(|col| &col.name).collect();
         for column_name in row_data.keys() {
             if !valid_columns.contains(column_name) {
-                return Err(Error::Other(format!( "Unknown column '{column_name}' for table '{table_name}'")));
+                return Err(Error::Other(format!(
+                    "Unknown column '{column_name}' for table '{table_name}'"
+                )));
             }
         }
 
@@ -848,7 +850,9 @@ impl<'a> Executor<'a> {
             schema.columns.iter().map(|col| &col.name).collect();
         for column_name in row_data.keys() {
             if !valid_columns.contains(column_name) {
-                return Err(Error::Other(format!( "Unknown column '{column_name}' for table '{table_name}'")));
+                return Err(Error::Other(format!(
+                    "Unknown column '{column_name}' for table '{table_name}'"
+                )));
             }
         }
 
@@ -1038,7 +1042,9 @@ impl<'a> Executor<'a> {
             .collect();
 
         if pk_columns.is_empty() {
-            return Err(Error::Other(format!( "Table '{table_name}' has no primary key")));
+            return Err(Error::Other(format!(
+                "Table '{table_name}' has no primary key"
+            )));
         }
 
         // TegDB only supports single-column primary keys

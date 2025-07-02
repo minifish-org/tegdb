@@ -251,9 +251,7 @@ impl Database {
                 // Get table schema
                 let schema = schemas
                     .get(table_name)
-                    .ok_or_else(|| {
-                        crate::Error::Other(format!("Table '{table_name}' not found"))
-                    })?
+                    .ok_or_else(|| crate::Error::Other(format!("Table '{table_name}' not found")))?
                     .clone();
 
                 // Extract condition from where clause

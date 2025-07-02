@@ -17,8 +17,7 @@ fn test_schema_loading_performance() -> Result<()> {
         // Create several tables to make schema loading noticeable
         for i in 0..5 {
             db.execute(&format!(
-                "CREATE TABLE table_{} (id INTEGER PRIMARY KEY, name TEXT NOT NULL, value INTEGER)",
-                i
+                "CREATE TABLE table_{i} (id INTEGER PRIMARY KEY, name TEXT NOT NULL, value INTEGER)"
             ))?;
 
             // Add minimal data to each table
@@ -35,14 +34,14 @@ fn test_schema_loading_performance() -> Result<()> {
         let mut db = Database::open(db_path)?;
         let schema_load_time = start.elapsed();
 
-        println!("Schema loading time: {:?}", schema_load_time);
+        println!("Schema loading time: {schema_load_time:?}");
 
         // Perform multiple operations that would have triggered schema loading
         // in the old implementation
         let start = Instant::now();
         for i in 0..5 {
             let result = db
-                .query(&format!("SELECT * FROM table_{} LIMIT 1", i))
+                .query(&format!("SELECT * FROM table_{i} LIMIT 1"))
                 .unwrap()
                 .into_query_result()
                 .unwrap();
@@ -50,7 +49,7 @@ fn test_schema_loading_performance() -> Result<()> {
         }
         let query_time = start.elapsed();
 
-        println!("Time for 5 queries: {:?}", query_time);
+        println!("Time for 5 queries: {query_time:?}");
 
         // With the new implementation, schema loading happens once at database open,
         // not for each executor/query
