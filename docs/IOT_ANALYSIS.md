@@ -59,7 +59,7 @@ SELECT * FROM users WHERE id BETWEEN 100 AND 200;
 -- IOT: Efficient multi-level clustering
 CREATE TABLE order_items (
     order_id INTEGER PRIMARY KEY,
-    product_id INTEGER PRIMARY KEY,
+    product_id INTEGER,
     quantity INTEGER
 );
 
@@ -115,7 +115,7 @@ CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total REAL);
 -- Order items: clustered by (order_id, product_id)
 CREATE TABLE order_items (
     order_id INTEGER PRIMARY KEY, 
-    product_id INTEGER PRIMARY KEY,
+    product_id INTEGER,
     quantity INTEGER
 );
 

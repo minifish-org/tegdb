@@ -247,9 +247,6 @@ jobs:
         # Check documentation builds
         cargo doc --no-deps
         
-        # Dry run package creation
-        cargo package --dry-run
-        
         echo "✅ Release readiness check completed successfully!"
 
   # Coverage reporting

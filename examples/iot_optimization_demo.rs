@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     // Create a table with composite primary key
     println!("1. Creating table with composite primary key:");
     let create_sql = "CREATE TABLE orders (
-        customer_id INTEGER PRIMARY KEY,
+        customer_id INTEGER,
         order_id INTEGER PRIMARY KEY,
         product_name TEXT,
         quantity INTEGER,

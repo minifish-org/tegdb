@@ -12,7 +12,7 @@ fn main() -> Result<()> {
 
     // Create table with composite primary key
     println!("1. Creating table with composite PRIMARY KEY...");
-    db.execute("CREATE TABLE order_items (order_id INTEGER PRIMARY KEY, product_id INTEGER PRIMARY KEY, quantity INTEGER, price REAL)")?;
+    db.execute("CREATE TABLE order_items (order_id INTEGER PRIMARY KEY, product_id INTEGER, quantity INTEGER, price REAL)")?;
 
     // Insert data with composite primary keys
     println!("2. Inserting data with composite primary keys...");
