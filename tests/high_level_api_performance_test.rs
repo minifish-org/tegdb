@@ -40,10 +40,10 @@ impl PerformanceMetrics {
     
     fn print_summary(&self) {
         println!(
-            "{}: {} records in {:.3}ms ({:.1} records/sec)",
+            "{}: {} records in {:.1}µs ({:.1} records/sec)",
             self.operation,
             self.records_processed,
-            self.duration.as_secs_f64() * 1000.0,
+            self.duration.as_secs_f64() * 1_000_000.0,
             self.throughput_per_second
         );
     }
@@ -74,21 +74,21 @@ impl SqlExecutionMetrics {
     
     fn print_detailed_summary(&self) {
         println!(
-            "{}: {} records | Parse: {:.3}ms | Plan: {:.3}ms | Execute: {:.3}ms | Total: {:.3}ms",
+            "{}: {} records | Parse: {:.1}µs | Plan: {:.1}µs | Execute: {:.1}µs | Total: {:.1}µs",
             self.operation,
             self.records_processed,
-            self.parse_duration.as_secs_f64() * 1000.0,
-            self.plan_duration.as_secs_f64() * 1000.0,
-            self.execute_duration.as_secs_f64() * 1000.0,
-            self.total_duration.as_secs_f64() * 1000.0,
+            self.parse_duration.as_secs_f64() * 1_000_000.0,
+            self.plan_duration.as_secs_f64() * 1_000_000.0,
+            self.execute_duration.as_secs_f64() * 1_000_000.0,
+            self.total_duration.as_secs_f64() * 1_000_000.0,
         );
     }
     
     fn print_breakdown(&self) {
-        let total_ms = self.total_duration.as_secs_f64() * 1000.0;
-        let parse_pct = (self.parse_duration.as_secs_f64() * 1000.0 / total_ms) * 100.0;
-        let plan_pct = (self.plan_duration.as_secs_f64() * 1000.0 / total_ms) * 100.0;
-        let execute_pct = (self.execute_duration.as_secs_f64() * 1000.0 / total_ms) * 100.0;
+        let total_us = self.total_duration.as_secs_f64() * 1_000_000.0;
+        let parse_pct = (self.parse_duration.as_secs_f64() * 1_000_000.0 / total_us) * 100.0;
+        let plan_pct = (self.plan_duration.as_secs_f64() * 1_000_000.0 / total_us) * 100.0;
+        let execute_pct = (self.execute_duration.as_secs_f64() * 1_000_000.0 / total_us) * 100.0;
         
         println!(
             "  Breakdown: Parse {:.1}% | Plan {:.1}% | Execute {:.1}%",
@@ -724,9 +724,9 @@ fn test_detailed_sql_pipeline_performance() -> Result<()> {
     
     println!("Pipeline Averages:");
     println!("==================");
-    println!("Average Parse Time: {:.3}ms", avg_parse.as_secs_f64() * 1000.0);
-    println!("Average Plan Time: {:.3}ms", avg_plan.as_secs_f64() * 1000.0);
-    println!("Average Execute Time: {:.3}ms", avg_execute.as_secs_f64() * 1000.0);
+    println!("Average Parse Time: {:.1}µs", avg_parse.as_secs_f64() * 1_000_000.0);
+    println!("Average Plan Time: {:.1}µs", avg_plan.as_secs_f64() * 1_000_000.0);
+    println!("Average Execute Time: {:.1}µs", avg_execute.as_secs_f64() * 1_000_000.0);
     
     Ok(())
 }
@@ -804,9 +804,9 @@ fn test_parser_complexity_performance() -> Result<()> {
     println!("=======================================");
     for metric in &parse_metrics {
         println!(
-            "{}: Parse {:.3}ms (SQL length: {} chars)",
+            "{}: Parse {:.1}µs (SQL length: {} chars)",
             metric.operation,
-            metric.parse_duration.as_secs_f64() * 1000.0,
+            metric.parse_duration.as_secs_f64() * 1_000_000.0,
             complex_queries.iter().find(|(_, desc)| *desc == metric.operation).unwrap().0.len()
         );
     }
@@ -815,8 +815,8 @@ fn test_parser_complexity_performance() -> Result<()> {
     let mut complexity_analysis: Vec<(usize, f64)> = Vec::new();
     for (i, metric) in parse_metrics.iter().enumerate() {
         let sql_length = complex_queries[i].0.len();
-        let parse_time_ms = metric.parse_duration.as_secs_f64() * 1000.0;
-        complexity_analysis.push((sql_length, parse_time_ms));
+        let parse_time_us = metric.parse_duration.as_secs_f64() * 1_000_000.0;
+        complexity_analysis.push((sql_length, parse_time_us));
     }
     
     complexity_analysis.sort_by_key(|&(len, _)| len);
@@ -824,7 +824,7 @@ fn test_parser_complexity_performance() -> Result<()> {
     println!("\nSQL Length vs Parse Time Correlation:");
     println!("=====================================");
     for (length, time) in complexity_analysis {
-        println!("Length: {:3} chars -> Parse time: {:.3}ms", length, time);
+        println!("Length: {:3} chars -> Parse time: {:.1}µs", length, time);
     }
     
     Ok(())
