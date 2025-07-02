@@ -21,10 +21,7 @@ type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
 
 /// Trait for types that can perform scanning operations (Engine or Transaction)
 pub trait Scannable {
-    fn scan(
-        &self,
-        range: std::ops::Range<Vec<u8>>,
-    ) -> Result<ScanIterator<'_>>;
+    fn scan(&self, range: std::ops::Range<Vec<u8>>) -> Result<ScanIterator<'_>>;
 }
 
 impl Scannable for crate::engine::Engine {
@@ -426,10 +423,12 @@ impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
                 Self::compare_values(row_value, operator, right)
             }
             Condition::And(left, right) => {
-                Self::evaluate_condition(left, row_data) && Self::evaluate_condition(right, row_data)
+                Self::evaluate_condition(left, row_data)
+                    && Self::evaluate_condition(right, row_data)
             }
             Condition::Or(left, right) => {
-                Self::evaluate_condition(left, row_data) || Self::evaluate_condition(right, row_data)
+                Self::evaluate_condition(left, row_data)
+                    || Self::evaluate_condition(right, row_data)
             }
         }
     }

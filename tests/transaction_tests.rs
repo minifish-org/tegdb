@@ -414,7 +414,10 @@ fn test_transaction_key_size_limit() {
     if path.exists() {
         fs::remove_file(&path).unwrap();
     }
-    let config = EngineConfig { max_key_size: 1, ..Default::default() };
+    let config = EngineConfig {
+        max_key_size: 1,
+        ..Default::default()
+    };
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
@@ -436,7 +439,10 @@ fn test_transaction_value_size_limit() {
     if path.exists() {
         fs::remove_file(&path).unwrap();
     }
-    let config = EngineConfig { max_value_size: 1, ..Default::default() };
+    let config = EngineConfig {
+        max_value_size: 1,
+        ..Default::default()
+    };
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
@@ -455,7 +461,10 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let config = EngineConfig { max_key_size: 1, ..Default::default() };
+    let config = EngineConfig {
+        max_key_size: 1,
+        ..Default::default()
+    };
     let mut engine = Engine::with_config(path.clone(), config)?;
     {
         let mut tx = engine.begin_transaction();

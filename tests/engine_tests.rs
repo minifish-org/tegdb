@@ -585,7 +585,10 @@ fn test_engine_value_size_limit() {
         fs::remove_file(&path).unwrap();
     }
     // configure engine to allow only 1-byte values
-    let config = EngineConfig { max_value_size: 1, ..Default::default() };
+    let config = EngineConfig {
+        max_value_size: 1,
+        ..Default::default()
+    };
     let mut engine = Engine::with_config(path.clone(), config).unwrap();
     // setting oversized value should error
     let err = engine.set(b"k", vec![0, 1]);
