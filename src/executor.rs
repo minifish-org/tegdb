@@ -375,6 +375,10 @@ impl<'a> Executor<'a> {
             // Serialize and store row
             let serialized = self.storage_format.serialize_row(row_data, &schema)?;
             self.transaction.set(key.as_bytes(), serialized)?;
+            
+            // Maintain unique constraint indexes
+            self.maintain_unique_indexes(table, row_data, &schema, &key, false, None)?;
+            
             rows_affected += 1;
         }
         
@@ -416,7 +420,9 @@ impl<'a> Executor<'a> {
 
         for key in keys_to_update {
             if let Some(value) = self.transaction.get(key.as_bytes()) {
-                if let Ok(mut row_data) = self.storage_format.deserialize_row(&value, &schema) {
+                if let Ok(old_row_data) = self.storage_format.deserialize_row(&value, &schema) {
+                    let mut row_data = old_row_data.clone();
+                    
                     // Apply assignments
                     for assignment in assignments {
                         let new_value = assignment.value.evaluate(&row_data)
@@ -432,6 +438,10 @@ impl<'a> Executor<'a> {
                     // Serialize and store the updated row
                     let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
                     self.transaction.set(key.as_bytes(), serialized)?;
+                    
+                    // Update unique constraint indexes
+                    self.maintain_unique_indexes(table, &row_data, &schema, &key, true, Some(&old_row_data))?;
+                    
                     rows_affected += 1;
                 }
             }
@@ -453,7 +463,15 @@ impl<'a> Executor<'a> {
         let keys_to_delete = self.execute_scan_and_collect_keys(&scan_plan, &schema)?;
         let rows_affected = keys_to_delete.len();
 
-        for key in keys_to_delete {
+        for key in &keys_to_delete {
+            // Get the row data before deleting to clean up unique indexes
+            if let Some(value) = self.transaction.get(key.as_bytes()) {
+                if let Ok(row_data) = self.storage_format.deserialize_row(&value, &schema) {
+                    // Remove unique constraint indexes
+                    self.remove_unique_indexes(table, &row_data, &schema)?;
+                }
+            }
+            
             self.transaction.delete(key.as_bytes())?;
         }
         
@@ -808,34 +826,83 @@ impl<'a> Executor<'a> {
         table_name: &str,
         column_name: &str,
         value: &SqlValue,
-        schema: &TableSchema,
+        _schema: &TableSchema,
         exclude_key: Option<&str>
     ) -> Result<bool> {
-        let table_prefix = format!("{}:", table_name);
-        let start_key = table_prefix.as_bytes().to_vec();
-        let end_key = format!("{}~", table_name).as_bytes().to_vec();
+        // Use secondary index for unique constraint checking - O(1) instead of O(n)
+        let unique_index_key = format!("__unique__{}:{}:{}", table_name, column_name, self.value_to_key_string(value));
         
-        let scan_results: Vec<_> = self.transaction.scan(start_key..end_key)?.collect();
-        
-        for (key, stored_value) in scan_results {
-            // If we have a key to exclude, skip it
+        if let Some(existing_pk_bytes) = self.transaction.get(unique_index_key.as_bytes()) {
+            let existing_pk = String::from_utf8_lossy(&existing_pk_bytes);
+            
+            // If we have a key to exclude, check if this is the same key
             if let Some(exclude_key_str) = exclude_key {
-                let key_str = String::from_utf8_lossy(&key);
-                if key_str == exclude_key_str {
-                    continue;
+                if existing_pk == exclude_key_str {
+                    return Ok(false); // This is the same row being updated, no violation
                 }
             }
             
-            if let Ok(row_data) = self.storage_format.deserialize_row(&stored_value, schema) {
-                if let Some(existing_value) = row_data.get(column_name) {
-                    if existing_value == value {
-                        return Ok(true); // Violation found
+            return Ok(true); // Violation found - value exists for a different primary key
+        }
+        
+        Ok(false) // No violation - value doesn't exist in unique index
+    }
+
+    /// Maintain unique constraint indexes when inserting/updating
+    fn maintain_unique_indexes(
+        &mut self,
+        table_name: &str,
+        row_data: &HashMap<String, SqlValue>,
+        schema: &TableSchema,
+        primary_key: &str,
+        is_update: bool,
+        old_row_data: Option<&HashMap<String, SqlValue>>
+    ) -> Result<()> {
+        for column in &schema.columns {
+            if column.constraints.contains(&ColumnConstraint::Unique) {
+                if let Some(value) = row_data.get(&column.name) {
+                    if value != &SqlValue::Null {
+                        let unique_index_key = format!("__unique__{}:{}:{}", table_name, column.name, self.value_to_key_string(value));
+                        
+                        // For updates, remove old index entry if value changed
+                        if is_update {
+                            if let Some(old_data) = old_row_data {
+                                if let Some(old_value) = old_data.get(&column.name) {
+                                    if old_value != value && old_value != &SqlValue::Null {
+                                        let old_index_key = format!("__unique__{}:{}:{}", table_name, column.name, self.value_to_key_string(old_value));
+                                        self.transaction.delete(old_index_key.as_bytes())?;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Add new index entry pointing to this primary key
+                        self.transaction.set(unique_index_key.as_bytes(), primary_key.as_bytes().to_vec())?;
                     }
                 }
             }
         }
-        
-        Ok(false) // No violation
+        Ok(())
+    }
+
+    /// Remove unique constraint indexes when deleting rows
+    fn remove_unique_indexes(
+        &mut self,
+        table_name: &str,
+        row_data: &HashMap<String, SqlValue>,
+        schema: &TableSchema
+    ) -> Result<()> {
+        for column in &schema.columns {
+            if column.constraints.contains(&ColumnConstraint::Unique) {
+                if let Some(value) = row_data.get(&column.name) {
+                    if value != &SqlValue::Null {
+                        let unique_index_key = format!("__unique__{}:{}:{}", table_name, column.name, self.value_to_key_string(value));
+                        self.transaction.delete(unique_index_key.as_bytes())?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Build primary key string for a row
