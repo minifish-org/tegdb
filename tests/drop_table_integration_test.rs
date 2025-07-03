@@ -18,6 +18,7 @@ fn test_drop_table_integration() {
     // Start a transaction
     let begin_result = executor.begin_transaction().unwrap();
     assert!(matches!(begin_result, ResultSet::Begin));
+    drop(begin_result); // Release the borrow
 
     // Create a table first
     let create_sql = "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)";
@@ -27,6 +28,7 @@ fn test_drop_table_integration() {
     };
     let create_result = executor.execute_create_table(create_statement).unwrap();
     assert!(matches!(create_result, ResultSet::CreateTable));
+    drop(create_result); // Release the borrow
 
     // Drop the table
     let drop_sql = "DROP TABLE test_table";
@@ -34,9 +36,7 @@ fn test_drop_table_integration() {
         Statement::DropTable(drop) => drop,
         _ => panic!("Expected DROP TABLE statement"),
     };
-    let drop_result = executor.execute_drop_table(drop_statement).unwrap();
-
-    match drop_result {
+    match executor.execute_drop_table(drop_statement).unwrap() {
         ResultSet::DropTable => {
             // Table was successfully dropped
         }
@@ -48,8 +48,7 @@ fn test_drop_table_integration() {
         Statement::DropTable(drop) => drop,
         _ => panic!("Expected DROP TABLE statement"),
     };
-    let drop_again_result = executor.execute_drop_table(drop_again_statement);
-    assert!(drop_again_result.is_err());
+    assert!(executor.execute_drop_table(drop_again_statement).is_err());
 
     // Try to drop with IF EXISTS (should succeed)
     let drop_if_exists_sql = "DROP TABLE IF EXISTS test_table";
@@ -57,11 +56,8 @@ fn test_drop_table_integration() {
         Statement::DropTable(drop) => drop,
         _ => panic!("Expected DROP TABLE statement"),
     };
-    let drop_if_exists_result = executor
-        .execute_drop_table(drop_if_exists_statement)
-        .unwrap();
-
-    match drop_if_exists_result {
+    let result = executor.execute_drop_table(drop_if_exists_statement).unwrap();
+    match result {
         ResultSet::DropTable => {
             // Table drop was handled (whether it existed or not)
         }
