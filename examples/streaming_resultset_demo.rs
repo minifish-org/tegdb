@@ -37,21 +37,18 @@ fn main() -> Result<()> {
     // Example 1: Process rows one by one using the iterator
     println!("--- Example 1: Processing rows one-by-one (streaming) ---");
     let start = Instant::now();
-    let query_result = db.query("SELECT * FROM measurements WHERE sensor_id <= 5")?;
+    let qr = db.query("SELECT * FROM measurements WHERE sensor_id <= 5")?;
     println!("   ✓ Query created in {:?} (no rows materialized yet)", start.elapsed());
     
     let start = Instant::now();
     let mut count = 0;
-    for (i, row_result) in query_result.enumerate() {
-        let _row = row_result?;
+    for (i, row) in qr.rows().iter().enumerate() {
         count += 1;
-        
         // Show streaming in action - process only first 3 rows
         if i < 3 {
-            println!("   • Processing row {}: sensor_id={:?}, value={:?}", 
-                     i + 1, _row.get(1), _row.get(3));
+            println!("   • Processing row {}: sensor_id={:?}, value={:?}",
+                     i + 1, row.get(1), row.get(3));
         }
-        
         // Early termination example
         if count >= 5 {
             println!("   • Early termination after 5 rows");
@@ -64,19 +61,13 @@ fn main() -> Result<()> {
     // Example 2: Collect all rows for backward compatibility
     println!("--- Example 2: Backward compatibility (collect all rows) ---");
     let start = Instant::now();
-    let query_result = db.query("SELECT id, sensor_id, value FROM measurements WHERE value > 45.0")?;
-    let all_rows: Result<Vec<_>> = query_result.collect();
+    let qr2 = db.query("SELECT id, sensor_id, value FROM measurements WHERE value > 45.0")?;
+    let rows = qr2.rows().to_vec();
     let collect_time = start.elapsed();
-    
-    match all_rows {
-        Ok(rows) => {
-            println!("   ✓ Collected {} rows in {:?}", rows.len(), collect_time);
-            if let Some(first_row) = rows.first() {
-                println!("   • First row: id={:?}, sensor_id={:?}, value={:?}", 
-                         first_row.get(0), first_row.get(1), first_row.get(2));
-            }
-        }
-        Err(e) => println!("   ✗ Error collecting rows: {}", e),
+    println!("   ✓ Collected {} rows in {:?}", rows.len(), collect_time);
+    if let Some(first_row) = rows.first() {
+        println!("   • First row: id={:?}, sensor_id={:?}, value={:?}",
+                 first_row.get(0), first_row.get(1), first_row.get(2));
     }
     println!();
 
@@ -86,12 +77,10 @@ fn main() -> Result<()> {
     // Show that we can process large result sets with constant memory
     println!("Processing all 1,000 rows with streaming (constant memory usage):");
     let start = Instant::now();
-    let query_result = db.query("SELECT value FROM measurements")?;
-    
+    let qr3 = db.query("SELECT value FROM measurements")?;
     let mut sum = 0.0;
     let mut processed_count = 0;
-    for row_result in query_result {
-        let row = row_result?;
+    for row in qr3.rows().iter() {
         if let Some(value) = row.get(0) {
             let numeric_value = match value {
                 tegdb::SqlValue::Real(val) => *val,
@@ -113,17 +102,11 @@ fn main() -> Result<()> {
     // Example 4: LIMIT optimization
     println!("--- Example 4: LIMIT optimization (early termination) ---");
     let start = Instant::now();
-    let query_result = db.query("SELECT * FROM measurements ORDER BY id LIMIT 10")?;
-    let limited_rows: Result<Vec<_>> = query_result.collect();
+    let qr4 = db.query("SELECT * FROM measurements ORDER BY id LIMIT 10")?;
+    let rows = qr4.rows().to_vec();
     let limit_time = start.elapsed();
-    
-    match limited_rows {
-        Ok(rows) => {
-            println!("   ✓ Retrieved {} rows with LIMIT 10 in {:?}", rows.len(), limit_time);
-            println!("   ✓ Streaming implementation stopped after 10 rows (no unnecessary work)");
-        }
-        Err(e) => println!("   ✗ Error: {}", e),
-    }
+    println!("   ✓ Retrieved {} rows with LIMIT 10 in {:?}", rows.len(), limit_time);
+    println!("   ✓ Streaming implementation stopped after 10 rows (no unnecessary work)");
     println!();
 
     // Summary

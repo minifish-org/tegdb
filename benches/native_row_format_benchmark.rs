@@ -108,46 +108,31 @@ fn test_native_format(
     // Test 1: Full table scan
     let full_scan_start = Instant::now();
     let full_result = db.query("SELECT * FROM users")?;
-    let mut full_rows = Vec::new();
-    for row in full_result {
-        full_rows.push(row?);
-    }
+    let _full_rows = full_result.rows().to_vec();
     let full_scan_time = full_scan_start.elapsed().as_nanos();
 
     // Test 2: Selective column scan (major optimization for native format)
     let selective_start = Instant::now();
     let selective_result = db.query("SELECT name, score FROM users")?;
-    let mut selective_rows = Vec::new();
-    for row in selective_result {
-        selective_rows.push(row?);
-    }
+    let _selective_rows = selective_result.rows().to_vec();
     let selective_scan_time = selective_start.elapsed().as_nanos();
 
     // Test 3: Primary key lookup
     let pk_start = Instant::now();
     let pk_result = db.query("SELECT name, email FROM users WHERE id = 7500")?;
-    let mut pk_rows = Vec::new();
-    for row in pk_result {
-        pk_rows.push(row?);
-    }
+    let _pk_rows = pk_result.rows().to_vec();
     let pk_lookup_time = pk_start.elapsed().as_nanos();
 
     // Test 4: Limited scan (should benefit from early termination)
     let limited_start = Instant::now();
     let limited_result = db.query("SELECT name, score FROM users LIMIT 100")?;
-    let mut limited_rows = Vec::new();
-    for row in limited_result {
-        limited_rows.push(row?);
-    }
+    let _limited_rows = limited_result.rows().to_vec();
     let limited_scan_time = limited_start.elapsed().as_nanos();
 
     // Test 5: Filtered scan
     let filtered_start = Instant::now();
     let filtered_result = db.query("SELECT name FROM users WHERE active = 1")?;
-    let mut filtered_rows = Vec::new();
-    for row in filtered_result {
-        filtered_rows.push(row?);
-    }
+    let _filtered_rows = filtered_result.rows().to_vec();
     let filtered_scan_time = filtered_start.elapsed().as_nanos();
 
     // Estimate database size

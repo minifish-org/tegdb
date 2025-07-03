@@ -323,6 +323,24 @@ impl QueryResult {
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
+    /// Collect rows into a Vec (for compatibility)
+    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
+        Ok(self.rows)
+    }
+}
+
+// Allow iterating over QueryResult as a stream of Result<Vec<SqlValue>>
+impl IntoIterator for QueryResult {
+    type Item = Result<Vec<SqlValue>>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rows
+            .into_iter()
+            .map(|row| Ok(row))
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
 }
 
 /// Transaction handle for batch operations

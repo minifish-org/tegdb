@@ -31,12 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Backward-compatible API (materializes all rows)
     println!("1. Using backward-compatible query() API (materializes all rows):");
     let start = Instant::now();
-    let result_iter = db
-        .query("SELECT * FROM large_table WHERE value < 5")
-        .unwrap();
+    let qr_bc = db.query("SELECT * FROM large_table WHERE value < 5")?;
     let materialized_time = start.elapsed();
 
-    let count = result_iter.collect::<Result<Vec<_>, _>>()?.len();
+    let rows_bc = qr_bc.rows().to_vec();
+    let count = rows_bc.len();
     let total_time = start.elapsed();
 
     println!("   - Time to create iterator: {materialized_time:?}");
@@ -46,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. True streaming API (yields rows on-demand)
     println!("\n2. Using new query() API (true streaming):");
     let start = Instant::now();
-    let mut streaming_result = db.query("SELECT * FROM large_table WHERE value < 5")?;
+    let qr_stream = db.query("SELECT * FROM large_table WHERE value < 5")?;
     let streaming_create_time = start.elapsed();
 
     println!("   - Time to create streaming iterator: {streaming_create_time:?}");
@@ -55,8 +54,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Process only the first 3 rows to demonstrate streaming
     println!("   - Processing first 3 rows on-demand:");
     let mut count = 0;
-    for row in streaming_result.iter() {
-        let row = row?;
+    // Process first 3 rows
+    for row in qr_stream.rows().iter().take(3) {
         println!(
             "     Row {}: id={:?}, data={:?}, value={:?}",
             count + 1,
@@ -65,9 +64,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             row[2]
         );
         count += 1;
-        if count >= 3 {
-            break;
-        }
     }
 
     let partial_time = start.elapsed();
@@ -76,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Show that we can continue processing from where we left off
     println!("   - Continuing to process remaining rows...");
-    for _row in streaming_result {
+    for _row in qr_stream.rows().iter().skip(3) {
         count += 1;
     }
     let complete_time = start.elapsed();
@@ -89,12 +85,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let limited_stream = db.query("SELECT * FROM large_table LIMIT 5")?;
 
-    let mut limited_count = 0;
-    for row in limited_stream.into_iter() {
-        let row = row?;
-        println!("   Limited Row {}: id={:?}", limited_count + 1, row[0]);
-        limited_count += 1;
-    }
+    // Use rows() for LIMIT example
+    let rows_lim = limited_stream.rows().to_vec();
+    let limited_count = rows_lim.len();
     let limited_time = start.elapsed();
 
     println!("   - Time to process {limited_count} rows with LIMIT: {limited_time:?}");

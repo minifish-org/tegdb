@@ -13,17 +13,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== Streaming Query Demo ===");
 
-    // Query with iterator API - this is now the default behavior
-    let query_iter = db.query("SELECT * FROM users WHERE age > 25").unwrap();
-
-    println!("Columns: {:?}", query_iter.columns());
-    println!("Processing rows one by one (streaming):");
-
-    // Iterate through results without loading all into memory
-    for (i, row_result) in query_iter.enumerate() {
-        let row = row_result?;
+    // Query and process rows one by one
+    let qr = db.query("SELECT * FROM users WHERE age > 25").unwrap();
+    println!("Columns: {:?}", qr.columns());
+    println!("Processing rows one by one (streaming simulation):");
+    for (i, row) in qr.rows().iter().enumerate() {
         println!("Row {}: {:?}", i + 1, row);
-
         // Early termination example - stop after 2 rows
         if i >= 1 {
             println!("Early termination after 2 rows!");
@@ -33,24 +28,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Collecting All Results (if needed) ===");
 
-    // If you need all results at once, you can still collect them
-    let query_iter = db
+    // If you need all results at once, you can use rows()
+    let qr_all = db
         .query("SELECT name, age FROM users ORDER BY age")
         .unwrap();
-    let all_rows: Result<Vec<_>, _> = query_iter.collect();
-    let all_rows = all_rows?;
+    let all_rows = qr_all.rows().to_vec();
 
     println!("All rows collected: {all_rows:?}");
 
     println!("\n=== Backward Compatibility ===");
 
-    // For backward compatibility, convert to old QueryResult format
-    let query_iter = db
+    // The QueryResult itself still provides columns() and rows()
+    let query_result = db
         .query("SELECT * FROM users WHERE name LIKE '%a%'")
         .unwrap();
-    let query_result = query_iter;
 
-    println!("Using old QueryResult format:");
+    println!("Using QueryResult format:");
     println!("Columns: {:?}", query_result.columns());
     println!("Rows: {:?}", query_result.rows());
     println!("Row count: {}", query_result.len());

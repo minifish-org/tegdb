@@ -187,16 +187,15 @@ fn test_query_iterator_with_where_clause() {
     }
 
     // Query with WHERE clause
-    let query = db
+    let query_result = db
         .query("SELECT * FROM where_test WHERE value > 50")
         .unwrap();
-
-    let rows = query;
+    let rows = query_result.rows();
     assert_eq!(rows.len(), 5); // ids 6-10 have values > 50
 
     // Since we can't guarantee order without ORDER BY, just verify we have the right data
     // Check that all values are > 50
-    for row in &rows {
+    for row in rows {
         if let SqlValue::Integer(value) = &row[1] {
             assert!(value > &50);
         }
