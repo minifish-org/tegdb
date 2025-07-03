@@ -378,7 +378,7 @@ impl NativeRowFormat {
                 right,
             } => {
                 if let Some(left_value) = row_data.get(left) {
-                    Self::compare_values(left_value, operator, right)
+                    crate::sql_utils::compare_values(left_value, operator, right)
                 } else {
                     false
                 }
@@ -391,51 +391,6 @@ impl NativeRowFormat {
                 Self::evaluate_condition_on_map(left, row_data)
                     || Self::evaluate_condition_on_map(right, row_data)
             }
-        }
-    }
-
-    /// Compare two SQL values
-    fn compare_values(
-        left: &SqlValue,
-        operator: &crate::parser::ComparisonOperator,
-        right: &SqlValue,
-    ) -> bool {
-        use crate::parser::ComparisonOperator::*;
-
-        match (left, right) {
-            (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
-                Equal => l == r,
-                NotEqual => l != r,
-                LessThan => l < r,
-                LessThanOrEqual => l <= r,
-                GreaterThan => l > r,
-                GreaterThanOrEqual => l >= r,
-                Like => false,
-            },
-            (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
-                Equal => (l - r).abs() < f64::EPSILON,
-                NotEqual => (l - r).abs() >= f64::EPSILON,
-                LessThan => l < r,
-                LessThanOrEqual => l <= r,
-                GreaterThan => l > r,
-                GreaterThanOrEqual => l >= r,
-                Like => false,
-            },
-            (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
-                Equal => l == r,
-                NotEqual => l != r,
-                LessThan => l < r,
-                LessThanOrEqual => l <= r,
-                GreaterThan => l > r,
-                GreaterThanOrEqual => l >= r,
-                Like => l.contains(r),
-            },
-            (SqlValue::Null, SqlValue::Null) => match operator {
-                Equal => true,
-                NotEqual => false,
-                _ => false,
-            },
-            _ => false,
         }
     }
 }

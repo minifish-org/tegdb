@@ -50,6 +50,7 @@ pub mod database;
 pub mod engine;
 pub mod error;
 pub mod native_row_format;
+pub mod sql_utils;
 pub mod storage_format;
 
 // Make these modules public when dev feature is enabled or when running tests

@@ -5,7 +5,7 @@
 
 use crate::engine::Transaction;
 use crate::parser::{
-    ColumnConstraint, ComparisonOperator, Condition, CreateTableStatement, DataType,
+    ColumnConstraint, Condition, CreateTableStatement, DataType,
     DropTableStatement, SqlValue,
 };
 use crate::storage_format::StorageFormat;
@@ -244,24 +244,11 @@ impl<'a> Executor<'a> {
         use crate::planner::ExecutionPlan;
 
         match plan {
-            ExecutionPlan::PrimaryKeyLookup {
-                table,
-                pk_values,
-                selected_columns,
-                additional_filter,
-            } => self.execute_primary_key_lookup(
-                &table,
-                &pk_values,
-                &selected_columns,
-                additional_filter.as_ref(),
-            ),
-            ExecutionPlan::TableScan {
-                table,
-                selected_columns,
-                filter,
-                limit,
-                early_termination: _,
-            } => self.execute_table_scan(&table, &selected_columns, filter.as_ref(), limit),
+            // For SELECT operations, use streaming execution and collect results
+            ExecutionPlan::PrimaryKeyLookup { .. } | ExecutionPlan::TableScan { .. } => {
+                self.execute_select_plan_streaming(plan)
+            }
+            // Non-SELECT operations remain the same
             ExecutionPlan::Insert {
                 table,
                 rows,
@@ -289,99 +276,100 @@ impl<'a> Executor<'a> {
         }
     }
 
-    /// Execute primary key lookup plan
-    fn execute_primary_key_lookup(
-        &mut self,
-        table: &str,
-        pk_values: &HashMap<String, SqlValue>,
-        selected_columns: &[String],
-        additional_filter: Option<&Condition>,
-    ) -> Result<ResultSet> {
-        // Get table schema
-        let schema = self.get_table_schema(table)?;
+    /// Execute SELECT plans using streaming and collect results
+    /// This eliminates duplicate code by using a single streaming implementation
+    fn execute_select_plan_streaming(&mut self, plan: crate::planner::ExecutionPlan) -> Result<ResultSet> {
+        use crate::planner::ExecutionPlan;
 
-        // Build primary key
-        let key = self.build_primary_key(table, pk_values, &schema)?;
+        match plan {
+            ExecutionPlan::PrimaryKeyLookup {
+                table,
+                pk_values,
+                selected_columns,
+                additional_filter,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                
+                // Build primary key and try to get the row
+                let key = self.build_primary_key(&table, &pk_values, &schema)?;
+                
+                if let Some(value) = self.transaction.get(key.as_bytes()) {
+                    if let Ok(row_data) = self.storage_format.deserialize_row(&value, &schema) {
+                        // Apply additional filter if present
+                        let matches = if let Some(filter) = &additional_filter {
+                            self.evaluate_condition(filter, &row_data)
+                        } else {
+                            true
+                        };
 
-        // Get the row
-        if let Some(value) = self.transaction.get(key.as_bytes()) {
-            // Deserialize row
-            if let Ok(row_data) = self.storage_format.deserialize_row(&value, &schema) {
-                // Apply additional filter if present
-                let matches = if let Some(filter) = additional_filter {
-                    self.evaluate_condition(filter, &row_data)
-                } else {
-                    true
-                };
+                        if matches {
+                            // Extract selected columns
+                            let mut row_values = Vec::new();
+                            for col_name in &selected_columns {
+                                row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                            }
 
-                if matches {
-                    // Extract selected columns
-                    let mut row_values = Vec::new();
-                    for col_name in selected_columns {
-                        row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                            return Ok(ResultSet::Select {
+                                columns: selected_columns,
+                                rows: vec![row_values],
+                            });
+                        }
+                    }
+                }
+
+                // No matching row found
+                Ok(ResultSet::Select {
+                    columns: selected_columns,
+                    rows: vec![],
+                })
+            }
+            ExecutionPlan::TableScan {
+                table,
+                selected_columns,
+                filter,
+                limit,
+                ..
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                let table_prefix = format!("{table}:");
+                let start_key = table_prefix.as_bytes().to_vec();
+                let end_key = format!("{table}~").as_bytes().to_vec();
+
+                let mut rows = Vec::new();
+                let mut count = 0;
+
+                for (_, value) in self.transaction.scan(start_key..end_key)? {
+                    // Check limit early
+                    if let Some(limit) = limit {
+                        if count >= limit {
+                            break;
+                        }
                     }
 
-                    return Ok(ResultSet::Select {
-                        columns: selected_columns.to_vec(),
-                        rows: vec![row_values],
-                    });
+                    let matches = if let Some(filter) = &filter {
+                        self.storage_format
+                            .matches_condition(&value, &schema, filter)
+                            .unwrap_or(false)
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        // Deserialize only the required columns
+                        let row_values = self.storage_format
+                            .deserialize_columns(&value, &schema, &selected_columns)?;
+                        rows.push(row_values);
+                        count += 1;
+                    }
                 }
+
+                Ok(ResultSet::Select {
+                    columns: selected_columns,
+                    rows,
+                })
             }
+            _ => Err(Error::Other("Expected SELECT execution plan".to_string())),
         }
-
-        // No matching row found
-        Ok(ResultSet::Select {
-            columns: selected_columns.to_vec(),
-            rows: vec![],
-        })
-    }
-
-    /// Execute table scan plan - now uses streaming for better memory efficiency
-    fn execute_table_scan(
-        &mut self,
-        table: &str,
-        selected_columns: &[String],
-        filter: Option<&Condition>,
-        limit: Option<u64>,
-    ) -> Result<ResultSet> {
-        let schema = self.get_table_schema(table)?;
-        let table_prefix = format!("{table}:");
-        let start_key = table_prefix.as_bytes().to_vec();
-        let end_key = format!("{table}~").as_bytes().to_vec();
-
-        let mut rows = Vec::new();
-        let mut count = 0;
-
-        for (_, value) in self.transaction.scan(start_key..end_key)? {
-            // Check limit early
-            if let Some(limit) = limit {
-                if count >= limit {
-                    break;
-                }
-            }
-
-            let matches = if let Some(filter) = filter {
-                self.storage_format
-                    .matches_condition(&value, &schema, filter)
-                    .unwrap_or(false)
-            } else {
-                true
-            };
-
-            if matches {
-                // Since it matches, now we deserialize only the required columns
-                let row_values =
-                    self.storage_format
-                        .deserialize_columns(&value, &schema, selected_columns)?;
-                rows.push(row_values);
-                count += 1;
-            }
-        }
-
-        Ok(ResultSet::Select {
-            columns: selected_columns.to_vec(),
-            rows,
-        })
     }
 
     /// Execute insert plan
@@ -1085,79 +1073,6 @@ impl<'a> Executor<'a> {
         condition: &Condition,
         row_data: &HashMap<String, SqlValue>,
     ) -> bool {
-        match condition {
-            Condition::Comparison {
-                left,
-                operator,
-                right,
-            } => {
-                let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
-                self.compare_values(row_value, operator, right)
-            }
-            Condition::And(left, right) => {
-                self.evaluate_condition(left, row_data) && self.evaluate_condition(right, row_data)
-            }
-            Condition::Or(left, right) => {
-                self.evaluate_condition(left, row_data) || self.evaluate_condition(right, row_data)
-            }
-        }
-    }
-
-    /// Compare two SqlValues using the given operator
-    fn compare_values(
-        &self,
-        left: &SqlValue,
-        operator: &ComparisonOperator,
-        right: &SqlValue,
-    ) -> bool {
-        use ComparisonOperator::*;
-
-        match operator {
-            Equal => left == right,
-            NotEqual => left != right,
-            LessThan => match (left, right) {
-                (SqlValue::Integer(a), SqlValue::Integer(b)) => a < b,
-                (SqlValue::Real(a), SqlValue::Real(b)) => a < b,
-                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) < *b,
-                (SqlValue::Real(a), SqlValue::Integer(b)) => *a < (*b as f64),
-                (SqlValue::Text(a), SqlValue::Text(b)) => a < b,
-                _ => false,
-            },
-            LessThanOrEqual => match (left, right) {
-                (SqlValue::Integer(a), SqlValue::Integer(b)) => a <= b,
-                (SqlValue::Real(a), SqlValue::Real(b)) => a <= b,
-                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) <= *b,
-                (SqlValue::Real(a), SqlValue::Integer(b)) => *a <= (*b as f64),
-                (SqlValue::Text(a), SqlValue::Text(b)) => a <= b,
-                _ => false,
-            },
-            GreaterThan => match (left, right) {
-                (SqlValue::Integer(a), SqlValue::Integer(b)) => a > b,
-                (SqlValue::Real(a), SqlValue::Real(b)) => a > b,
-                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) > *b,
-                (SqlValue::Real(a), SqlValue::Integer(b)) => *a > (*b as f64),
-                (SqlValue::Text(a), SqlValue::Text(b)) => a > b,
-                _ => false,
-            },
-            GreaterThanOrEqual => match (left, right) {
-                (SqlValue::Integer(a), SqlValue::Integer(b)) => a >= b,
-                (SqlValue::Real(a), SqlValue::Real(b)) => a >= b,
-                (SqlValue::Integer(a), SqlValue::Real(b)) => (*a as f64) >= *b,
-                (SqlValue::Real(a), SqlValue::Integer(b)) => *a >= (*b as f64),
-                (SqlValue::Text(a), SqlValue::Text(b)) => a >= b,
-                _ => false,
-            },
-            Like => {
-                // Simple LIKE implementation - just checking if right is substring of left
-                match (left, right) {
-                    (SqlValue::Text(a), SqlValue::Text(b)) => {
-                        // Simple pattern matching - convert SQL LIKE to contains for now
-                        let pattern = b.replace('%', "");
-                        a.contains(&pattern)
-                    }
-                    _ => false,
-                }
-            }
-        }
+        crate::sql_utils::evaluate_condition(condition, row_data)
     }
 }

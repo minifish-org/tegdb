@@ -81,7 +81,7 @@ pub fn evaluate_condition_on_row(
             right,
         } => {
             if let Some(left_value) = row_data.get(left) {
-                compare_values(left_value, operator, right)
+                crate::sql_utils::compare_values(left_value, operator, right)
             } else {
                 false
             }
@@ -92,80 +92,5 @@ pub fn evaluate_condition_on_row(
         crate::parser::Condition::Or(left, right) => {
             evaluate_condition_on_row(left, row_data) || evaluate_condition_on_row(right, row_data)
         }
-    }
-}
-
-/// Compare two SQL values based on operator
-fn compare_values(
-    left: &SqlValue,
-    operator: &crate::parser::ComparisonOperator,
-    right: &SqlValue,
-) -> bool {
-    use crate::parser::ComparisonOperator::*;
-
-    match (left, right) {
-        // Optimized numeric comparisons
-        (SqlValue::Integer(l), SqlValue::Integer(r)) => compare_numeric(l, r, operator),
-        (SqlValue::Real(l), SqlValue::Real(r)) => compare_numeric(l, r, operator),
-
-        // Handle mixed-type comparisons more carefully to avoid precision loss
-        (SqlValue::Integer(l), SqlValue::Real(r)) => {
-            // Try to compare as integers if the float is a whole number
-            if r.fract() == 0.0 && *r >= i64::MIN as f64 && *r <= i64::MAX as f64 {
-                compare_numeric(l, &(*r as i64), operator)
-            } else {
-                // Fallback to float comparison, acknowledging potential precision loss for large integers
-                compare_numeric(&(*l as f64), r, operator)
-            }
-        }
-        (SqlValue::Real(l), SqlValue::Integer(r)) => {
-            // Symmetric case
-            if l.fract() == 0.0 && *l >= i64::MIN as f64 && *l <= i64::MAX as f64 {
-                compare_numeric(&(*l as i64), r, operator)
-            } else {
-                compare_numeric(l, &(*r as f64), operator)
-            }
-        }
-
-        // Text comparisons
-        (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
-            Equal => l == r,
-            NotEqual => l != r,
-            LessThan => l < r,
-            LessThanOrEqual => l <= r,
-            GreaterThan => l > r,
-            GreaterThanOrEqual => l >= r,
-            // A simple version of LIKE. For full SQL compatibility, this would need wildcard handling.
-            Like => l.contains(r),
-        },
-
-        // Null comparisons
-        (SqlValue::Null, SqlValue::Null) => match operator {
-            Equal => true,
-            NotEqual => false,
-            // Comparisons other than IS NULL or IS NOT NULL with NULL are undefined/false.
-            _ => false,
-        },
-
-        // All other type combinations are not comparable.
-        _ => false,
-    }
-}
-
-/// Generic comparison for numeric types to reduce code duplication.
-fn compare_numeric<T: PartialEq + PartialOrd>(
-    l: &T,
-    r: &T,
-    operator: &crate::parser::ComparisonOperator,
-) -> bool {
-    use crate::parser::ComparisonOperator::*;
-    match operator {
-        Equal => l == r,
-        NotEqual => l != r,
-        LessThan => l < r,
-        LessThanOrEqual => l <= r,
-        GreaterThan => l > r,
-        GreaterThanOrEqual => l >= r,
-        Like => false, // LIKE is not for numeric types
     }
 }
