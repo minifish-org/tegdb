@@ -29,7 +29,7 @@ fn main() -> Result<()> {
         ))?;
     }
     let insert_time = start.elapsed();
-    println!("   ✓ Inserted 1,000 rows in {:?}\n", insert_time);
+    println!("   ✓ Inserted 1,000 rows in {insert_time:?}\n");
 
     // Demonstrate streaming behavior with the new ResultSet::Select
     println!("2. Testing streaming ResultSet::Select behavior...\n");
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
         }
     }
     let process_time = start.elapsed();
-    println!("   ✓ Processed {} rows in {:?} (streaming)\n", count, process_time);
+    println!("   ✓ Processed {count} rows in {process_time:?} (streaming)\n");
 
     // Example 2: Collect all rows for backward compatibility
     println!("--- Example 2: Backward compatibility (collect all rows) ---");
@@ -67,7 +67,7 @@ fn main() -> Result<()> {
     println!("   ✓ Collected {} rows in {:?}", rows.len(), collect_time);
     if let Some(first_row) = rows.first() {
         println!("   • First row: id={:?}, sensor_id={:?}, value={:?}",
-                 first_row.get(0), first_row.get(1), first_row.get(2));
+                 first_row.first(), first_row.get(1), first_row.get(2));
     }
     println!();
 
@@ -81,7 +81,7 @@ fn main() -> Result<()> {
     let mut sum = 0.0;
     let mut processed_count = 0;
     for row in qr3.rows().iter() {
-        if let Some(value) = row.get(0) {
+        if let Some(value) = row.first() {
             let numeric_value = match value {
                 tegdb::SqlValue::Real(val) => *val,
                 tegdb::SqlValue::Integer(val) => *val as f64,
@@ -94,8 +94,8 @@ fn main() -> Result<()> {
     let streaming_time = start.elapsed();
     
     let average = sum / processed_count as f64;
-    println!("   ✓ Processed {} rows in {:?}", processed_count, streaming_time);
-    println!("   ✓ Average temperature: {:.2}°C", average);
+    println!("   ✓ Processed {processed_count} rows in {streaming_time:?}");
+    println!("   ✓ Average temperature: {average:.2}°C");
     println!("   ✓ Memory usage: O(1) - only one row in memory at a time");
     println!();
 

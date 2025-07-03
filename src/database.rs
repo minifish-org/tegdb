@@ -337,7 +337,7 @@ impl IntoIterator for QueryResult {
     fn into_iter(self) -> Self::IntoIter {
         self.rows
             .into_iter()
-            .map(|row| Ok(row))
+            .map(Ok)
             .collect::<Vec<_>>()
             .into_iter()
     }
