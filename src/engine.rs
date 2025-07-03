@@ -338,15 +338,12 @@ impl Transaction<'_> {
         // Restore original values in reverse order using engine's set/del methods
         if let Some(ref mut log) = self.undo_log {
             for undo_entry in log.drain(..).rev() {
-                match undo_entry.old_value {
-                    Some(old_value) => {
-                        // Restore the old value using engine's set method
-                        self.engine.set(&undo_entry.key, old_value.to_vec())?;
-                    }
-                    None => {
-                        // Key didn't exist, remove it using engine's del method
-                        self.engine.del(&undo_entry.key)?;
-                    }
+                if let Some(old_value) = undo_entry.old_value {
+                    // Restore the old value using engine's set method
+                    self.engine.set(&undo_entry.key, old_value.to_vec())?;
+                } else {
+                    // Key didn't exist, remove it using engine's del method
+                    self.engine.del(&undo_entry.key)?;
                 }
             }
         }
