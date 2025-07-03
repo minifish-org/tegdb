@@ -32,16 +32,12 @@ fn main() -> tegdb::Result<()> {
 
     // Test 4: Full table scan
     println!("4. Testing full table scan...");
-    let result = db
-        .query("SELECT * FROM users")
-        .unwrap();
+    let result = db.query("SELECT * FROM users").unwrap();
     println!("   ✓ Full scan returned {} rows", result.rows().len());
 
     // Test 5: Selective column query (major benefit of native format)
     println!("5. Testing selective column query...");
-    let result = db
-        .query("SELECT name, score FROM users")
-        .unwrap();
+    let result = db.query("SELECT name, score FROM users").unwrap();
     println!(
         "   ✓ Selective query returned {} rows with {} columns",
         result.rows().len(),
@@ -65,9 +61,7 @@ fn main() -> tegdb::Result<()> {
 
     // Test 7: LIMIT query
     println!("7. Testing LIMIT query...");
-    let result = db
-        .query("SELECT name FROM users LIMIT 10")
-        .unwrap();
+    let result = db.query("SELECT name FROM users LIMIT 10").unwrap();
     println!("   ✓ LIMIT query returned {} rows", result.rows().len());
 
     // Test 8: Check database size

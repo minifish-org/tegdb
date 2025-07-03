@@ -20,17 +20,13 @@ fn test_planner_integration_in_database() -> Result<()> {
         db.execute("INSERT INTO users (id, name, age) VALUES (3, 'Charlie', 35)")?;
 
         // Test that queries work (these should go through the planner when dev feature is enabled)
-        let result = db
-            .query("SELECT * FROM users WHERE id = 1")
-            .unwrap();
+        let result = db.query("SELECT * FROM users WHERE id = 1").unwrap();
         assert_eq!(result.columns().len(), 3);
         assert_eq!(result.rows().len(), 1);
         assert_eq!(result.rows()[0].len(), 3);
 
         // Test table scan query
-        let result = db
-            .query("SELECT name FROM users WHERE age > 30")
-            .unwrap();
+        let result = db.query("SELECT name FROM users WHERE age > 30").unwrap();
         println!(
             "Query result: columns={:?}, rows={:?}",
             result.columns(),
@@ -41,9 +37,7 @@ fn test_planner_integration_in_database() -> Result<()> {
         assert_eq!(result.rows().len(), 1); // Only Charlie with age 35
 
         // Test limited query
-        let result = db
-            .query("SELECT * FROM users LIMIT 2")
-            .unwrap();
+        let result = db.query("SELECT * FROM users LIMIT 2").unwrap();
         assert_eq!(result.rows().len(), 2);
 
         println!("✓ Planner integration test passed - queries executed successfully through planner pipeline");
@@ -78,9 +72,7 @@ fn test_crud_operations_with_planner() -> Result<()> {
         assert_eq!(affected, 1);
 
         // SELECT
-        let result = db
-            .query("SELECT * FROM products WHERE id = 1")
-            .unwrap();
+        let result = db.query("SELECT * FROM products WHERE id = 1").unwrap();
         assert_eq!(result.rows().len(), 1);
 
         // UPDATE
@@ -88,9 +80,7 @@ fn test_crud_operations_with_planner() -> Result<()> {
         assert_eq!(affected, 1);
 
         // Verify update
-        let result = db
-            .query("SELECT price FROM products WHERE id = 1")
-            .unwrap();
+        let result = db.query("SELECT price FROM products WHERE id = 1").unwrap();
         assert_eq!(result.rows()[0][0], tegdb::SqlValue::Real(12.99));
 
         // DELETE
@@ -98,9 +88,7 @@ fn test_crud_operations_with_planner() -> Result<()> {
         assert_eq!(affected, 1);
 
         // Verify delete
-        let result = db
-            .query("SELECT * FROM products")
-            .unwrap();
+        let result = db.query("SELECT * FROM products").unwrap();
         assert_eq!(result.rows().len(), 1);
 
         println!("✓ CRUD operations through planner pipeline work correctly");

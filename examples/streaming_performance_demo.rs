@@ -38,9 +38,7 @@ fn main() -> tegdb::Result<()> {
     // Current approach: Load all data into memory
     println!("Current approach (loads all into memory):");
     let start = Instant::now();
-    let result = db
-        .query("SELECT * FROM sensor_data")
-        .unwrap();
+    let result = db.query("SELECT * FROM sensor_data").unwrap();
     let query_time = start.elapsed();
     println!("  ✓ Loaded {} rows in {:?}", result.len(), query_time);
     println!(
@@ -61,9 +59,7 @@ fn main() -> tegdb::Result<()> {
     // Current: Must process query completely
     println!("Current approach with LIMIT 5:");
     let start = Instant::now();
-    let limited_result = db
-        .query("SELECT * FROM sensor_data LIMIT 5")
-        .unwrap();
+    let limited_result = db.query("SELECT * FROM sensor_data LIMIT 5").unwrap();
     let limited_time = start.elapsed();
     println!(
         "  ✓ Got {} rows in {:?}",
@@ -82,9 +78,7 @@ fn main() -> tegdb::Result<()> {
     // Simulate what streaming aggregation would look like
     println!("Calculating average temperature (simulating streaming):");
     let start = Instant::now();
-    let values_result = db
-        .query("SELECT value FROM sensor_data")
-        .unwrap();
+    let values_result = db.query("SELECT value FROM sensor_data").unwrap();
 
     // Process "as if" streaming (to show the concept)
     let mut sum = 0.0;

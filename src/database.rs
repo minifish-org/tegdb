@@ -231,7 +231,7 @@ impl Database {
 
                 // Generate and execute the plan
                 let plan = planner.plan(statement)?;
-                
+
                 // Execute and immediately collect results to avoid lifetime issues
                 let final_result = {
                     let result = executor.execute_plan(plan)?;
@@ -239,13 +239,14 @@ impl Database {
                         crate::executor::ResultSet::Select { columns, rows } => {
                             // Collect all rows from the iterator immediately
                             let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
-                            collected_rows.map(|final_rows| QueryResult { columns, rows: final_rows })
+                            collected_rows.map(|final_rows| QueryResult {
+                                columns,
+                                rows: final_rows,
+                            })
                         }
-                        _ => {
-                            Err(crate::Error::Other(
-                                "Expected SELECT result but got something else".to_string(),
-                            ))
-                        }
+                        _ => Err(crate::Error::Other(
+                            "Expected SELECT result but got something else".to_string(),
+                        )),
                     }
                 };
 
@@ -416,7 +417,7 @@ impl DatabaseTransaction<'_> {
                 // Use the planner to generate an optimized execution plan
                 let planner = QueryPlanner::new(schemas);
                 let plan = planner.plan(statement)?;
-                
+
                 // Execute and immediately collect results
                 let result = self.executor.execute_plan(plan)?;
                 match result {
@@ -424,13 +425,14 @@ impl DatabaseTransaction<'_> {
                         // Collect all rows from the iterator
                         let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
                         let final_rows = collected_rows?;
-                        Ok(QueryResult { columns, rows: final_rows })
+                        Ok(QueryResult {
+                            columns,
+                            rows: final_rows,
+                        })
                     }
-                    _ => {
-                        Err(crate::Error::Other(
-                            "Expected SELECT result but got something else".to_string(),
-                        ))
-                    }
+                    _ => Err(crate::Error::Other(
+                        "Expected SELECT result but got something else".to_string(),
+                    )),
                 }
             }
             _ => {

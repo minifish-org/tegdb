@@ -16,9 +16,7 @@ fn test_query_iterator_basic_functionality() {
         .unwrap();
 
     // Test iterator functionality
-    let query_result = db
-        .query("SELECT * FROM test_table ORDER BY id")
-        .unwrap();
+    let query_result = db.query("SELECT * FROM test_table ORDER BY id").unwrap();
 
     // Check columns
     assert_eq!(query_result.columns(), &["id", "name", "value"]);
@@ -123,9 +121,7 @@ fn test_query_iterator_backward_compatibility() {
         .unwrap();
 
     // Test conversion to old QueryResult format
-    let query_result = db
-        .query("SELECT * FROM compat_test ORDER BY id")
-        .unwrap();
+    let query_result = db.query("SELECT * FROM compat_test ORDER BY id").unwrap();
 
     // Verify compatibility with old API
     assert_eq!(query_result.columns(), &["id", "name"]);
@@ -155,9 +151,7 @@ fn test_query_iterator_empty_result() {
         .unwrap();
 
     // Query with no results
-    let query_result = db
-        .query("SELECT * FROM empty_test")
-        .unwrap();
+    let query_result = db.query("SELECT * FROM empty_test").unwrap();
 
     // Check columns are still available
     assert_eq!(query_result.columns(), &["id", "name"]);
@@ -221,9 +215,7 @@ fn test_transaction_query_iterator() {
         .unwrap();
 
     // Query within transaction should see the new data
-    let query_result = tx
-        .query("SELECT * FROM tx_test ORDER BY id")
-        .unwrap();
+    let query_result = tx.query("SELECT * FROM tx_test ORDER BY id").unwrap();
     let rows = query_result.rows();
 
     assert_eq!(rows.len(), 2);
@@ -242,9 +234,7 @@ fn test_transaction_query_iterator() {
     tx.commit().unwrap();
 
     // Verify data is persisted after commit
-    let query_result = db
-        .query("SELECT * FROM tx_test")
-        .unwrap();
+    let query_result = db.query("SELECT * FROM tx_test").unwrap();
     let rows = query_result.rows();
     assert_eq!(rows.len(), 2); // Should have both rows
 

@@ -73,9 +73,7 @@ fn test_database_without_config() {
     db.execute("INSERT INTO simple (id) VALUES (42)")
         .expect("Failed to insert");
 
-    let result = db
-        .query("SELECT id FROM simple")
-        .expect("Failed to query");
+    let result = db.query("SELECT id FROM simple").expect("Failed to query");
 
     assert_eq!(result.len(), 1);
     assert_eq!(result.rows()[0][0], SqlValue::Integer(42));

@@ -41,9 +41,7 @@ fn main() -> Result<()> {
         let mut tx = db.begin_transaction()?;
 
         // SELECT through transaction (uses planner pipeline)
-        let result = tx
-            .query("SELECT * FROM users WHERE age > 25")
-            .unwrap();
+        let result = tx.query("SELECT * FROM users WHERE age > 25").unwrap();
         println!(
             "   → Query via transaction planner found {} rows:",
             result.rows().len()
@@ -81,9 +79,7 @@ fn main() -> Result<()> {
         println!("   → Made changes in transaction (insert + update)");
 
         // Check changes are visible within transaction
-        let result = tx
-            .query("SELECT * FROM users")
-            .unwrap();
+        let result = tx.query("SELECT * FROM users").unwrap();
         let count = result.rows().len();
         println!("   → Count within transaction: {count}");
 
@@ -93,9 +89,7 @@ fn main() -> Result<()> {
     }
 
     // Verify rollback worked
-    let result = db
-        .query("SELECT * FROM users")
-        .unwrap();
+    let result = db.query("SELECT * FROM users").unwrap();
     let final_count = result.rows().len();
     println!("   → Final count after rollback: {final_count}");
 

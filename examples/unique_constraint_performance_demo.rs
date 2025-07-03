@@ -75,8 +75,7 @@ fn main() -> Result<()> {
     }
 
     // Verify the update worked
-    let result = db
-        .query("SELECT id, email FROM users WHERE id = 1")?;
+    let result = db.query("SELECT id, email FROM users WHERE id = 1")?;
     if let Some(row) = result.rows().first() {
         println!("   ✅ Verified: User 1 email is now: {:?}", &row[1]);
     }

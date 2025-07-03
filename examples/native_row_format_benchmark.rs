@@ -124,16 +124,12 @@ fn test_storage_format(
 
     // Test 1: Full table scan
     let full_scan_start = Instant::now();
-    let _full_result = db
-        .query("SELECT * FROM users")
-        .unwrap();
+    let _full_result = db.query("SELECT * FROM users").unwrap();
     let full_scan_time = full_scan_start.elapsed().as_nanos();
 
     // Test 2: Selective column scan (major optimization for native format)
     let selective_start = Instant::now();
-    let _selective_result = db
-        .query("SELECT name, score FROM users")
-        .unwrap();
+    let _selective_result = db.query("SELECT name, score FROM users").unwrap();
     let selective_scan_time = selective_start.elapsed().as_nanos();
 
     // Test 3: Primary key lookup
@@ -145,9 +141,7 @@ fn test_storage_format(
 
     // Test 4: Limited scan (should benefit from early termination)
     let limited_start = Instant::now();
-    let _limited_result = db
-        .query("SELECT name, score FROM users LIMIT 100")
-        .unwrap();
+    let _limited_result = db.query("SELECT name, score FROM users LIMIT 100").unwrap();
     let limited_scan_time = limited_start.elapsed().as_nanos();
 
     // Test 5: Condition-based query

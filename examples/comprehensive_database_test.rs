@@ -23,8 +23,7 @@ fn main() -> Result<()> {
     println!("✓ Test data inserted");
 
     // Query all data
-    let result = db
-        .query("SELECT id, name, age FROM users")?;
+    let result = db.query("SELECT id, name, age FROM users")?;
     println!("\n=== Initial data ===");
     print_query_result(&result);
 
@@ -43,8 +42,7 @@ fn main() -> Result<()> {
         println!("DELETE affected {deleted} rows");
 
         // Try SELECT within transaction to see changes
-        let tx_result = tx
-            .query("SELECT id, name, age FROM users")?;
+        let tx_result = tx.query("SELECT id, name, age FROM users")?;
         println!("Data within transaction:");
         print_query_result(&tx_result);
 
@@ -54,8 +52,7 @@ fn main() -> Result<()> {
     }
 
     // Query again to see final state
-    let final_result = db
-        .query("SELECT id, name, age FROM users")?;
+    let final_result = db.query("SELECT id, name, age FROM users")?;
     println!("\n=== Final data after transaction ===");
     print_query_result(&final_result);
 
@@ -65,8 +62,7 @@ fn main() -> Result<()> {
     let updated = db.execute("UPDATE users SET age = 36 WHERE name = 'Carol'")?;
     println!("Simple UPDATE affected {updated} rows");
 
-    let simple_result = db
-        .query("SELECT id, name, age FROM users")?;
+    let simple_result = db.query("SELECT id, name, age FROM users")?;
     println!("Final state:");
     print_query_result(&simple_result);
 

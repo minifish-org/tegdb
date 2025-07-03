@@ -5,8 +5,7 @@
 
 use crate::engine::Transaction;
 use crate::parser::{
-    ColumnConstraint, Condition, CreateTableStatement, DataType,
-    DropTableStatement, SqlValue,
+    ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
@@ -70,8 +69,6 @@ impl<'a> SelectRowIterator<'a> {
     pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
         self.collect()
     }
-
-
 }
 
 impl<'a> Iterator for SelectRowIterator<'a> {
@@ -101,7 +98,8 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                         // Extract selected columns
                         let mut row_values = Vec::new();
                         for col_name in &self.selected_columns {
-                            row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                            row_values
+                                .push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
                         }
 
                         self.count += 1;
@@ -391,7 +389,10 @@ impl<'a> Executor<'a> {
 
     /// Execute SELECT plans using streaming and collect results
     /// This eliminates duplicate code by using a single streaming implementation
-    fn execute_select_plan_streaming(&mut self, plan: crate::planner::ExecutionPlan) -> Result<ResultSet<'_>> {
+    fn execute_select_plan_streaming(
+        &mut self,
+        plan: crate::planner::ExecutionPlan,
+    ) -> Result<ResultSet<'_>> {
         use crate::planner::ExecutionPlan;
 
         match plan {
@@ -403,16 +404,18 @@ impl<'a> Executor<'a> {
             } => {
                 let schema = self.get_table_schema(&table)?;
                 let key = self.build_primary_key(&table, &pk_values, &schema)?;
-                
+
                 // Create an iterator that returns at most one row if the key exists and matches
                 let key_bytes = key.as_bytes().to_vec();
                 let scan_iter = if let Some(value) = self.transaction.get(&key_bytes) {
                     // Create a single-item iterator if the key exists
                     let single_result = vec![(key_bytes, value)];
-                    Box::new(single_result.into_iter()) as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
+                    Box::new(single_result.into_iter())
+                        as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
                 } else {
                     // Create an empty iterator if the key doesn't exist
-                    Box::new(std::iter::empty()) as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
+                    Box::new(std::iter::empty())
+                        as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
                 };
 
                 let row_iter = SelectRowIterator::new(
@@ -510,14 +513,18 @@ impl<'a> Executor<'a> {
         let keys_to_update = {
             // Extract columns before consuming the plan
             let columns = match &scan_plan {
-                crate::planner::ExecutionPlan::PrimaryKeyLookup { selected_columns, .. } => selected_columns.clone(),
-                crate::planner::ExecutionPlan::TableScan { selected_columns, .. } => selected_columns.clone(),
+                crate::planner::ExecutionPlan::PrimaryKeyLookup {
+                    selected_columns, ..
+                } => selected_columns.clone(),
+                crate::planner::ExecutionPlan::TableScan {
+                    selected_columns, ..
+                } => selected_columns.clone(),
                 _ => return Err(Error::Other("Unsupported scan plan for update".to_string())),
             };
-            
+
             // Get the plan results and materialize immediately to avoid lifetime conflicts
             let materialized_rows = self.execute_plan_materialized(scan_plan)?;
-            
+
             let mut keys = Vec::new();
             for row_values in materialized_rows {
                 let mut row_data = HashMap::new();
@@ -1169,11 +1176,16 @@ impl<'a> Executor<'a> {
 
     /// Execute a plan and immediately materialize SELECT results for internal use
     /// This is used by UPDATE/DELETE operations that need to collect keys
-    fn execute_plan_materialized(&mut self, plan: crate::planner::ExecutionPlan) -> Result<Vec<Vec<SqlValue>>> {
+    fn execute_plan_materialized(
+        &mut self,
+        plan: crate::planner::ExecutionPlan,
+    ) -> Result<Vec<Vec<SqlValue>>> {
         let result = self.execute_plan(plan)?;
         match result {
             ResultSet::Select { rows, .. } => rows.collect_rows(),
-            _ => Err(Error::Other("Expected SELECT result for materialization".to_string())),
+            _ => Err(Error::Other(
+                "Expected SELECT result for materialization".to_string(),
+            )),
         }
     }
 }

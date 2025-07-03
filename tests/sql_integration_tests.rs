@@ -26,9 +26,7 @@ fn test_sql_integration_basic_operations() {
 
     // Select with WHERE
     let select_where_sql = "SELECT name FROM products WHERE price > 50.0";
-    let result = db
-        .query(select_where_sql)
-        .unwrap();
+    let result = db.query(select_where_sql).unwrap();
     assert_eq!(result.columns(), ["name"]);
     assert_eq!(result.len(), 1);
 
@@ -44,9 +42,7 @@ fn test_sql_integration_basic_operations() {
 
     // Verify final state
     let final_select_sql = "SELECT * FROM products";
-    let result = db
-        .query(final_select_sql)
-        .unwrap();
+    let result = db.query(final_select_sql).unwrap();
     assert_eq!(result.len(), 1); // Only the laptop should remain
 }
 
@@ -149,9 +145,7 @@ fn test_sql_integration_complex_queries() {
 
     // Test complex WHERE conditions
     let complex_where_sql = "SELECT * FROM sales WHERE amount > 100.0 AND product = 'Laptop'";
-    let result = db
-        .query(complex_where_sql)
-        .unwrap();
+    let result = db.query(complex_where_sql).unwrap();
     assert_eq!(result.len(), 2); // Should find both laptop sales
 }
 

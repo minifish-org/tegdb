@@ -34,9 +34,7 @@ fn test_database_open_and_basic_operations() -> Result<()> {
     assert_eq!(affected, 1);
 
     // Test SELECT
-    let result = db
-        .query("SELECT * FROM users")
-        .unwrap();
+    let result = db.query("SELECT * FROM users").unwrap();
     // Column order may vary, so just check that we have the right columns
     assert!(result.columns().contains(&"id".to_string()));
     assert!(result.columns().contains(&"name".to_string()));
@@ -220,9 +218,7 @@ fn test_database_data_types() -> Result<()> {
     db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (2, 'empty_test', -100, -2.5, NULL)")?;
     db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (3, 'world', 0, 0.0, 'not null')")?;
 
-    let result = db
-        .query("SELECT * FROM test_types ORDER BY id")
-        .unwrap();
+    let result = db.query("SELECT * FROM test_types ORDER BY id").unwrap();
     assert_eq!(result.rows().len(), 3);
 
     // Test first row
@@ -292,9 +288,7 @@ fn test_database_where_clauses() -> Result<()> {
     db.execute("INSERT INTO employees (id, name, age, salary) VALUES (4, 'David', 28, 48000.0)")?;
 
     // First verify all data was inserted correctly
-    let all_result = db
-        .query("SELECT name, age FROM employees")
-        .unwrap();
+    let all_result = db.query("SELECT name, age FROM employees").unwrap();
     println!("All employees: {:?}", all_result.rows());
     assert_eq!(all_result.rows().len(), 4);
 
@@ -457,7 +451,7 @@ fn test_database_error_handling() -> Result<()> {
     let result = db.execute("SELECT * FROM test");
     // New behavior: execute() should not be used for SELECT statements
     assert!(result.is_err());
-    
+
     // Test the proper way to do SELECT with the new streaming API
     let query_result = db.query("SELECT * FROM test");
     assert!(query_result.is_ok());
@@ -486,9 +480,7 @@ fn test_database_schema_persistence() -> Result<()> {
         let mut db = Database::open(&db_path)?;
 
         // Should be able to query existing data
-        let result = db
-            .query("SELECT * FROM persistent_test")
-            .unwrap();
+        let result = db.query("SELECT * FROM persistent_test").unwrap();
         assert_eq!(result.rows().len(), 1);
 
         // Find column positions
@@ -512,13 +504,9 @@ fn test_database_schema_persistence() -> Result<()> {
         // Should be able to insert new data
         db.execute("INSERT INTO persistent_test (id, data) VALUES (2, 'more data')")?;
 
-        let _result = db
-            .query("SELECT * FROM persistent_test")
-            .unwrap();
+        let _result = db.query("SELECT * FROM persistent_test").unwrap();
         // Note: COUNT might not be implemented, so let's just check row count
-        let result = db
-            .query("SELECT * FROM persistent_test")
-            .unwrap();
+        let result = db.query("SELECT * FROM persistent_test").unwrap();
         assert_eq!(result.rows().len(), 2);
     }
 
@@ -557,9 +545,7 @@ fn test_database_concurrent_access() -> Result<()> {
     }
 
     // Continue with single database instance
-    let result = db1
-        .query("SELECT value FROM counter WHERE id = 1")
-        .unwrap();
+    let result = db1.query("SELECT value FROM counter WHERE id = 1").unwrap();
     assert_eq!(result.rows()[0][0], SqlValue::Integer(0));
 
     Ok(())
@@ -577,9 +563,7 @@ fn test_database_drop_table() -> Result<()> {
     db.execute("INSERT INTO temp_table (id, name) VALUES (1, 'test')")?;
 
     // Verify table exists and has data
-    let result = db
-        .query("SELECT * FROM temp_table")
-        .unwrap();
+    let result = db.query("SELECT * FROM temp_table").unwrap();
     assert_eq!(result.rows().len(), 1);
 
     // Drop table
@@ -924,9 +908,7 @@ fn test_database_acid_durability() -> Result<()> {
         tx.commit()?;
 
         // Verify data is present before closing
-        let result = db
-            .query("SELECT * FROM durable_test ORDER BY id")
-            .unwrap();
+        let result = db.query("SELECT * FROM durable_test ORDER BY id").unwrap();
         assert_eq!(result.rows().len(), test_data.len());
     } // Database goes out of scope here, simulating close/restart
 
@@ -962,9 +944,7 @@ fn test_database_acid_durability() -> Result<()> {
 
         let _result = db.query("SELECT COUNT(*) as count FROM durable_test");
         // COUNT might not be implemented, so let's count manually
-        let result = db
-            .query("SELECT * FROM durable_test")
-            .unwrap();
+        let result = db.query("SELECT * FROM durable_test").unwrap();
         assert_eq!(result.rows().len(), 4); // Original 3 + 1 new record
 
         // Verify the new record is present
@@ -1005,9 +985,7 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
         tx.execute("INSERT INTO transaction_test (id, status, amount) VALUES (3, 'new', 3000)")?;
 
         // Verify changes are visible within transaction
-        let result = tx
-            .query("SELECT * FROM transaction_test")
-            .unwrap();
+        let result = tx.query("SELECT * FROM transaction_test").unwrap();
         assert_eq!(result.rows().len(), 3);
 
         // Explicitly rollback
@@ -1082,9 +1060,7 @@ fn test_database_acid_transaction_boundaries() -> Result<()> {
     }
 
     // Verify both transactions committed independently
-    let result = db
-        .query("SELECT * FROM boundary_test ORDER BY id")
-        .unwrap();
+    let result = db.query("SELECT * FROM boundary_test ORDER BY id").unwrap();
     assert_eq!(result.rows().len(), 3);
 
     // Test that we can't commit/rollback the same transaction twice
@@ -1128,9 +1104,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
         }
 
         // Verify all operations are visible within transaction
-        let result = tx
-            .query("SELECT * FROM large_tx_test")
-            .unwrap();
+        let result = tx.query("SELECT * FROM large_tx_test").unwrap();
         assert_eq!(result.rows().len(), batch_size);
 
         // Commit all changes atomically
@@ -1138,9 +1112,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
     }
 
     // Verify all changes were committed together
-    let result = db
-        .query("SELECT * FROM large_tx_test")
-        .unwrap();
+    let result = db.query("SELECT * FROM large_tx_test").unwrap();
     assert_eq!(result.rows().len(), batch_size);
 
     // Test large transaction rollback
@@ -1155,9 +1127,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
         }
 
         // Verify large number of changes within transaction
-        let result = tx
-            .query("SELECT * FROM large_tx_test")
-            .unwrap();
+        let result = tx.query("SELECT * FROM large_tx_test").unwrap();
         assert_eq!(result.rows().len(), batch_size * 2);
 
         // Rollback all the new changes
@@ -1165,9 +1135,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
     }
 
     // Verify only the first batch remains
-    let result = db
-        .query("SELECT * FROM large_tx_test")
-        .unwrap();
+    let result = db.query("SELECT * FROM large_tx_test").unwrap();
     assert_eq!(result.rows().len(), batch_size);
 
     // Verify no batch_id = 2 records exist

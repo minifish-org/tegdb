@@ -7,11 +7,7 @@ use crate::parser::{ComparisonOperator, Condition, SqlValue};
 use std::collections::HashMap;
 
 /// Compare two SqlValues using the given operator
-pub fn compare_values(
-    left: &SqlValue,
-    operator: &ComparisonOperator,
-    right: &SqlValue,
-) -> bool {
+pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &SqlValue) -> bool {
     use ComparisonOperator::*;
 
     match operator {
@@ -64,10 +60,7 @@ pub fn compare_values(
 }
 
 /// Evaluate condition against row data
-pub fn evaluate_condition(
-    condition: &Condition,
-    row_data: &HashMap<String, SqlValue>,
-) -> bool {
+pub fn evaluate_condition(condition: &Condition, row_data: &HashMap<String, SqlValue>) -> bool {
     match condition {
         Condition::Comparison {
             left,

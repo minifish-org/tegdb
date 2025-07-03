@@ -136,9 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Performance comparison summary
     println!("\n=== Streaming API Integration Summary ===");
     println!("✓ Database.query() now uses execute_plan_streaming() internally");
-    println!(
-        "✓ DatabaseTransaction.query() now uses execute_plan_streaming() internally"
-    );
+    println!("✓ DatabaseTransaction.query() now uses execute_plan_streaming() internally");
     println!("✓ All SELECT operations benefit from streaming execution");
     println!("✓ Memory efficiency improved for large datasets");
     println!("✓ Early termination works for LIMIT queries");

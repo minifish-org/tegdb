@@ -56,7 +56,9 @@ fn test_drop_table_integration() {
         Statement::DropTable(drop) => drop,
         _ => panic!("Expected DROP TABLE statement"),
     };
-    let result = executor.execute_drop_table(drop_if_exists_statement).unwrap();
+    let result = executor
+        .execute_drop_table(drop_if_exists_statement)
+        .unwrap();
     match result {
         ResultSet::DropTable => {
             // Table drop was handled (whether it existed or not)

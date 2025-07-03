@@ -48,18 +48,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Valid insert result: {result} rows affected");
 
     // Test 7: Query to verify data
-    let result = db
-        .query("SELECT * FROM users")
-        .unwrap();
+    let result = db.query("SELECT * FROM users").unwrap();
     println!("Query result: {} rows returned", result.rows().len());
     for (i, row_data) in result.rows().iter().enumerate() {
         println!("  Row {}: {:?}", i + 1, row_data);
     }
 
     // Test 8: Select with LIMIT (memory optimization)
-    let result = db
-        .query("SELECT * FROM users LIMIT 1")
-        .unwrap();
+    let result = db.query("SELECT * FROM users LIMIT 1").unwrap();
     println!(
         "Select with LIMIT result: {} rows returned",
         result.rows().len()

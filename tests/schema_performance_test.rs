@@ -79,21 +79,15 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
 
         // Query should work immediately (schemas are shared)
-        let result = db
-            .query("SELECT * FROM users")
-            .unwrap();
+        let result = db.query("SELECT * FROM users").unwrap();
         assert_eq!(result.rows().len(), 1);
 
         // Create another table in the same database instance
         db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
 
         // Both tables should work
-        let users_result = db
-            .query("SELECT * FROM users")
-            .unwrap();
-        let products_result = db
-            .query("SELECT * FROM products")
-            .unwrap();
+        let users_result = db.query("SELECT * FROM users").unwrap();
+        let products_result = db.query("SELECT * FROM products").unwrap();
 
         assert_eq!(users_result.rows().len(), 1);
         assert_eq!(products_result.rows().len(), 0);
@@ -104,12 +98,8 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Both tables should still be available
-        let users_result = db
-            .query("SELECT * FROM users")
-            .unwrap();
-        let products_result = db
-            .query("SELECT * FROM products")
-            .unwrap();
+        let users_result = db.query("SELECT * FROM users").unwrap();
+        let products_result = db.query("SELECT * FROM products").unwrap();
 
         assert_eq!(users_result.rows().len(), 1);
         assert_eq!(products_result.rows().len(), 0);
