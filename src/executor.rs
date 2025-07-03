@@ -27,13 +27,116 @@ pub struct TableSchema {
     pub columns: Vec<ColumnInfo>,
 }
 
+/// Streaming iterator for SELECT query results
+/// This provides a streaming interface that yields rows on-demand
+pub struct SelectRowIterator<'a> {
+    /// Iterator over the scan results
+    scan_iter: Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>,
+    /// Schema for deserializing rows
+    schema: TableSchema,
+    /// Columns to select
+    selected_columns: Vec<String>,
+    /// Optional filter condition
+    filter: Option<Condition>,
+    /// Storage format for deserialization
+    storage_format: StorageFormat,
+    /// Optional limit on number of rows
+    limit: Option<u64>,
+    /// Current count of yielded rows
+    count: u64,
+}
+
+impl<'a> SelectRowIterator<'a> {
+    /// Create a new select row iterator
+    pub fn new(
+        scan_iter: Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>,
+        schema: TableSchema,
+        selected_columns: Vec<String>,
+        filter: Option<Condition>,
+        limit: Option<u64>,
+    ) -> Self {
+        Self {
+            scan_iter,
+            schema,
+            selected_columns,
+            filter,
+            storage_format: StorageFormat::new(),
+            limit,
+            count: 0,
+        }
+    }
+
+    /// Collect all remaining rows into a Vec for backward compatibility
+    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
+        self.collect()
+    }
+
+
+}
+
+impl<'a> Iterator for SelectRowIterator<'a> {
+    type Item = Result<Vec<SqlValue>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check limit
+        if let Some(limit) = self.limit {
+            if self.count >= limit {
+                return None;
+            }
+        }
+
+        // Process rows until we find one that matches the filter
+        for (_, value) in self.scan_iter.by_ref() {
+            // Deserialize the row
+            match self.storage_format.deserialize_row(&value, &self.schema) {
+                Ok(row_data) => {
+                    // Apply filter if present
+                    let matches = if let Some(ref filter) = self.filter {
+                        crate::sql_utils::evaluate_condition(filter, &row_data)
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        // Extract selected columns
+                        let mut row_values = Vec::new();
+                        for col_name in &self.selected_columns {
+                            row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                        }
+
+                        self.count += 1;
+                        return Some(Ok(row_values));
+                    }
+                    // If row doesn't match filter, continue to next row
+                }
+                Err(e) => return Some(Err(e)),
+            }
+        }
+
+        // No more matching rows found
+        None
+    }
+}
+
+impl<'a> std::fmt::Debug for SelectRowIterator<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SelectRowIterator")
+            .field("schema", &self.schema.name)
+            .field("selected_columns", &self.selected_columns)
+            .field("filter", &self.filter)
+            .field("limit", &self.limit)
+            .field("count", &self.count)
+            .finish()
+    }
+}
+
 /// Query execution result
-#[derive(Debug, Clone)]
-pub enum ResultSet {
-    /// SELECT query result (legacy - loads all rows)
+#[derive(Debug)]
+pub enum ResultSet<'a> {
+    /// SELECT query result with streaming support
     Select {
         columns: Vec<String>,
-        rows: Vec<Vec<SqlValue>>,
+        rows: SelectRowIterator<'a>,
     },
     /// INSERT query result
     Insert { rows_affected: usize },
@@ -51,6 +154,16 @@ pub enum ResultSet {
     Commit,
     /// Transaction ROLLBACK result
     Rollback,
+}
+
+impl<'a> ResultSet<'a> {
+    /// Get columns from a SELECT result
+    pub fn columns(&self) -> Option<&[String]> {
+        match self {
+            ResultSet::Select { columns, .. } => Some(columns),
+            _ => None,
+        }
+    }
 }
 
 /// SQL executor with native row format support
@@ -91,7 +204,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute CREATE TABLE statement
-    pub fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet> {
+    pub fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet<'_>> {
         // Validate that we don't have composite primary keys
         let pk_count = create
             .columns
@@ -167,7 +280,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute DROP TABLE statement
-    pub fn execute_drop_table(&mut self, drop: DropTableStatement) -> Result<ResultSet> {
+    pub fn execute_drop_table(&mut self, drop: DropTableStatement) -> Result<ResultSet<'_>> {
         // Check if table exists
         let table_existed = self.table_schemas.contains_key(&drop.table);
 
@@ -206,7 +319,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Begin transaction
-    pub fn begin_transaction(&mut self) -> Result<ResultSet> {
+    pub fn begin_transaction(&mut self) -> Result<ResultSet<'_>> {
         if self.transaction_active {
             return Err(Error::Other(
                 "Transaction already active. Nested transactions are not supported.".to_string(),
@@ -218,7 +331,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Commit transaction
-    pub fn commit_transaction(&mut self) -> Result<ResultSet> {
+    pub fn commit_transaction(&mut self) -> Result<ResultSet<'_>> {
         if !self.transaction_active {
             return Err(Error::Other("No active transaction to commit".to_string()));
         }
@@ -228,7 +341,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Rollback transaction
-    pub fn rollback_transaction(&mut self) -> Result<ResultSet> {
+    pub fn rollback_transaction(&mut self) -> Result<ResultSet<'_>> {
         if !self.transaction_active {
             return Err(Error::Other(
                 "No active transaction to rollback".to_string(),
@@ -240,7 +353,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute a query execution plan
-    pub fn execute_plan(&mut self, plan: crate::planner::ExecutionPlan) -> Result<ResultSet> {
+    pub fn execute_plan(&mut self, plan: crate::planner::ExecutionPlan) -> Result<ResultSet<'_>> {
         use crate::planner::ExecutionPlan;
 
         match plan {
@@ -278,7 +391,7 @@ impl<'a> Executor<'a> {
 
     /// Execute SELECT plans using streaming and collect results
     /// This eliminates duplicate code by using a single streaming implementation
-    fn execute_select_plan_streaming(&mut self, plan: crate::planner::ExecutionPlan) -> Result<ResultSet> {
+    fn execute_select_plan_streaming(&mut self, plan: crate::planner::ExecutionPlan) -> Result<ResultSet<'_>> {
         use crate::planner::ExecutionPlan;
 
         match plan {
@@ -289,38 +402,30 @@ impl<'a> Executor<'a> {
                 additional_filter,
             } => {
                 let schema = self.get_table_schema(&table)?;
-                
-                // Build primary key and try to get the row
                 let key = self.build_primary_key(&table, &pk_values, &schema)?;
                 
-                if let Some(value) = self.transaction.get(key.as_bytes()) {
-                    if let Ok(row_data) = self.storage_format.deserialize_row(&value, &schema) {
-                        // Apply additional filter if present
-                        let matches = if let Some(filter) = &additional_filter {
-                            self.evaluate_condition(filter, &row_data)
-                        } else {
-                            true
-                        };
+                // Create an iterator that returns at most one row if the key exists and matches
+                let key_bytes = key.as_bytes().to_vec();
+                let scan_iter = if let Some(value) = self.transaction.get(&key_bytes) {
+                    // Create a single-item iterator if the key exists
+                    let single_result = vec![(key_bytes, value)];
+                    Box::new(single_result.into_iter()) as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
+                } else {
+                    // Create an empty iterator if the key doesn't exist
+                    Box::new(std::iter::empty()) as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
+                };
 
-                        if matches {
-                            // Extract selected columns
-                            let mut row_values = Vec::new();
-                            for col_name in &selected_columns {
-                                row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
-                            }
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    schema,
+                    selected_columns.clone(),
+                    additional_filter,
+                    Some(1), // PK lookup returns at most 1 row
+                );
 
-                            return Ok(ResultSet::Select {
-                                columns: selected_columns,
-                                rows: vec![row_values],
-                            });
-                        }
-                    }
-                }
-
-                // No matching row found
                 Ok(ResultSet::Select {
                     columns: selected_columns,
-                    rows: vec![],
+                    rows: row_iter,
                 })
             }
             ExecutionPlan::TableScan {
@@ -335,37 +440,19 @@ impl<'a> Executor<'a> {
                 let start_key = table_prefix.as_bytes().to_vec();
                 let end_key = format!("{table}~").as_bytes().to_vec();
 
-                let mut rows = Vec::new();
-                let mut count = 0;
-
-                for (_, value) in self.transaction.scan(start_key..end_key)? {
-                    // Check limit early
-                    if let Some(limit) = limit {
-                        if count >= limit {
-                            break;
-                        }
-                    }
-
-                    let matches = if let Some(filter) = &filter {
-                        self.storage_format
-                            .matches_condition(&value, &schema, filter)
-                            .unwrap_or(false)
-                    } else {
-                        true
-                    };
-
-                    if matches {
-                        // Deserialize only the required columns
-                        let row_values = self.storage_format
-                            .deserialize_columns(&value, &schema, &selected_columns)?;
-                        rows.push(row_values);
-                        count += 1;
-                    }
-                }
+                // Create streaming iterator for table scan
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    schema,
+                    selected_columns.clone(),
+                    filter,
+                    limit,
+                );
 
                 Ok(ResultSet::Select {
                     columns: selected_columns,
-                    rows,
+                    rows: row_iter,
                 })
             }
             _ => Err(Error::Other("Expected SELECT execution plan".to_string())),
@@ -377,7 +464,7 @@ impl<'a> Executor<'a> {
         &mut self,
         table: &str,
         rows: &[HashMap<String, SqlValue>],
-    ) -> Result<ResultSet> {
+    ) -> Result<ResultSet<'_>> {
         let schema = self.get_table_schema(table)?;
         let mut rows_affected = 0;
 
@@ -414,31 +501,35 @@ impl<'a> Executor<'a> {
         table: &str,
         assignments: &[crate::planner::Assignment],
         scan_plan: crate::planner::ExecutionPlan,
-    ) -> Result<ResultSet> {
+    ) -> Result<ResultSet<'_>> {
         let schema = self.get_table_schema(table)?;
         let mut rows_affected = 0;
 
         // We need to collect the keys first because the scan iterator will borrow the transaction,
         // and we can't borrow it mutably inside the loop to perform the update.
         let keys_to_update = {
-            let scan_result = self.execute_plan(scan_plan)?;
-            match scan_result {
-                ResultSet::Select { columns, rows } => {
-                    let mut keys = Vec::new();
-                    for row_values in rows {
-                        let mut row_data = HashMap::new();
-                        for (i, col_name) in columns.iter().enumerate() {
-                            if let Some(value) = row_values.get(i) {
-                                row_data.insert(col_name.clone(), value.clone());
-                            }
-                        }
-                        let key = self.build_primary_key(table, &row_data, &schema)?;
-                        keys.push(key);
+            // Extract columns before consuming the plan
+            let columns = match &scan_plan {
+                crate::planner::ExecutionPlan::PrimaryKeyLookup { selected_columns, .. } => selected_columns.clone(),
+                crate::planner::ExecutionPlan::TableScan { selected_columns, .. } => selected_columns.clone(),
+                _ => return Err(Error::Other("Unsupported scan plan for update".to_string())),
+            };
+            
+            // Get the plan results and materialize immediately to avoid lifetime conflicts
+            let materialized_rows = self.execute_plan_materialized(scan_plan)?;
+            
+            let mut keys = Vec::new();
+            for row_values in materialized_rows {
+                let mut row_data = HashMap::new();
+                for (i, col_name) in columns.iter().enumerate() {
+                    if let Some(value) = row_values.get(i) {
+                        row_data.insert(col_name.clone(), value.clone());
                     }
-                    keys
                 }
-                _ => return Err(Error::Other("Invalid scan result for update".to_string())),
+                let key = self.build_primary_key(table, &row_data, &schema)?;
+                keys.push(key);
             }
+            keys
         };
 
         for key in keys_to_update {
@@ -486,7 +577,7 @@ impl<'a> Executor<'a> {
         &mut self,
         table: &str,
         scan_plan: crate::planner::ExecutionPlan,
-    ) -> Result<ResultSet> {
+    ) -> Result<ResultSet<'_>> {
         let schema = self.get_table_schema(table)?;
 
         // This approach avoids collecting all full rows in memory first.
@@ -514,7 +605,7 @@ impl<'a> Executor<'a> {
         &mut self,
         table: &str,
         schema: &TableSchema,
-    ) -> Result<ResultSet> {
+    ) -> Result<ResultSet<'_>> {
         // Convert to CreateTableStatement format
         use crate::parser::{ColumnDefinition, CreateTableStatement};
 
@@ -535,7 +626,7 @@ impl<'a> Executor<'a> {
     }
 
     /// Execute drop table plan
-    fn execute_drop_table_plan(&mut self, table: &str, if_exists: bool) -> Result<ResultSet> {
+    fn execute_drop_table_plan(&mut self, table: &str, if_exists: bool) -> Result<ResultSet<'_>> {
         use crate::parser::DropTableStatement;
 
         let drop_stmt = DropTableStatement {
@@ -1074,5 +1165,15 @@ impl<'a> Executor<'a> {
         row_data: &HashMap<String, SqlValue>,
     ) -> bool {
         crate::sql_utils::evaluate_condition(condition, row_data)
+    }
+
+    /// Execute a plan and immediately materialize SELECT results for internal use
+    /// This is used by UPDATE/DELETE operations that need to collect keys
+    fn execute_plan_materialized(&mut self, plan: crate::planner::ExecutionPlan) -> Result<Vec<Vec<SqlValue>>> {
+        let result = self.execute_plan(plan)?;
+        match result {
+            ResultSet::Select { rows, .. } => rows.collect_rows(),
+            _ => Err(Error::Other("Expected SELECT result for materialization".to_string())),
+        }
     }
 }

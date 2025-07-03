@@ -180,6 +180,26 @@ impl Database {
         let plan = planner.plan(statement.clone())?;
         let result = executor.execute_plan(plan)?;
 
+        // Process the result immediately to avoid lifetime conflicts
+        let final_result = match result {
+            crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
+            crate::executor::ResultSet::Update { rows_affected } => rows_affected,
+            crate::executor::ResultSet::Delete { rows_affected } => rows_affected,
+            crate::executor::ResultSet::CreateTable => 0,
+            crate::executor::ResultSet::DropTable => 0,
+            crate::executor::ResultSet::Begin => 0,
+            crate::executor::ResultSet::Commit => 0,
+            crate::executor::ResultSet::Rollback => 0,
+            crate::executor::ResultSet::Select { .. } => {
+                return Err(crate::Error::Other(
+                    "execute() should not be used for SELECT statements. Use query() instead."
+                        .to_string(),
+                ))
+            }
+        };
+        // Drop the result to release the borrow
+        drop(result);
+
         // Update our shared schemas cache for DDL operations
         match &statement {
             crate::parser::Statement::CreateTable(create_table) => {
@@ -213,13 +233,7 @@ impl Database {
         // Actually commit the engine transaction
         executor.transaction_mut().commit()?;
 
-        match result {
-            crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::CreateTable => Ok(0),
-            _ => Ok(0),
-        }
+        Ok(final_result)
     }
 
     /// Execute SQL query, return true streaming results that yield rows on-demand

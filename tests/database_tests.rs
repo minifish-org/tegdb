@@ -482,12 +482,15 @@ fn test_database_error_handling() -> Result<()> {
     let _result = db.execute("INSERT INTO test (id, name) VALUES (2, NULL)");
     // The behavior here depends on implementation - either succeeds or fails
 
-    // Test using execute() for SELECT - this should succeed and return 0
+    // Test using execute() for SELECT - this should now fail (better behavior)
     db.execute("INSERT INTO test (id, name) VALUES (1, 'Alice')")?;
     let result = db.execute("SELECT * FROM test");
-    // This currently succeeds and returns 0 (documented behavior)
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 0);
+    // New behavior: execute() should not be used for SELECT statements
+    assert!(result.is_err());
+    
+    // Test the proper way to do SELECT with the new streaming API
+    let query_result = db.query("SELECT * FROM test");
+    assert!(query_result.is_ok());
 
     // Test using query() for non-SELECT (should fail)
     let result = db.query("INSERT INTO test (id, name) VALUES (3, 'Bob')");
