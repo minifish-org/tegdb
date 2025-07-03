@@ -224,49 +224,23 @@ impl Database {
 
     /// Execute SQL query, return true streaming results that yield rows on-demand
     /// This is the new streaming API that doesn't materialize all rows upfront
+    /// Following the parse -> plan -> execute_plan pipeline
     pub fn query(&mut self, sql: &str) -> Result<StreamingQuery> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Parse the statement to determine if we can do true streaming
+        // Only SELECT statements make sense for streaming
         match &statement {
-            crate::parser::Statement::Select(select) => {
-                // Clone schemas for the streaming query
+            crate::parser::Statement::Select(_) => {
+                // Clone schemas for the planner
                 let schemas = self.table_schemas.read().unwrap().clone();
 
-                let table_name = &select.table;
-                let selected_columns = if select.columns.is_empty() || select.columns[0] == "*" {
-                    // Get all columns from schema
-                    if let Some(schema) = schemas.get(table_name) {
-                        schema.columns.iter().map(|col| col.name.clone()).collect()
-                    } else {
-                        return Err(crate::Error::Other(format!(
-                            "Table '{table_name}' not found"
-                        )));
-                    }
-                } else {
-                    select.columns.clone()
-                };
+                // Use the planner to generate an optimized execution plan
+                let planner = QueryPlanner::new(schemas.clone());
+                let plan = planner.plan(statement)?;
 
-                // Get table schema
-                let schema = schemas
-                    .get(table_name)
-                    .ok_or_else(|| crate::Error::Other(format!("Table '{table_name}' not found")))?
-                    .clone();
-
-                // Extract condition from where clause
-                let condition = select.where_clause.as_ref().map(|wc| wc.condition.clone());
-
-                // Create streaming query that borrows from this database
-                // Since TegDB is single-threaded, we can safely create a shared reference
-                let streaming_query = BaseStreamingQuery::new(
-                    &self.engine,
-                    table_name.clone(),
-                    selected_columns,
-                    condition,
-                    select.limit,
-                    schema,
-                )?;
+                // Create streaming query that executes the plan against the engine
+                let streaming_query = BaseStreamingQuery::from_plan(&self.engine, plan, schemas)?;
 
                 Ok(streaming_query)
             }
@@ -358,28 +332,119 @@ pub struct BaseStreamingQuery<'a, S: Scannable> {
 }
 
 impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
-    /// Create a new streaming query with a generic scanner
-    fn new(
+    /// Create a streaming query from an execution plan
+    /// This follows the proper parse -> plan -> execute_plan pipeline
+    fn from_plan(
         scanner: &'a S,
-        table_name: String,
-        selected_columns: Vec<String>,
-        filter: Option<crate::parser::Condition>,
-        limit: Option<u64>,
-        schema: crate::executor::TableSchema,
+        plan: crate::planner::ExecutionPlan,
+        schemas: HashMap<String, TableSchema>,
     ) -> Result<Self> {
-        Ok(Self {
-            columns: selected_columns.clone(),
-            scanner,
-            table_name,
-            selected_columns,
-            filter,
-            limit,
-            schema,
-            storage_format: crate::storage_format::StorageFormat::new(),
-            last_key: None,
-            count: 0,
-            finished: false,
-        })
+        use crate::planner::ExecutionPlan;
+
+        match plan {
+            ExecutionPlan::PrimaryKeyLookup {
+                table,
+                pk_values,
+                selected_columns,
+                additional_filter,
+            } => {
+                let schema = schemas
+                    .get(&table)
+                    .ok_or_else(|| crate::Error::Other(format!("Table '{table}' not found")))?
+                    .clone();
+
+                // For primary key lookups, we need to create a special filter condition
+                // that combines the PK equality conditions with any additional filter
+                let pk_filter = Self::create_pk_filter_condition(&pk_values, additional_filter)?;
+
+                Ok(Self {
+                    columns: selected_columns.clone(),
+                    scanner,
+                    table_name: table,
+                    selected_columns,
+                    filter: Some(pk_filter),
+                    limit: Some(1), // PK lookups should return at most 1 row
+                    schema,
+                    storage_format: crate::storage_format::StorageFormat::new(),
+                    last_key: None,
+                    count: 0,
+                    finished: false,
+                })
+            }
+            ExecutionPlan::TableScan {
+                table,
+                selected_columns,
+                filter,
+                limit,
+                ..
+            } => {
+                let schema = schemas
+                    .get(&table)
+                    .ok_or_else(|| crate::Error::Other(format!("Table '{table}' not found")))?
+                    .clone();
+
+                Ok(Self {
+                    columns: selected_columns.clone(),
+                    scanner,
+                    table_name: table,
+                    selected_columns,
+                    filter,
+                    limit,
+                    schema,
+                    storage_format: crate::storage_format::StorageFormat::new(),
+                    last_key: None,
+                    count: 0,
+                    finished: false,
+                })
+            }
+            _ => Err(crate::Error::Other(
+                "Streaming query only supports SELECT execution plans".to_string(),
+            )),
+        }
+    }
+
+    /// Create a filter condition from primary key values
+    fn create_pk_filter_condition(
+        pk_values: &HashMap<String, SqlValue>,
+        additional_filter: Option<crate::parser::Condition>,
+    ) -> Result<crate::parser::Condition> {
+        use crate::parser::{ComparisonOperator, Condition};
+
+        if pk_values.is_empty() {
+            return Err(crate::Error::Other(
+                "Primary key lookup requires at least one key value".to_string(),
+            ));
+        }
+
+        // Convert PK values to equality conditions
+        let pk_conditions: Vec<Condition> = pk_values
+            .iter()
+            .map(|(column, value)| Condition::Comparison {
+                left: column.clone(),
+                operator: ComparisonOperator::Equal,
+                right: value.clone(),
+            })
+            .collect();
+
+        // Combine all PK conditions with AND
+        let combined_pk_condition = if pk_conditions.len() == 1 {
+            pk_conditions.into_iter().next().unwrap()
+        } else {
+            pk_conditions
+                .into_iter()
+                .reduce(|acc, condition| Condition::And(Box::new(acc), Box::new(condition)))
+                .unwrap()
+        };
+
+        // If there's an additional filter, combine it with the PK condition
+        if let Some(additional) = additional_filter {
+            Ok(Condition::And(
+                Box::new(combined_pk_condition),
+                Box::new(additional),
+            ))
+        } else {
+            Ok(combined_pk_condition)
+        }
     }
 
     /// Get column names
@@ -629,47 +694,26 @@ impl DatabaseTransaction<'_> {
 
     /// Execute SQL query within transaction using true streaming
     /// This provides the same streaming capability as Database::query but within a transaction context
+    /// Following the parse -> plan -> execute_plan pipeline
     pub fn streaming_query(&mut self, sql: &str) -> Result<TransactionStreamingQuery> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Parse the statement to determine if we can do true streaming
+        // Only SELECT statements make sense for streaming
         match &statement {
-            crate::parser::Statement::Select(select) => {
+            crate::parser::Statement::Select(_) => {
                 // Get schemas from shared cache
                 let schemas = self.table_schemas.read().unwrap().clone();
 
-                let table_name = &select.table;
-                let selected_columns = if select.columns.is_empty() || select.columns[0] == "*" {
-                    // Get all columns from schema
-                    if let Some(schema) = schemas.get(table_name) {
-                        schema.columns.iter().map(|col| col.name.clone()).collect()
-                    } else {
-                        return Err(crate::Error::Other(format!(
-                            "Table '{table_name}' not found"
-                        )));
-                    }
-                } else {
-                    select.columns.clone()
-                };
+                // Use the planner to generate an optimized execution plan
+                let planner = QueryPlanner::new(schemas.clone());
+                let plan = planner.plan(statement)?;
 
-                // Get table schema
-                let schema = schemas
-                    .get(table_name)
-                    .ok_or_else(|| crate::Error::Other(format!("Table '{table_name}' not found")))?
-                    .clone();
-
-                // Extract condition from where clause
-                let condition = select.where_clause.as_ref().map(|wc| wc.condition.clone());
-
-                // Create streaming query that uses the transaction's engine
-                let streaming_query = BaseStreamingQuery::new(
+                // Create streaming query that executes the plan against the transaction
+                let streaming_query = BaseStreamingQuery::from_plan(
                     self.executor.transaction(),
-                    table_name.clone(),
-                    selected_columns,
-                    condition,
-                    select.limit,
-                    schema,
+                    plan,
+                    schemas,
                 )?;
 
                 Ok(streaming_query)
