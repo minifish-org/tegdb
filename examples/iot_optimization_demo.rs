@@ -50,8 +50,6 @@ fn main() -> Result<()> {
     println!("\n3. Querying data (IOT reconstruction in action):");
     let result = db
         .query("SELECT * FROM orders ORDER BY customer_id, order_id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     println!("   Columns: {:?}", result.columns());
@@ -92,8 +90,6 @@ fn main() -> Result<()> {
     println!("\n4. Primary key lookup (efficient IOT access):");
     let pk_result = db
         .query("SELECT * FROM orders WHERE customer_id = 1 AND order_id = 101")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!(
         "   Found {} rows for customer_id=1, order_id=101",

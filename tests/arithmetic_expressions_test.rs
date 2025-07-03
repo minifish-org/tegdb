@@ -26,9 +26,7 @@ fn test_arithmetic_expressions_in_update() {
 
     let result = db
         .query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query");
 
     if let Some(row) = result.rows().first() {
         if let Some(value) = row.first() {
@@ -42,9 +40,7 @@ fn test_arithmetic_expressions_in_update() {
 
     let result = db
         .query("SELECT value FROM test_table WHERE id = 2")
-        .expect("Failed to query")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query");
 
     if let Some(row) = result.rows().first() {
         if let Some(value) = row.first() {
@@ -58,9 +54,7 @@ fn test_arithmetic_expressions_in_update() {
 
     let result = db
         .query("SELECT score FROM test_table WHERE id = 1")
-        .expect("Failed to query")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query");
 
     if let Some(row) = result.rows().first() {
         if let Some(value) = row.first() {
@@ -74,9 +68,7 @@ fn test_arithmetic_expressions_in_update() {
 
     let result = db
         .query("SELECT score FROM test_table WHERE id = 2")
-        .expect("Failed to query")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query");
 
     if let Some(row) = result.rows().first() {
         if let Some(value) = row.first() {
@@ -90,9 +82,7 @@ fn test_arithmetic_expressions_in_update() {
 
     let result = db
         .query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query");
 
     if let Some(row) = result.rows().first() {
         if let Some(value) = row.first() {
@@ -136,9 +126,7 @@ fn test_arithmetic_expression_parsing() {
 
         let result = db
             .query("SELECT a FROM test WHERE id = 1")
-            .expect("Failed to query")
-            .into_query_result()
-            .unwrap();
+            .expect("Failed to query");
 
         if let Some(row) = result.rows().first() {
             if let Some(value) = row.first() {

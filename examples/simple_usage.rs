@@ -34,8 +34,6 @@ fn main() -> tegdb::Result<()> {
     println!("4. Querying data...");
     let results = db
         .query("SELECT name, score FROM users WHERE score > 90.0 ORDER BY score DESC")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     println!("   Users with score > 90:");
@@ -54,8 +52,6 @@ fn main() -> tegdb::Result<()> {
     println!("6. Final results...");
     let final_results = db
         .query("SELECT name, score FROM users ORDER BY name")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     println!("   All users:");

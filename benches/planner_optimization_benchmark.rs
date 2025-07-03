@@ -97,8 +97,6 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let id = black_box(5000); // Middle of dataset
             let result = tegdb
                 .query(&format!("SELECT * FROM products WHERE id = {id}"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -140,8 +138,6 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
                 .query(&format!(
                     "SELECT id, name, price FROM products WHERE id >= {start} AND id <= {end}"
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -185,8 +181,6 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
                     .query(&format!(
                         "SELECT name, price FROM products WHERE id = {id} AND price > {min_price}"
                     ))
-                    .unwrap()
-                    .into_query_result()
                     .unwrap();
                 black_box(result);
             });
@@ -230,8 +224,6 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
                 .query(&format!(
                     "SELECT id, name FROM products WHERE category = '{category}'"
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -267,8 +259,6 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             for id in ids {
                 let result = tegdb
                     .query(&format!("SELECT name, price FROM products WHERE id = {id}"))
-                    .unwrap()
-                    .into_query_result()
                     .unwrap();
                 black_box(result);
             }
@@ -316,8 +306,6 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
                 .query(&format!(
                     "SELECT id FROM products WHERE id >= {start} AND id <= {end}"
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             // Simulate count by getting length
             black_box(result.rows().len());
@@ -353,7 +341,7 @@ fn planner_optimization_benchmark(c: &mut Criterion) {
             let min_stock = black_box(10);
             let result = tegdb.query(&format!(
                 "SELECT name, price, stock FROM products WHERE id = {id} AND price > {min_price} AND stock >= {min_stock}"
-            )).unwrap().into_query_result().unwrap();
+            )).unwrap();
             black_box(result);
         });
     });

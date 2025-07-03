@@ -50,8 +50,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 7: Query to verify data
     let result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Query result: {} rows returned", result.rows().len());
     for (i, row_data) in result.rows().iter().enumerate() {
@@ -61,8 +59,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 8: Select with LIMIT (memory optimization)
     let result = db
         .query("SELECT * FROM users LIMIT 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!(
         "Select with LIMIT result: {} rows returned",

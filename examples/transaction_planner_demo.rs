@@ -34,7 +34,7 @@ fn main() -> Result<()> {
         tx.commit()?;
     }
 
-    println!("\n2. Testing Transaction.streaming_query() with planner...");
+    println!("\n2. Testing Transaction.query() with planner...");
 
     // Start another transaction and use query() method (now uses planner)
     {
@@ -42,9 +42,7 @@ fn main() -> Result<()> {
 
         // SELECT through transaction (uses planner pipeline)
         let result = tx
-            .streaming_query("SELECT * FROM users WHERE age > 25")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT * FROM users WHERE age > 25")
             .unwrap();
         println!(
             "   → Query via transaction planner found {} rows:",
@@ -84,9 +82,7 @@ fn main() -> Result<()> {
 
         // Check changes are visible within transaction
         let result = tx
-            .streaming_query("SELECT * FROM users")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT * FROM users")
             .unwrap();
         let count = result.rows().len();
         println!("   → Count within transaction: {count}");
@@ -99,15 +95,13 @@ fn main() -> Result<()> {
     // Verify rollback worked
     let result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let final_count = result.rows().len();
     println!("   → Final count after rollback: {final_count}");
 
     println!("\n=== Transaction Planner Integration Confirmed ===");
     println!("✓ Transaction.execute() uses QueryPlanner + PlanExecutor");
-    println!("✓ Transaction.streaming_query() uses QueryPlanner + PlanExecutor");
+    println!("✓ Transaction.query() uses QueryPlanner + PlanExecutor");
     println!("✓ All transaction operations benefit from query optimization");
     println!("✓ ACID properties maintained with planner pipeline");
 

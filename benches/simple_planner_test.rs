@@ -54,8 +54,6 @@ fn simple_planner_test(c: &mut Criterion) {
             let id = black_box(50);
             let result = tegdb
                 .query(&format!("SELECT name FROM users WHERE id = {id}"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });

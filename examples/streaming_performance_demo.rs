@@ -40,8 +40,6 @@ fn main() -> tegdb::Result<()> {
     let start = Instant::now();
     let result = db
         .query("SELECT * FROM sensor_data")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let query_time = start.elapsed();
     println!("  ✓ Loaded {} rows in {:?}", result.len(), query_time);
@@ -65,8 +63,6 @@ fn main() -> tegdb::Result<()> {
     let start = Instant::now();
     let limited_result = db
         .query("SELECT * FROM sensor_data LIMIT 5")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let limited_time = start.elapsed();
     println!(
@@ -88,8 +84,6 @@ fn main() -> tegdb::Result<()> {
     let start = Instant::now();
     let values_result = db
         .query("SELECT value FROM sensor_data")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     // Process "as if" streaming (to show the concept)
@@ -118,8 +112,6 @@ fn main() -> tegdb::Result<()> {
     let start = Instant::now();
     let all_data = db
         .query("SELECT id, sensor_id, value, location FROM sensor_data")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     let mut high_temp_count = 0;
@@ -160,8 +152,6 @@ fn main() -> tegdb::Result<()> {
         .query(&format!(
             "SELECT id, sensor_id, location FROM sensor_data LIMIT {page_size} OFFSET {offset}"
         ))
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let pagination_time = start.elapsed();
 

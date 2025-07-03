@@ -20,21 +20,21 @@ fn main() -> Result<()> {
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
 
     println!("Testing explicit column selection...");
-    let result1 = db.query("SELECT id FROM users")?.into_query_result()?;
+    let result1 = db.query("SELECT id FROM users")?;
     println!(
         "SELECT id: columns={:?}, rows={:?}",
         result1.columns(),
         result1.rows()
     );
 
-    let result2 = db.query("SELECT name FROM users")?.into_query_result()?;
+    let result2 = db.query("SELECT name FROM users")?;
     println!(
         "SELECT name: columns={:?}, rows={:?}",
         result2.columns(),
         result2.rows()
     );
 
-    let result3 = db.query("SELECT age FROM users")?.into_query_result()?;
+    let result3 = db.query("SELECT age FROM users")?;
     println!(
         "SELECT age: columns={:?}, rows={:?}",
         result3.columns(),
@@ -42,7 +42,7 @@ fn main() -> Result<()> {
     );
 
     println!("Testing SELECT * ...");
-    let result_star = db.query("SELECT * FROM users")?.into_query_result()?;
+    let result_star = db.query("SELECT * FROM users")?;
     println!(
         "SELECT *: columns={:?}, rows={:?}",
         result_star.columns(),

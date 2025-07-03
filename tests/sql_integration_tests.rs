@@ -21,15 +21,13 @@ fn test_sql_integration_basic_operations() {
 
     // Select all
     let select_sql = "SELECT * FROM products";
-    let result = db.query(select_sql).unwrap().into_query_result().unwrap();
+    let result = db.query(select_sql).unwrap();
     assert_eq!(result.len(), 2);
 
     // Select with WHERE
     let select_where_sql = "SELECT name FROM products WHERE price > 50.0";
     let result = db
         .query(select_where_sql)
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.columns(), ["name"]);
     assert_eq!(result.len(), 1);
@@ -48,8 +46,6 @@ fn test_sql_integration_basic_operations() {
     let final_select_sql = "SELECT * FROM products";
     let result = db
         .query(final_select_sql)
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.len(), 1); // Only the laptop should remain
 }
@@ -97,9 +93,7 @@ fn test_sql_integration_transaction_isolation() {
             .unwrap();
 
         let result = tx
-            .streaming_query("SELECT balance FROM accounts WHERE id = 1")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT balance FROM accounts WHERE id = 1")
             .unwrap();
         // Within the transaction, the change should be visible
         assert_eq!(result.len(), 1);
@@ -157,8 +151,6 @@ fn test_sql_integration_complex_queries() {
     let complex_where_sql = "SELECT * FROM sales WHERE amount > 100.0 AND product = 'Laptop'";
     let result = db
         .query(complex_where_sql)
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.len(), 2); // Should find both laptop sales
 }

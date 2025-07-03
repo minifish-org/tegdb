@@ -65,8 +65,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let result = db
         .query("SELECT id, name, category, value FROM large_dataset ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -79,8 +77,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let result = db
         .query("SELECT id, name, value FROM large_dataset WHERE category = 'premium' ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -93,8 +89,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let result = db
         .query("SELECT id, name, category FROM large_dataset ORDER BY id LIMIT 10")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -107,8 +101,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     let result = db
         .query("SELECT id, name, category FROM large_dataset WHERE value > 1000.0 ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -122,14 +114,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let start = Instant::now();
     let result1 = tx
-        .streaming_query("SELECT id, name FROM large_dataset WHERE category = 'standard' LIMIT 5")
-        .unwrap()
-        .into_query_result()
+        .query("SELECT id, name FROM large_dataset WHERE category = 'standard' LIMIT 5")
         .unwrap();
     let result2 = tx
-        .streaming_query("SELECT id, value FROM large_dataset WHERE category = 'premium' LIMIT 5")
-        .unwrap()
-        .into_query_result()
+        .query("SELECT id, value FROM large_dataset WHERE category = 'premium' LIMIT 5")
         .unwrap();
     let duration = start.elapsed();
 
@@ -149,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Streaming API Integration Summary ===");
     println!("✓ Database.query() now uses execute_plan_streaming() internally");
     println!(
-        "✓ DatabaseTransaction.streaming_query() now uses execute_plan_streaming() internally"
+        "✓ DatabaseTransaction.query() now uses execute_plan_streaming() internally"
     );
     println!("✓ All SELECT operations benefit from streaming execution");
     println!("✓ Memory efficiency improved for large datasets");

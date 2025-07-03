@@ -58,8 +58,6 @@ fn main() -> tegdb::Result<()> {
 
     let result = db
         .query("SELECT name, price FROM products WHERE id = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     if let Some(row) = result.rows().first() {
         println!(
@@ -91,8 +89,6 @@ fn main() -> tegdb::Result<()> {
 fn print_products(db: &mut Database) -> tegdb::Result<()> {
     let result = db
         .query("SELECT name, price, quantity, discount FROM products ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     println!("   Products:");

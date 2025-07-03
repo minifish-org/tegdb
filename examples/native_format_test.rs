@@ -34,8 +34,6 @@ fn main() -> tegdb::Result<()> {
     println!("4. Testing full table scan...");
     let result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("   ✓ Full scan returned {} rows", result.rows().len());
 
@@ -43,8 +41,6 @@ fn main() -> tegdb::Result<()> {
     println!("5. Testing selective column query...");
     let result = db
         .query("SELECT name, score FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!(
         "   ✓ Selective query returned {} rows with {} columns",
@@ -56,8 +52,6 @@ fn main() -> tegdb::Result<()> {
     println!("6. Testing primary key lookup...");
     let result = db
         .query("SELECT name, email FROM users WHERE id = 500")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!(
         "   ✓ Primary key lookup returned {} rows",
@@ -73,8 +67,6 @@ fn main() -> tegdb::Result<()> {
     println!("7. Testing LIMIT query...");
     let result = db
         .query("SELECT name FROM users LIMIT 10")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("   ✓ LIMIT query returned {} rows", result.rows().len());
 

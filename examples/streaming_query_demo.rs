@@ -37,7 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let query_iter = db
         .query("SELECT name, age FROM users ORDER BY age")
         .unwrap();
-    let all_rows = query_iter.collect_rows()?;
+    let all_rows: Result<Vec<_>, _> = query_iter.collect();
+    let all_rows = all_rows?;
 
     println!("All rows collected: {all_rows:?}");
 
@@ -47,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let query_iter = db
         .query("SELECT * FROM users WHERE name LIKE '%a%'")
         .unwrap();
-    let query_result = query_iter.into_query_result()?;
+    let query_result = query_iter;
 
     println!("Using old QueryResult format:");
     println!("Columns: {:?}", query_result.columns());

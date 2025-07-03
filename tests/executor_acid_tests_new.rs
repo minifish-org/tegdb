@@ -13,7 +13,7 @@ fn test_transaction_atomicity() -> Result<()> {
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'John', 25)")?;
 
     // Verify initial state
-    let result = db.query("SELECT * FROM users")?.into_query_result()?;
+    let result = db.query("SELECT * FROM users")?;
     assert_eq!(result.rows().len(), 1);
 
     // Test successful transaction (all operations should succeed)
@@ -26,8 +26,7 @@ fn test_transaction_atomicity() -> Result<()> {
 
     // Verify both operations succeeded
     let result = db
-        .query("SELECT * FROM users ORDER BY id")?
-        .into_query_result()?;
+        .query("SELECT * FROM users ORDER BY id")?;
     assert_eq!(result.rows().len(), 2);
 
     // Test failed transaction (rollback should undo all operations)
@@ -45,8 +44,7 @@ fn test_transaction_atomicity() -> Result<()> {
 
     // Verify that Bob was not inserted (transaction was rolled back)
     let result = db
-        .query("SELECT * FROM users ORDER BY id")?
-        .into_query_result()?;
+        .query("SELECT * FROM users ORDER BY id")?;
     assert_eq!(result.rows().len(), 2); // Still only John and Jane
 
     println!("✓ Transaction atomicity test passed");
@@ -78,8 +76,7 @@ fn test_transaction_consistency() -> Result<()> {
 
     // Verify balances are consistent
     let result = db
-        .query("SELECT balance FROM accounts ORDER BY id")?
-        .into_query_result()?;
+        .query("SELECT balance FROM accounts ORDER BY id")?;
     assert_eq!(result.rows().len(), 2);
 
     let balance1 = match &result.rows()[0][0] {
@@ -124,8 +121,7 @@ fn test_transaction_isolation() -> Result<()> {
 
     // Verify changes were rolled back
     let result = db
-        .query("SELECT quantity FROM items WHERE id = 1")?
-        .into_query_result()?;
+        .query("SELECT quantity FROM items WHERE id = 1")?;
     let quantity = match &result.rows()[0][0] {
         SqlValue::Integer(q) => q,
         _ => panic!("Expected integer quantity"),
@@ -157,8 +153,7 @@ fn test_transaction_durability() -> Result<()> {
     {
         let mut db = Database::open(&db_path)?;
         let result = db
-            .query("SELECT * FROM persistent_data ORDER BY id")?
-            .into_query_result()?;
+            .query("SELECT * FROM persistent_data ORDER BY id")?;
         assert_eq!(result.rows().len(), 2);
 
         let value1 = match &result.rows()[0][1] {
@@ -201,8 +196,7 @@ fn test_transaction_rollback_scenarios() -> Result<()> {
 
     // Verify rollback worked
     let result = db
-        .query("SELECT * FROM test_rollback ORDER BY id")?
-        .into_query_result()?;
+        .query("SELECT * FROM test_rollback ORDER BY id")?;
     assert_eq!(result.rows().len(), 1);
 
     let name = match &result.rows()[0][1] {
@@ -220,8 +214,7 @@ fn test_transaction_rollback_scenarios() -> Result<()> {
 
     // Verify implicit rollback worked
     let result = db
-        .query("SELECT * FROM test_rollback ORDER BY id")?
-        .into_query_result()?;
+        .query("SELECT * FROM test_rollback ORDER BY id")?;
     assert_eq!(result.rows().len(), 1); // Still only original row
 
     println!("✓ Transaction rollback test passed");
@@ -250,8 +243,7 @@ fn test_concurrent_transaction_patterns() -> Result<()> {
 
     // Verify final value
     let result = db
-        .query("SELECT value FROM shared_counter WHERE id = 1")?
-        .into_query_result()?;
+        .query("SELECT value FROM shared_counter WHERE id = 1")?;
     let final_value = match &result.rows()[0][0] {
         SqlValue::Integer(v) => v,
         _ => panic!("Expected integer value"),
@@ -269,8 +261,7 @@ fn test_concurrent_transaction_patterns() -> Result<()> {
 
     // Verify all operations committed together
     let result = db
-        .query("SELECT value FROM shared_counter WHERE id >= 2 ORDER BY id")?
-        .into_query_result()?;
+        .query("SELECT value FROM shared_counter WHERE id >= 2 ORDER BY id")?;
     assert_eq!(result.rows().len(), 2);
 
     let value2 = match &result.rows()[0][0] {

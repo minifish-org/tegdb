@@ -126,8 +126,6 @@ fn test_storage_format(
     let full_scan_start = Instant::now();
     let _full_result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let full_scan_time = full_scan_start.elapsed().as_nanos();
 
@@ -135,8 +133,6 @@ fn test_storage_format(
     let selective_start = Instant::now();
     let _selective_result = db
         .query("SELECT name, score FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let selective_scan_time = selective_start.elapsed().as_nanos();
 
@@ -144,8 +140,6 @@ fn test_storage_format(
     let pk_start = Instant::now();
     let _pk_result = db
         .query("SELECT name, email FROM users WHERE id = 5000")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let pk_lookup_time = pk_start.elapsed().as_nanos();
 
@@ -153,8 +147,6 @@ fn test_storage_format(
     let limited_start = Instant::now();
     let _limited_result = db
         .query("SELECT name, score FROM users LIMIT 100")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let limited_scan_time = limited_start.elapsed().as_nanos();
 
@@ -162,8 +154,6 @@ fn test_storage_format(
     let condition_start = Instant::now();
     let _condition_result = db
         .query("SELECT name, score FROM users WHERE score > 70.0")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let condition_query_time = condition_start.elapsed().as_nanos();
 

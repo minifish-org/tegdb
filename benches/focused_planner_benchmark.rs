@@ -82,8 +82,6 @@ fn focused_planner_benchmark(c: &mut Criterion) {
             let id = black_box(250);
             let result = tegdb
                 .query(&format!("SELECT name, price FROM products WHERE id = {id}"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -120,8 +118,6 @@ fn focused_planner_benchmark(c: &mut Criterion) {
                 .query(&format!(
                     "SELECT id, name FROM products WHERE id >= {start} AND id <= {end}"
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -159,8 +155,6 @@ fn focused_planner_benchmark(c: &mut Criterion) {
                 .query(&format!(
                     "SELECT id, name FROM products WHERE category = '{category}'"
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -192,8 +186,6 @@ fn focused_planner_benchmark(c: &mut Criterion) {
                 .query(&format!(
                     "SELECT name, category FROM products WHERE id = {id}"
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });

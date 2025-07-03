@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Process only the first 3 rows to demonstrate streaming
     println!("   - Processing first 3 rows on-demand:");
     let mut count = 0;
-    for row in streaming_result.by_ref() {
+    for row in streaming_result.iter() {
         let row = row?;
         println!(
             "     Row {}: id={:?}, data={:?}, value={:?}",
@@ -90,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let limited_stream = db.query("SELECT * FROM large_table LIMIT 5")?;
 
     let mut limited_count = 0;
-    for row in limited_stream {
+    for row in limited_stream.into_iter() {
         let row = row?;
         println!("   Limited Row {}: id={:?}", limited_count + 1, row[0]);
         limited_count += 1;

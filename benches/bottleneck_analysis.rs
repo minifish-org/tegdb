@@ -157,8 +157,6 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             let result = db
                 .query(black_box("SELECT id, value FROM test"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         })
@@ -178,8 +176,6 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             let result = db
                 .query(black_box("SELECT id, value FROM test WHERE id < 50"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         })
@@ -189,8 +185,6 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             let result = db
                 .query(black_box("SELECT id, value FROM test LIMIT 10"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         })

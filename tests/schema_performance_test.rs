@@ -42,8 +42,6 @@ fn test_schema_loading_performance() -> Result<()> {
         for i in 0..5 {
             let result = db
                 .query(&format!("SELECT * FROM table_{i} LIMIT 1"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             assert!(result.rows().len() <= 1);
         }
@@ -83,8 +81,6 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         // Query should work immediately (schemas are shared)
         let result = db
             .query("SELECT * FROM users")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
 
@@ -94,13 +90,9 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         // Both tables should work
         let users_result = db
             .query("SELECT * FROM users")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         let products_result = db
             .query("SELECT * FROM products")
-            .unwrap()
-            .into_query_result()
             .unwrap();
 
         assert_eq!(users_result.rows().len(), 1);
@@ -114,13 +106,9 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         // Both tables should still be available
         let users_result = db
             .query("SELECT * FROM users")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         let products_result = db
             .query("SELECT * FROM products")
-            .unwrap()
-            .into_query_result()
             .unwrap();
 
         assert_eq!(users_result.rows().len(), 1);

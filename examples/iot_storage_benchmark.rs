@@ -55,8 +55,6 @@ fn main() -> Result<()> {
     let start_time = Instant::now();
     let result = db
         .query("SELECT * FROM user_sessions WHERE user_id = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let query_time = start_time.elapsed();
     println!(
@@ -69,8 +67,6 @@ fn main() -> Result<()> {
     let start_time = Instant::now();
     let result = db
         .query("SELECT * FROM user_sessions WHERE user_id = 50 AND session_id = 5")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let pk_lookup_time = start_time.elapsed();
     println!("✅ Primary key lookup completed in {pk_lookup_time:?}");

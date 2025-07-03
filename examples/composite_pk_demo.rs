@@ -40,7 +40,7 @@ fn main() -> Result<()> {
 
     // Query all data
     println!("4. Querying all order items (organized by composite PK)...");
-    let result = db.query("SELECT * FROM order_items")?.into_query_result()?;
+    let result = db.query("SELECT * FROM order_items")?;
     println!("Found {} order items:", result.rows().len());
 
     for row in result.rows() {
@@ -68,8 +68,6 @@ fn main() -> Result<()> {
     println!("5. Querying by partial primary key (order_id = 100)...");
     let result = db
         .query("SELECT * FROM order_items WHERE order_id = 100")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Found {} items for order 100:", result.rows().len());
 

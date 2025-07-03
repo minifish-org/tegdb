@@ -18,8 +18,6 @@ fn test_query_iterator_basic_functionality() {
     // Test iterator functionality
     let query_result = db
         .query("SELECT * FROM test_table ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     // Check columns
@@ -73,14 +71,14 @@ fn test_query_iterator_streaming() {
     }
 
     // Test streaming iteration
-    let streaming_query = db
+    let query = db
         .query("SELECT * FROM streaming_test ORDER BY id")
         .unwrap();
 
     let mut count = 0;
     let mut collected_rows = Vec::new();
 
-    for row_result in streaming_query {
+    for row_result in query {
         let row = row_result.unwrap();
         collected_rows.push(row);
         count += 1;
@@ -127,8 +125,6 @@ fn test_query_iterator_backward_compatibility() {
     // Test conversion to old QueryResult format
     let query_result = db
         .query("SELECT * FROM compat_test ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     // Verify compatibility with old API
@@ -161,8 +157,6 @@ fn test_query_iterator_empty_result() {
     // Query with no results
     let query_result = db
         .query("SELECT * FROM empty_test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     // Check columns are still available
@@ -193,11 +187,11 @@ fn test_query_iterator_with_where_clause() {
     }
 
     // Query with WHERE clause
-    let streaming_query = db
+    let query = db
         .query("SELECT * FROM where_test WHERE value > 50")
         .unwrap();
 
-    let rows = streaming_query.collect_rows().unwrap();
+    let rows = query;
     assert_eq!(rows.len(), 5); // ids 6-10 have values > 50
 
     // Since we can't guarantee order without ORDER BY, just verify we have the right data
@@ -229,9 +223,7 @@ fn test_transaction_query_iterator() {
 
     // Query within transaction should see the new data
     let query_result = tx
-        .streaming_query("SELECT * FROM tx_test ORDER BY id")
-        .unwrap()
-        .into_query_result()
+        .query("SELECT * FROM tx_test ORDER BY id")
         .unwrap();
     let rows = query_result.rows();
 
@@ -253,8 +245,6 @@ fn test_transaction_query_iterator() {
     // Verify data is persisted after commit
     let query_result = db
         .query("SELECT * FROM tx_test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let rows = query_result.rows();
     assert_eq!(rows.len(), 2); // Should have both rows

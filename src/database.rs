@@ -16,32 +16,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-/// Type alias for scan iterator result
-type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
-
-/// Trait for types that can perform scanning operations (Engine or Transaction)
-pub trait Scannable {
-    fn scan(&self, range: std::ops::Range<Vec<u8>>) -> Result<ScanIterator<'_>>;
-}
-
-impl Scannable for crate::engine::Engine {
-    fn scan(
-        &self,
-        range: std::ops::Range<Vec<u8>>,
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>> {
-        self.scan(range)
-    }
-}
-
-impl Scannable for crate::engine::Transaction<'_> {
-    fn scan(
-        &self,
-        range: std::ops::Range<Vec<u8>>,
-    ) -> Result<Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + '_>> {
-        self.scan(range)
-    }
-}
-
 /// Database connection, similar to sqlite::Connection
 ///
 /// This struct maintains a schema cache at the database level to avoid
@@ -236,27 +210,49 @@ impl Database {
         Ok(final_result)
     }
 
-    /// Execute SQL query, return true streaming results that yield rows on-demand
-    /// This is the new streaming API that doesn't materialize all rows upfront
-    /// Following the parse -> plan -> execute_plan pipeline
-    pub fn query(&mut self, sql: &str) -> Result<StreamingQuery> {
+    /// Execute SQL query, return all results materialized in memory
+    /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
+    pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Only SELECT statements make sense for streaming
+        // Only SELECT statements make sense for queries
         match &statement {
             crate::parser::Statement::Select(_) => {
-                // Clone schemas for the planner
+                // Clone schemas for the executor
                 let schemas = self.table_schemas.read().unwrap().clone();
 
-                // Use the planner to generate an optimized execution plan
+                // Use a single transaction for this operation
+                let transaction = self.engine.begin_transaction();
+
+                // Use the planner pipeline with executor
                 let planner = QueryPlanner::new(schemas.clone());
+                let mut executor = Executor::new_with_schemas(transaction, schemas);
+
+                // Generate and execute the plan
                 let plan = planner.plan(statement)?;
+                
+                // Execute and immediately collect results to avoid lifetime issues
+                let final_result = {
+                    let result = executor.execute_plan(plan)?;
+                    match result {
+                        crate::executor::ResultSet::Select { columns, rows } => {
+                            // Collect all rows from the iterator immediately
+                            let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
+                            collected_rows.map(|final_rows| QueryResult { columns, rows: final_rows })
+                        }
+                        _ => {
+                            Err(crate::Error::Other(
+                                "Expected SELECT result but got something else".to_string(),
+                            ))
+                        }
+                    }
+                };
 
-                // Create streaming query that executes the plan against the engine
-                let streaming_query = BaseStreamingQuery::from_plan(&self.engine, plan, schemas)?;
+                // Now commit the transaction
+                executor.transaction_mut().commit()?;
 
-                Ok(streaming_query)
+                final_result
             }
             _ => {
                 // For non-SELECT statements, this doesn't make sense
@@ -329,249 +325,6 @@ impl QueryResult {
     }
 }
 
-/// Generic streaming query that works with any scannable backend
-/// This single implementation replaces both StreamingQuery and TransactionStreamingQuery
-pub struct BaseStreamingQuery<'a, S: Scannable> {
-    columns: Vec<String>,
-    scanner: &'a S,
-    table_name: String,
-    selected_columns: Vec<String>,
-    filter: Option<crate::parser::Condition>,
-    limit: Option<u64>,
-    schema: crate::executor::TableSchema,
-    storage_format: crate::storage_format::StorageFormat,
-    last_key: Option<Vec<u8>>, // Track last seen key for continuation
-    count: u64,
-    finished: bool,
-}
-
-impl<'a, S: Scannable> BaseStreamingQuery<'a, S> {
-    /// Create a streaming query from an execution plan
-    /// This follows the proper parse -> plan -> execute_plan pipeline
-    fn from_plan(
-        scanner: &'a S,
-        plan: crate::planner::ExecutionPlan,
-        schemas: HashMap<String, TableSchema>,
-    ) -> Result<Self> {
-        use crate::planner::ExecutionPlan;
-
-        match plan {
-            ExecutionPlan::PrimaryKeyLookup {
-                table,
-                pk_values,
-                selected_columns,
-                additional_filter,
-            } => {
-                let schema = schemas
-                    .get(&table)
-                    .ok_or_else(|| crate::Error::Other(format!("Table '{table}' not found")))?
-                    .clone();
-
-                // For primary key lookups, we need to create a special filter condition
-                // that combines the PK equality conditions with any additional filter
-                let pk_filter = Self::create_pk_filter_condition(&pk_values, additional_filter)?;
-
-                Ok(Self {
-                    columns: selected_columns.clone(),
-                    scanner,
-                    table_name: table,
-                    selected_columns,
-                    filter: Some(pk_filter),
-                    limit: Some(1), // PK lookups should return at most 1 row
-                    schema,
-                    storage_format: crate::storage_format::StorageFormat::new(),
-                    last_key: None,
-                    count: 0,
-                    finished: false,
-                })
-            }
-            ExecutionPlan::TableScan {
-                table,
-                selected_columns,
-                filter,
-                limit,
-                ..
-            } => {
-                let schema = schemas
-                    .get(&table)
-                    .ok_or_else(|| crate::Error::Other(format!("Table '{table}' not found")))?
-                    .clone();
-
-                Ok(Self {
-                    columns: selected_columns.clone(),
-                    scanner,
-                    table_name: table,
-                    selected_columns,
-                    filter,
-                    limit,
-                    schema,
-                    storage_format: crate::storage_format::StorageFormat::new(),
-                    last_key: None,
-                    count: 0,
-                    finished: false,
-                })
-            }
-            _ => Err(crate::Error::Other(
-                "Streaming query only supports SELECT execution plans".to_string(),
-            )),
-        }
-    }
-
-    /// Create a filter condition from primary key values
-    fn create_pk_filter_condition(
-        pk_values: &HashMap<String, SqlValue>,
-        additional_filter: Option<crate::parser::Condition>,
-    ) -> Result<crate::parser::Condition> {
-        use crate::parser::{ComparisonOperator, Condition};
-
-        if pk_values.is_empty() {
-            return Err(crate::Error::Other(
-                "Primary key lookup requires at least one key value".to_string(),
-            ));
-        }
-
-        // Convert PK values to equality conditions
-        let pk_conditions: Vec<Condition> = pk_values
-            .iter()
-            .map(|(column, value)| Condition::Comparison {
-                left: column.clone(),
-                operator: ComparisonOperator::Equal,
-                right: value.clone(),
-            })
-            .collect();
-
-        // Combine all PK conditions with AND
-        let combined_pk_condition = if pk_conditions.len() == 1 {
-            pk_conditions.into_iter().next().unwrap()
-        } else {
-            pk_conditions
-                .into_iter()
-                .reduce(|acc, condition| Condition::And(Box::new(acc), Box::new(condition)))
-                .unwrap()
-        };
-
-        // If there's an additional filter, combine it with the PK condition
-        if let Some(additional) = additional_filter {
-            Ok(Condition::And(
-                Box::new(combined_pk_condition),
-                Box::new(additional),
-            ))
-        } else {
-            Ok(combined_pk_condition)
-        }
-    }
-
-    /// Get column names
-    pub fn columns(&self) -> &[String] {
-        &self.columns
-    }
-
-    /// Collect all remaining rows into a Vec (for compatibility)
-    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
-        let mut rows = Vec::new();
-        for row_result in self {
-            rows.push(row_result?);
-        }
-        Ok(rows)
-    }
-
-    /// Convert to the old QueryResult format (for backward compatibility)
-    pub fn into_query_result(self) -> Result<QueryResult> {
-        let columns = self.columns.clone();
-        let rows = self.collect_rows()?;
-        Ok(QueryResult { columns, rows })
-    }
-
-    /// Apply filter condition to row data
-    fn evaluate_condition(
-        condition: &crate::parser::Condition,
-        row_data: &std::collections::HashMap<String, SqlValue>,
-    ) -> bool {
-        crate::sql_utils::evaluate_condition(condition, row_data)
-    }
-}
-
-impl<S: Scannable> Iterator for BaseStreamingQuery<'_, S> {
-    type Item = Result<Vec<SqlValue>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            return None;
-        }
-
-        // Check limit
-        if let Some(limit) = self.limit {
-            if self.count >= limit {
-                self.finished = true;
-                return None;
-            }
-        }
-
-        // Determine scan range
-        let start_key = match &self.last_key {
-            Some(last) => {
-                // Continue from after the last key
-                let mut next_key = last.clone();
-                next_key.push(0); // Increment key for next scan
-                next_key
-            }
-            None => {
-                // First scan - start from table prefix
-                let table_prefix = format!("{}:", self.table_name);
-                table_prefix.as_bytes().to_vec()
-            }
-        };
-
-        let end_key = format!("{}~", self.table_name).as_bytes().to_vec();
-
-        // Perform scan from current position
-        let scan_result = match self.scanner.scan(start_key..end_key) {
-            Ok(scan) => scan,
-            Err(e) => return Some(Err(e)),
-        };
-
-        // Process rows until we find one that matches the filter
-        for (key, value) in scan_result {
-            match self.storage_format.deserialize_row(&value, &self.schema) {
-                Ok(row_data) => {
-                    // Apply filter if present
-                    let matches = if let Some(ref filter) = self.filter {
-                        Self::evaluate_condition(filter, &row_data)
-                    } else {
-                        true
-                    };
-
-                    if matches {
-                        // Extract selected columns
-                        let mut row_values = Vec::new();
-                        for col_name in &self.selected_columns {
-                            row_values
-                                .push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
-                        }
-
-                        self.count += 1;
-                        self.last_key = Some(key);
-                        return Some(Ok(row_values));
-                    } else {
-                        // Update last_key even for filtered out rows to continue scan
-                        self.last_key = Some(key);
-                    }
-                }
-                Err(e) => return Some(Err(e)),
-            }
-        }
-
-        // No more rows found
-        self.finished = true;
-        None
-    }
-}
-
-/// Type aliases to maintain API compatibility
-/// These replace the original struct definitions with zero-cost abstractions
-pub type StreamingQuery<'a> = BaseStreamingQuery<'a, crate::engine::Engine>;
-pub type TransactionStreamingQuery<'a> = BaseStreamingQuery<'a, crate::engine::Transaction<'a>>;
-
 /// Transaction handle for batch operations
 pub struct DatabaseTransaction<'a> {
     executor: Executor<'a>,
@@ -630,36 +383,42 @@ impl DatabaseTransaction<'_> {
         }
     }
 
-    /// Execute SQL query within transaction using true streaming
-    /// This provides the same streaming capability as Database::query but within a transaction context
+    /// Execute SQL query within transaction, return all results materialized in memory
     /// Following the parse -> plan -> execute_plan pipeline
-    pub fn streaming_query(&mut self, sql: &str) -> Result<TransactionStreamingQuery> {
+    pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Only SELECT statements make sense for streaming
+        // Only SELECT statements make sense for queries
         match &statement {
             crate::parser::Statement::Select(_) => {
                 // Get schemas from shared cache
                 let schemas = self.table_schemas.read().unwrap().clone();
 
                 // Use the planner to generate an optimized execution plan
-                let planner = QueryPlanner::new(schemas.clone());
+                let planner = QueryPlanner::new(schemas);
                 let plan = planner.plan(statement)?;
-
-                // Create streaming query that executes the plan against the transaction
-                let streaming_query = BaseStreamingQuery::from_plan(
-                    self.executor.transaction(),
-                    plan,
-                    schemas,
-                )?;
-
-                Ok(streaming_query)
+                
+                // Execute and immediately collect results
+                let result = self.executor.execute_plan(plan)?;
+                match result {
+                    crate::executor::ResultSet::Select { columns, rows } => {
+                        // Collect all rows from the iterator
+                        let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
+                        let final_rows = collected_rows?;
+                        Ok(QueryResult { columns, rows: final_rows })
+                    }
+                    _ => {
+                        Err(crate::Error::Other(
+                            "Expected SELECT result but got something else".to_string(),
+                        ))
+                    }
+                }
             }
             _ => {
                 // For non-SELECT statements, this doesn't make sense
                 Err(crate::Error::Other(
-                    "streaming_query() should only be used for SELECT statements".to_string(),
+                    "query() should only be used for SELECT statements".to_string(),
                 ))
             }
         }

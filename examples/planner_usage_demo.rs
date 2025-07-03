@@ -41,8 +41,7 @@ fn main() -> Result<()> {
         // Primary key lookup (should use PrimaryKeyLookup plan)
         let start = std::time::Instant::now();
         let result = db
-            .query("SELECT * FROM benchmark_test WHERE id = 5")?
-            .into_query_result()?;
+            .query("SELECT * FROM benchmark_test WHERE id = 5")?;
         let pk_time = start.elapsed();
 
         println!("   Primary Key Query: SELECT * FROM benchmark_test WHERE id = 5");
@@ -52,8 +51,7 @@ fn main() -> Result<()> {
         // Table scan with filter (should use TableScan plan with predicate pushdown)
         let start = std::time::Instant::now();
         let result = db
-            .query("SELECT value FROM benchmark_test WHERE score > 15.0")?
-            .into_query_result()?;
+            .query("SELECT value FROM benchmark_test WHERE score > 15.0")?;
         let scan_time = start.elapsed();
 
         println!("\n   Table Scan Query: SELECT value FROM benchmark_test WHERE score > 15.0");
@@ -63,8 +61,7 @@ fn main() -> Result<()> {
         // Limited query (should use TableScan with limit pushdown)
         let start = std::time::Instant::now();
         let result = db
-            .query("SELECT * FROM benchmark_test LIMIT 3")?
-            .into_query_result()?;
+            .query("SELECT * FROM benchmark_test LIMIT 3")?;
         let limit_time = start.elapsed();
 
         println!("\n   Limited Query: SELECT * FROM benchmark_test LIMIT 3");
@@ -97,8 +94,7 @@ fn main() -> Result<()> {
 
         // Verify final state
         let result = db
-            .query("SELECT * FROM benchmark_test")?
-            .into_query_result()?;
+            .query("SELECT * FROM benchmark_test")?;
         println!("\n   Remaining rows: {}", result.rows().len());
 
         println!("\n=== Query Planner Integration Confirmed ===");

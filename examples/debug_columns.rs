@@ -16,8 +16,6 @@ fn main() -> Result<()> {
     println!("Querying with explicit columns...");
     let result = db
         .query("SELECT id, name, age FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Columns: {:?}", result.columns());
     for row in result.rows().iter() {
@@ -27,8 +25,6 @@ fn main() -> Result<()> {
     println!("Querying with SELECT *...");
     let result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Columns: {:?}", result.columns());
     for row in result.rows().iter() {

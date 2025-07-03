@@ -84,18 +84,18 @@ fn test_select_memory_optimization() -> Result<()> {
     // Test LIMIT optimization (should only process limited rows)
     // Now using the proper streaming API
     let result = db.query("SELECT * FROM users LIMIT 5")?;
-    let count = result.count();
+    let count = result.len();
     println!("Limited select result: {count} rows (streaming)");
     assert!(count <= 5);
 
     // Test WHERE optimization (should filter early)
     let result = db.query("SELECT * FROM users WHERE id = 42")?;
-    let count = result.count();
+    let count = result.len();
     println!("Filtered select result: {count} rows (streaming)");
 
     // Test combined LIMIT and WHERE
     let result = db.query("SELECT * FROM users WHERE id > 50 LIMIT 3")?;
-    let count = result.count();
+    let count = result.len();
     println!("Combined optimization result: {count} rows (streaming)");
     assert!(count <= 3);
 

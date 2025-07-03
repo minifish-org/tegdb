@@ -36,8 +36,6 @@ fn test_database_open_and_basic_operations() -> Result<()> {
     // Test SELECT
     let result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     // Column order may vary, so just check that we have the right columns
     assert!(result.columns().contains(&"id".to_string()));
@@ -57,8 +55,6 @@ fn test_database_open_and_basic_operations() -> Result<()> {
     // Verify final state
     let result = db
         .query("SELECT name, age FROM users ORDER BY name")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 2); // Alice and Carol remaining
 
@@ -82,8 +78,6 @@ fn test_query_result_interface() -> Result<()> {
 
     let result = db
         .query("SELECT id, name, price, active FROM products WHERE active = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     // Test QueryResult methods
@@ -140,9 +134,7 @@ fn test_database_transactions() -> Result<()> {
 
         // Verify changes within transaction
         let result = tx
-            .streaming_query("SELECT id, balance FROM accounts ORDER BY id")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT id, balance FROM accounts ORDER BY id")
             .unwrap();
         assert_eq!(result.rows().len(), 2);
 
@@ -159,8 +151,6 @@ fn test_database_transactions() -> Result<()> {
     // Verify changes persisted after transaction commit
     let result = db
         .query("SELECT id, balance FROM accounts ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let row1 = &result.rows()[0];
     let row2 = &result.rows()[1];
@@ -177,9 +167,7 @@ fn test_database_transactions() -> Result<()> {
 
         // Verify changes within transaction - check that balance changes are visible
         let result = tx
-            .streaming_query("SELECT id, balance FROM accounts ORDER BY id")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT id, balance FROM accounts ORDER BY id")
             .unwrap();
         assert_eq!(result.rows().len(), 2);
         let row1 = &result.rows()[0];
@@ -200,8 +188,6 @@ fn test_database_transactions() -> Result<()> {
     // Verify changes were rolled back
     let result = db
         .query("SELECT id, balance FROM accounts ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let row1 = &result.rows()[0];
     let row2 = &result.rows()[1];
@@ -236,8 +222,6 @@ fn test_database_data_types() -> Result<()> {
 
     let result = db
         .query("SELECT * FROM test_types ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 3);
 
@@ -310,8 +294,6 @@ fn test_database_where_clauses() -> Result<()> {
     // First verify all data was inserted correctly
     let all_result = db
         .query("SELECT name, age FROM employees")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("All employees: {:?}", all_result.rows());
     assert_eq!(all_result.rows().len(), 4);
@@ -319,8 +301,6 @@ fn test_database_where_clauses() -> Result<()> {
     // Test simple equality - one test at a time
     let result = db
         .query("SELECT name FROM employees WHERE age = 30")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Query result for age = 30: {:?}", result.rows());
     println!("Column names: {:?}", result.columns());
@@ -358,8 +338,6 @@ fn test_database_order_by_and_limit() -> Result<()> {
     // Test ORDER BY ASC (default) - check if ORDER BY is actually working
     let result = db
         .query("SELECT player, score FROM scores ORDER BY score")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 5);
 
@@ -380,8 +358,6 @@ fn test_database_order_by_and_limit() -> Result<()> {
     // Test ORDER BY DESC - check if ORDER BY is working
     let result = db
         .query("SELECT player, score FROM scores ORDER BY score DESC")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let mut scores: Vec<i64> = result
         .rows()
@@ -401,8 +377,6 @@ fn test_database_order_by_and_limit() -> Result<()> {
     // Test ORDER BY with text column - check if working
     let result = db
         .query("SELECT player FROM scores ORDER BY player")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let mut players: Vec<String> = result
         .rows()
@@ -420,8 +394,6 @@ fn test_database_order_by_and_limit() -> Result<()> {
     // Test LIMIT - might not work if ORDER BY doesn't work
     let result = db
         .query("SELECT player, score FROM scores ORDER BY score DESC LIMIT 3")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     // LIMIT might not be implemented, so just check we get some results
     assert!(result.rows().len() <= 5); // Should be at most all results
@@ -441,8 +413,6 @@ fn test_database_order_by_and_limit() -> Result<()> {
     db.execute("INSERT INTO scores (id, player, score) VALUES (6, 'Alice', 95)")?; // Duplicate score for Alice
     let result = db
         .query("SELECT player, score FROM scores ORDER BY score DESC, player ASC")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 6);
 
@@ -518,8 +488,6 @@ fn test_database_schema_persistence() -> Result<()> {
         // Should be able to query existing data
         let result = db
             .query("SELECT * FROM persistent_test")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
 
@@ -546,14 +514,10 @@ fn test_database_schema_persistence() -> Result<()> {
 
         let _result = db
             .query("SELECT * FROM persistent_test")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         // Note: COUNT might not be implemented, so let's just check row count
         let result = db
             .query("SELECT * FROM persistent_test")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 2);
     }
@@ -595,8 +559,6 @@ fn test_database_concurrent_access() -> Result<()> {
     // Continue with single database instance
     let result = db1
         .query("SELECT value FROM counter WHERE id = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows()[0][0], SqlValue::Integer(0));
 
@@ -617,8 +579,6 @@ fn test_database_drop_table() -> Result<()> {
     // Verify table exists and has data
     let result = db
         .query("SELECT * FROM temp_table")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 1);
 
@@ -678,8 +638,6 @@ fn test_database_complex_queries() -> Result<()> {
     // Test complex WHERE clauses
     let result = db
         .query("SELECT id, amount FROM orders WHERE amount > 100.0 AND status = 'completed'")
-        .unwrap()
-        .into_query_result()
         .unwrap();
 
     if result.rows().len() == 1 {
@@ -696,8 +654,6 @@ fn test_database_complex_queries() -> Result<()> {
     // Test ORDER BY with different data types (might not work)
     let result = db
         .query("SELECT customer_id, amount FROM orders ORDER BY amount DESC, customer_id ASC")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 4);
 
@@ -716,8 +672,6 @@ fn test_database_complex_queries() -> Result<()> {
     // Test SELECT with specific columns and simple WHERE clause
     let result = db
         .query("SELECT name, city FROM customers WHERE city = 'Boston'")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 1);
     assert_eq!(result.columns(), &["name", "city"]);
@@ -755,9 +709,7 @@ fn test_database_acid_atomicity() -> Result<()> {
 
         // Verify changes are visible within transaction
         let result = tx
-            .streaming_query("SELECT id, balance FROM bank_accounts ORDER BY id")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT id, balance FROM bank_accounts ORDER BY id")
             .unwrap();
         assert_eq!(result.rows().len(), 2);
 
@@ -768,8 +720,6 @@ fn test_database_acid_atomicity() -> Result<()> {
     // Verify all changes were committed atomically
     let result = db
         .query("SELECT balance FROM bank_accounts ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let balances: Vec<i64> = result
         .rows()
@@ -796,8 +746,6 @@ fn test_database_acid_atomicity() -> Result<()> {
     // Verify no changes were committed
     let result = db
         .query("SELECT balance FROM bank_accounts ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let balances: Vec<i64> = result
         .rows()
@@ -833,9 +781,7 @@ fn test_database_acid_consistency() -> Result<()> {
 
         // Check that quantity is still above minimum stock
         let result = tx
-            .streaming_query("SELECT quantity, min_stock FROM inventory WHERE id = 1")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT quantity, min_stock FROM inventory WHERE id = 1")
             .unwrap();
         let row = &result.rows()[0];
         let quantity = match &row[0] {
@@ -864,8 +810,6 @@ fn test_database_acid_consistency() -> Result<()> {
     // Verify original data is intact after constraint violation
     let result = db
         .query("SELECT product_name FROM inventory WHERE id = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows()[0][0], SqlValue::Text("Widget A".to_string()));
 
@@ -892,9 +836,7 @@ fn test_database_acid_isolation() -> Result<()> {
 
     // Verify the change is visible within the transaction
     let result = tx1
-        .streaming_query("SELECT value FROM shared_counter WHERE id = 1")
-        .unwrap()
-        .into_query_result()
+        .query("SELECT value FROM shared_counter WHERE id = 1")
         .unwrap();
     let value_in_tx = match &result.rows()[0][0] {
         SqlValue::Integer(v) => *v,
@@ -915,8 +857,6 @@ fn test_database_acid_isolation() -> Result<()> {
             // Second connection available - test that committed changes are visible
             let result = db2
                 .query("SELECT value FROM shared_counter WHERE id = 1")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             let value_from_db2 = match &result.rows()[0][0] {
                 SqlValue::Integer(v) => *v,
@@ -936,8 +876,6 @@ fn test_database_acid_isolation() -> Result<()> {
             // Test that committed changes are visible
             let result = db1
                 .query("SELECT value FROM shared_counter WHERE id = 1")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             let value_after_commit = match &result.rows()[0][0] {
                 SqlValue::Integer(v) => *v,
@@ -988,8 +926,6 @@ fn test_database_acid_durability() -> Result<()> {
         // Verify data is present before closing
         let result = db
             .query("SELECT * FROM durable_test ORDER BY id")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), test_data.len());
     } // Database goes out of scope here, simulating close/restart
@@ -1001,8 +937,6 @@ fn test_database_acid_durability() -> Result<()> {
         // Data should still be there after restart
         let result = db
             .query("SELECT id, description, value FROM durable_test ORDER BY id")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), test_data.len());
 
@@ -1030,16 +964,12 @@ fn test_database_acid_durability() -> Result<()> {
         // COUNT might not be implemented, so let's count manually
         let result = db
             .query("SELECT * FROM durable_test")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 4); // Original 3 + 1 new record
 
         // Verify the new record is present
         let result = db
             .query("SELECT description FROM durable_test WHERE id = 4")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
         assert_eq!(
@@ -1076,9 +1006,7 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
 
         // Verify changes are visible within transaction
         let result = tx
-            .streaming_query("SELECT * FROM transaction_test")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT * FROM transaction_test")
             .unwrap();
         assert_eq!(result.rows().len(), 3);
 
@@ -1089,8 +1017,6 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
     // Verify all changes were rolled back
     let result = db
         .query("SELECT id, status, amount FROM transaction_test ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 2); // Should be back to original 2 rows
 
@@ -1114,8 +1040,6 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
     // Verify changes were not committed
     let result = db
         .query("SELECT amount FROM transaction_test WHERE id = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows()[0][0], SqlValue::Integer(1000)); // Should be original value
 
@@ -1138,8 +1062,6 @@ fn test_database_acid_transaction_boundaries() -> Result<()> {
     // Verify immediate visibility
     let result = db
         .query("SELECT data FROM boundary_test WHERE id = 1")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(
         result.rows()[0][0],
@@ -1162,8 +1084,6 @@ fn test_database_acid_transaction_boundaries() -> Result<()> {
     // Verify both transactions committed independently
     let result = db
         .query("SELECT * FROM boundary_test ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 3);
 
@@ -1209,9 +1129,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
 
         // Verify all operations are visible within transaction
         let result = tx
-            .streaming_query("SELECT * FROM large_tx_test")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT * FROM large_tx_test")
             .unwrap();
         assert_eq!(result.rows().len(), batch_size);
 
@@ -1222,8 +1140,6 @@ fn test_database_acid_large_transaction() -> Result<()> {
     // Verify all changes were committed together
     let result = db
         .query("SELECT * FROM large_tx_test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), batch_size);
 
@@ -1240,9 +1156,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
 
         // Verify large number of changes within transaction
         let result = tx
-            .streaming_query("SELECT * FROM large_tx_test")
-            .unwrap()
-            .into_query_result()
+            .query("SELECT * FROM large_tx_test")
             .unwrap();
         assert_eq!(result.rows().len(), batch_size * 2);
 
@@ -1253,16 +1167,12 @@ fn test_database_acid_large_transaction() -> Result<()> {
     // Verify only the first batch remains
     let result = db
         .query("SELECT * FROM large_tx_test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), batch_size);
 
     // Verify no batch_id = 2 records exist
     let result = db
         .query("SELECT * FROM large_tx_test WHERE batch_id = 2")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     assert_eq!(result.rows().len(), 0);
 

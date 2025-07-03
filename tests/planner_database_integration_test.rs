@@ -22,8 +22,6 @@ fn test_planner_integration_in_database() -> Result<()> {
         // Test that queries work (these should go through the planner when dev feature is enabled)
         let result = db
             .query("SELECT * FROM users WHERE id = 1")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.columns().len(), 3);
         assert_eq!(result.rows().len(), 1);
@@ -32,8 +30,6 @@ fn test_planner_integration_in_database() -> Result<()> {
         // Test table scan query
         let result = db
             .query("SELECT name FROM users WHERE age > 30")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         println!(
             "Query result: columns={:?}, rows={:?}",
@@ -47,8 +43,6 @@ fn test_planner_integration_in_database() -> Result<()> {
         // Test limited query
         let result = db
             .query("SELECT * FROM users LIMIT 2")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 2);
 
@@ -86,8 +80,6 @@ fn test_crud_operations_with_planner() -> Result<()> {
         // SELECT
         let result = db
             .query("SELECT * FROM products WHERE id = 1")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
 
@@ -98,8 +90,6 @@ fn test_crud_operations_with_planner() -> Result<()> {
         // Verify update
         let result = db
             .query("SELECT price FROM products WHERE id = 1")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows()[0][0], tegdb::SqlValue::Real(12.99));
 
@@ -110,8 +100,6 @@ fn test_crud_operations_with_planner() -> Result<()> {
         // Verify delete
         let result = db
             .query("SELECT * FROM products")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
 

@@ -18,8 +18,6 @@ fn main() -> Result<()> {
     // Check count
     let result = db
         .query("SELECT * FROM test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("After first insert - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
@@ -34,8 +32,6 @@ fn main() -> Result<()> {
     // Check count
     let result = db
         .query("SELECT * FROM test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("After second insert - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
@@ -50,8 +46,6 @@ fn main() -> Result<()> {
     // Check count and content
     let result = db
         .query("SELECT * FROM test ORDER BY id")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("After update - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
@@ -66,8 +60,6 @@ fn main() -> Result<()> {
     // Final check
     let result = db
         .query("SELECT * FROM test")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Final - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {

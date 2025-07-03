@@ -31,8 +31,6 @@ fn main() -> Result<()> {
     println!("4. Querying data (organized by primary key)...");
     let result = db
         .query("SELECT * FROM users")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     println!("Found {} rows:", result.rows().len());
 

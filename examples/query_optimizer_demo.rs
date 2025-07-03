@@ -47,8 +47,6 @@ fn main() -> Result<()> {
     let start = Instant::now();
     let result = db
         .query("SELECT * FROM products WHERE category = 'electronics' AND product_id = 42")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -68,8 +66,6 @@ fn main() -> Result<()> {
     let start = Instant::now();
     let result = db
         .query("SELECT name, price FROM products WHERE category = 'books'")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -86,8 +82,6 @@ fn main() -> Result<()> {
     let start = Instant::now();
     let result = db
         .query("SELECT category, product_id, name FROM products WHERE price > 50.0")
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 
@@ -102,8 +96,6 @@ fn main() -> Result<()> {
             "SELECT name, price FROM products 
          WHERE product_id = 50 AND category = 'clothing' AND price > 0",
         )
-        .unwrap()
-        .into_query_result()
         .unwrap();
     let duration = start.elapsed();
 

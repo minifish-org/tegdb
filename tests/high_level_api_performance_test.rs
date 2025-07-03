@@ -177,7 +177,7 @@ fn test_basic_crud_performance() -> Result<()> {
     // Test select all performance
     let start = Instant::now();
     let result = db.query("SELECT * FROM perf_test")?;
-    let rows = result.collect_rows()?;
+    let rows = result;
     metrics.push(PerformanceMetrics::new(
         "SELECT ALL",
         start.elapsed(),
@@ -187,7 +187,7 @@ fn test_basic_crud_performance() -> Result<()> {
     // Test select with filter performance
     let start = Instant::now();
     let result = db.query("SELECT * FROM perf_test WHERE value > 500")?;
-    let filtered_rows = result.collect_rows()?;
+    let filtered_rows = result;
     metrics.push(PerformanceMetrics::new(
         "SELECT FILTERED",
         start.elapsed(),
@@ -227,9 +227,9 @@ fn test_streaming_query_performance() -> Result<()> {
 
     // Streaming query - process one row at a time
     let start = Instant::now();
-    let streaming_query = db.query("SELECT * FROM stream_test")?;
+    let query = db.query("SELECT * FROM stream_test")?;
     let mut streaming_count = 0;
-    for row_result in streaming_query {
+    for row_result in query {
         let _row = row_result?;
         streaming_count += 1;
     }
@@ -242,7 +242,7 @@ fn test_streaming_query_performance() -> Result<()> {
     // Batch query - collect all rows at once
     let start = Instant::now();
     let batch_query = db.query("SELECT * FROM stream_test")?;
-    let batch_rows = batch_query.collect_rows()?;
+    let batch_rows = batch_query;
     metrics.push(PerformanceMetrics::new(
         "Batch Query",
         start.elapsed(),
@@ -333,9 +333,9 @@ fn test_transaction_performance() -> Result<()> {
     // Test streaming query within transaction
     let start = Instant::now();
     let mut tx = db.begin_transaction()?;
-    let streaming_query = tx.streaming_query("SELECT * FROM tx_test")?;
+    let query = tx.query("SELECT * FROM tx_test")?;
     let mut tx_streaming_count = 0;
-    for row_result in streaming_query {
+    for row_result in query {
         let _row = row_result?;
         tx_streaming_count += 1;
     }
@@ -448,7 +448,7 @@ fn test_large_dataset_performance() -> Result<()> {
     let start = Instant::now();
     let result = db.query("SELECT * FROM large_test LIMIT 1000")?;
     let mut limited_count = 0;
-    for row_result in result {
+    for row_result in result.into_iter() {
         let _row = row_result?;
         limited_count += 1;
     }
@@ -548,7 +548,7 @@ fn test_memory_usage_pattern() -> Result<()> {
     let start = Instant::now();
     let result = db.query("SELECT * FROM memory_test LIMIT 100")?;
     let mut small_batch_count = 0;
-    for row_result in result {
+    for row_result in result.into_iter() {
         let _row = row_result?;
         small_batch_count += 1;
     }
@@ -562,7 +562,7 @@ fn test_memory_usage_pattern() -> Result<()> {
     let start = Instant::now();
     let result = db.query("SELECT * FROM memory_test LIMIT 1000")?;
     let mut medium_batch_count = 0;
-    for row_result in result {
+    for row_result in result.into_iter() {
         let _row = row_result?;
         medium_batch_count += 1;
     }
@@ -575,7 +575,7 @@ fn test_memory_usage_pattern() -> Result<()> {
     // Large batch collection
     let start = Instant::now();
     let result = db.query("SELECT * FROM memory_test")?;
-    let large_batch = result.collect_rows()?;
+    let large_batch: Vec<_> = result.into_iter().collect::<Result<_>>()?;
     metrics.push(PerformanceMetrics::new(
         "Large Batch Collection",
         start.elapsed(),
@@ -691,7 +691,7 @@ fn measure_transaction_sql_execution(
     let execute_start = Instant::now();
     let actual_records = match &statement {
         tegdb::parser::Statement::Select(_) => {
-            let result = tx.streaming_query(sql)?;
+            let result = tx.query(sql)?;
             let rows = result.collect_rows()?;
             rows.len()
         }
@@ -723,7 +723,7 @@ fn measure_transaction_sql_execution(
     let start = Instant::now();
 
     let actual_records = if sql.trim().to_uppercase().starts_with("SELECT") {
-        let result = tx.streaming_query(sql)?;
+        let result = tx.query(sql)?;
         let rows = result.collect_rows()?;
         rows.len()
     } else {

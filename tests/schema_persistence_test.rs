@@ -24,8 +24,6 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         // Verify data can be retrieved
         let result = db
             .query("SELECT * FROM users WHERE age > 25")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
         assert_eq!(result.rows()[0].len(), 3); // id, name, age
@@ -42,8 +40,6 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         // 2. Query the data (including old and new data)
         let result = db
             .query("SELECT name, age FROM users ORDER BY age")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 3);
 
@@ -68,13 +64,9 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         // Verify both tables work by doing simple queries
         let users_result = db
             .query("SELECT * FROM users")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         let products_result = db
             .query("SELECT * FROM products")
-            .unwrap()
-            .into_query_result()
             .unwrap();
 
         // Should have 3 users and 1 product
@@ -122,8 +114,6 @@ fn test_schema_loading_on_executor_creation() -> Result<()> {
         // This should work without any issues if the schema was properly loaded
         let result = db
             .query("SELECT * FROM items")
-            .unwrap()
-            .into_query_result()
             .unwrap();
         assert_eq!(result.rows().len(), 1);
 

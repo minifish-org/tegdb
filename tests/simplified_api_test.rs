@@ -24,9 +24,7 @@ fn test_simplified_api() {
     // Test query
     let result = db
         .query("SELECT name, value FROM test_table WHERE id = 1")
-        .expect("Failed to query data")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query data");
 
     assert_eq!(result.len(), 1);
     assert_eq!(result.columns(), &["name", "value"]);
@@ -42,10 +40,8 @@ fn test_simplified_api() {
         .expect("Failed to update in transaction");
 
     let tx_result = tx
-        .streaming_query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query in transaction")
-        .into_query_result()
-        .unwrap();
+        .query("SELECT value FROM test_table WHERE id = 1")
+        .expect("Failed to query in transaction");
 
     assert_eq!(tx_result.rows()[0][0], SqlValue::Real(3.0));
 
@@ -54,9 +50,7 @@ fn test_simplified_api() {
     // Verify commit worked
     let final_result = db
         .query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query after commit")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query after commit");
 
     assert_eq!(final_result.rows()[0][0], SqlValue::Real(3.0));
 
@@ -81,9 +75,7 @@ fn test_database_without_config() {
 
     let result = db
         .query("SELECT id FROM simple")
-        .expect("Failed to query")
-        .into_query_result()
-        .unwrap();
+        .expect("Failed to query");
 
     assert_eq!(result.len(), 1);
     assert_eq!(result.rows()[0][0], SqlValue::Integer(42));

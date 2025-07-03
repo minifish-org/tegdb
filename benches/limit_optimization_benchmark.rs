@@ -90,8 +90,6 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items LIMIT 5")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -118,8 +116,6 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items LIMIT 50")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -153,8 +149,6 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items WHERE id >= 100 LIMIT 10")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -188,8 +182,6 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items WHERE category = 'A' LIMIT 5")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -223,8 +215,6 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -234,8 +224,6 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items LIMIT 10")
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });

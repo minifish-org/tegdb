@@ -51,8 +51,6 @@ fn bench_optimizer_comparison(c: &mut Criterion) {
                 .query(black_box(
                     "SELECT * FROM products WHERE category = 'electronics' AND product_id = 42",
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -65,8 +63,6 @@ fn bench_optimizer_comparison(c: &mut Criterion) {
                 .query(black_box(
                     "SELECT * FROM products WHERE category = 'electronics'",
                 ))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
@@ -77,8 +73,6 @@ fn bench_optimizer_comparison(c: &mut Criterion) {
         b.iter(|| {
             let result = db
                 .query(black_box("SELECT * FROM products WHERE price > 15.0"))
-                .unwrap()
-                .into_query_result()
                 .unwrap();
             black_box(result);
         });
