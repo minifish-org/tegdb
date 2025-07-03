@@ -20,7 +20,7 @@
 //!     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
 //!     
 //!     // Query data
-//!     let result = db.query("SELECT * FROM users")?.into_query_result()?;
+//!     let result = db.query("SELECT * FROM users")?;
 //!     for row in result.rows() {
 //!         println!("User row: {:?}", row);
 //!     }
