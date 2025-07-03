@@ -11,6 +11,9 @@ use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
 use std::collections::HashMap;
 
+/// Type alias for scan iterator to reduce complexity
+type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>;
+
 /// Column information for table schema
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
@@ -30,7 +33,7 @@ pub struct TableSchema {
 /// This provides a streaming interface that yields rows on-demand
 pub struct SelectRowIterator<'a> {
     /// Iterator over the scan results
-    scan_iter: Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>,
+    scan_iter: ScanIterator<'a>,
     /// Schema for deserializing rows
     schema: TableSchema,
     /// Columns to select
@@ -48,7 +51,7 @@ pub struct SelectRowIterator<'a> {
 impl<'a> SelectRowIterator<'a> {
     /// Create a new select row iterator
     pub fn new(
-        scan_iter: Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>,
+        scan_iter: ScanIterator<'a>,
         schema: TableSchema,
         selected_columns: Vec<String>,
         filter: Option<Condition>,
