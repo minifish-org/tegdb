@@ -399,7 +399,7 @@ impl NativeRowFormat {
 mod tests {
     use super::*;
     use crate::parser::DataType;
-    use crate::query::ColumnInfo;
+    
 
     fn create_test_schema() -> TableSchema {
         TableSchema {
