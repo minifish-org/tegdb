@@ -94,8 +94,8 @@ fn main() -> Result<()> {
     println!("   → Final count after rollback: {final_count}");
 
     println!("\n=== Transaction Planner Integration Confirmed ===");
-    println!("✓ Transaction.execute() uses QueryPlanner + PlanExecutor");
-    println!("✓ Transaction.query() uses QueryPlanner + PlanExecutor");
+    println!("✓ Transaction.execute() uses QueryPlanner + PlanQueryProcessor");
+    println!("✓ Transaction.query() uses QueryPlanner + PlanQueryProcessor");
     println!("✓ All transaction operations benefit from query optimization");
     println!("✓ ACID properties maintained with planner pipeline");
 

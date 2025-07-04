@@ -16,8 +16,8 @@ fn main() -> Result<()> {
     println!("Checking what's actually stored in the database...");
 
     // Use the engine directly to see what's stored
-    use tegdb::engine::Engine;
-    let engine = Engine::new(db_path)?;
+    use tegdb::storage::StorageEngine;
+    let engine = StorageEngine::new(db_path)?;
 
     let schema_prefix = "__schema__:".as_bytes().to_vec();
     let schema_end = "__schema__~".as_bytes().to_vec();

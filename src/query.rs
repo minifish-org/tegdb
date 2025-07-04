@@ -1,13 +1,13 @@
-//! Modern executor for TegDB with native row format support
+//! Modern query processor for TegDB with native row format support
 //!
-//! This module provides the core execution engine that works directly with the
+//! This module provides the core query execution engine that works directly with the
 //! native binary row format for optimal performance.
 
-use crate::engine::Transaction;
 use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };
 use crate::sql_utils;
+use crate::storage::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -168,21 +168,21 @@ impl<'a> ResultSet<'a> {
     }
 }
 
-/// SQL executor with native row format support
-pub struct Executor<'a> {
+/// SQL query processor with native row format support
+pub struct QueryProcessor<'a> {
     transaction: Transaction<'a>,
     table_schemas: HashMap<String, TableSchema>,
     storage_format: StorageFormat,
     transaction_active: bool,
 }
 
-impl<'a> Executor<'a> {
-    /// Create a new executor with transaction and schemas
+impl<'a> QueryProcessor<'a> {
+    /// Create a new query processor with transaction and schemas
     pub fn new_with_schemas(
         transaction: Transaction<'a>,
         table_schemas: HashMap<String, TableSchema>,
     ) -> Self {
-        let mut executor = Self {
+        let mut processor = Self {
             transaction,
             table_schemas,
             storage_format: StorageFormat::new(), // Always use native format
@@ -190,9 +190,9 @@ impl<'a> Executor<'a> {
         };
 
         // Load additional schemas from storage and merge
-        let _ = executor.load_schemas_from_storage();
+        let _ = processor.load_schemas_from_storage();
 
-        executor
+        processor
     }
 
     /// Get reference to the transaction
@@ -904,7 +904,7 @@ impl<'a> Executor<'a> {
 
         for (key, value_bytes) in scan_iter {
             let key_str = String::from_utf8_lossy(&key);
-            
+
             // If we have a key to exclude, check if this is the same key
             if let Some(exclude_key_str) = exclude_key {
                 if key_str == exclude_key_str {

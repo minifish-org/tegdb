@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tegdb::Engine;
+use tegdb::StorageEngine;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -176,13 +176,13 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
 }
 
 /// Helper function to create and populate a raw engine with test data
-fn create_and_populate_raw_engine(path: &PathBuf) -> Engine {
+fn create_and_populate_raw_engine(path: &PathBuf) -> StorageEngine {
     // Clean up any existing file
     if path.exists() {
         fs::remove_file(path).expect("Failed to remove existing raw test file");
     }
 
-    let mut engine = Engine::new(path.clone()).expect("Failed to create raw engine");
+    let mut engine = StorageEngine::new(path.clone()).expect("Failed to create raw engine");
 
     // Pre-populate with test data using low-level API
     for i in 0..100 {
@@ -201,13 +201,13 @@ fn create_and_populate_raw_engine(path: &PathBuf) -> Engine {
 }
 
 /// Helper function to create and populate a tx engine with test data using transactions
-fn create_and_populate_tx_engine(path: &PathBuf) -> Engine {
+fn create_and_populate_tx_engine(path: &PathBuf) -> StorageEngine {
     // Clean up any existing file
     if path.exists() {
         fs::remove_file(path).expect("Failed to remove existing tx test file");
     }
 
-    let mut engine = Engine::new(path.clone()).expect("Failed to create tx engine");
+    let mut engine = StorageEngine::new(path.clone()).expect("Failed to create tx engine");
 
     // Pre-populate with test data using high-level transactional API
     // Batch all operations in a single transaction for efficiency
@@ -246,9 +246,9 @@ fn batch_operations_comparison(c: &mut Criterion) {
     }
 
     let mut raw_engine =
-        Engine::new(raw_batch_path.clone()).expect("Failed to create raw batch engine");
+        StorageEngine::new(raw_batch_path.clone()).expect("Failed to create raw batch engine");
     let mut tx_engine =
-        Engine::new(tx_batch_path.clone()).expect("Failed to create tx batch engine");
+        StorageEngine::new(tx_batch_path.clone()).expect("Failed to create tx batch engine");
 
     let batch_sizes = [1, 10, 100];
 
@@ -336,10 +336,10 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
             .expect("Failed to remove existing tx overhead test file");
     }
 
-    let mut raw_engine =
-        Engine::new(raw_overhead_path.clone()).expect("Failed to create raw overhead engine");
+    let mut raw_engine = StorageEngine::new(raw_overhead_path.clone())
+        .expect("Failed to create raw overhead engine");
     let mut tx_engine =
-        Engine::new(tx_overhead_path.clone()).expect("Failed to create tx overhead engine");
+        StorageEngine::new(tx_overhead_path.clone()).expect("Failed to create tx overhead engine");
 
     // Pre-populate both engines with test data
     // Note: Using appropriate APIs - low-level for raw engine, high-level for tx engine
@@ -421,9 +421,9 @@ fn error_and_edge_case_comparison(c: &mut Criterion) {
     }
 
     let mut raw_engine =
-        Engine::new(raw_error_path.clone()).expect("Failed to create raw error engine");
+        StorageEngine::new(raw_error_path.clone()).expect("Failed to create raw error engine");
     let mut tx_engine =
-        Engine::new(tx_error_path.clone()).expect("Failed to create tx error engine");
+        StorageEngine::new(tx_error_path.clone()).expect("Failed to create tx error engine");
 
     // ===== Operations on non-existent keys =====
     let nonexistent_key = b"nonexistent_key_12345";

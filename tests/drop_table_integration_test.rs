@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use tegdb::parser::{parse_sql, Statement};
 use tegdb::{
-    executor::{Executor, ResultSet},
-    Engine,
+    query::{QueryProcessor, ResultSet},
+    StorageEngine,
 };
 use tempfile::tempdir;
 
@@ -10,10 +10,10 @@ use tempfile::tempdir;
 fn test_drop_table_integration() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_drop_table.db");
-    let mut engine = Engine::new(db_path).unwrap();
+    let mut engine = StorageEngine::new(db_path).unwrap();
 
     let transaction = engine.begin_transaction();
-    let mut executor = Executor::new_with_schemas(transaction, HashMap::new());
+    let mut executor = QueryProcessor::new_with_schemas(transaction, HashMap::new());
 
     // Start a transaction
     let begin_result = executor.begin_transaction().unwrap();

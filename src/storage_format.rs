@@ -1,5 +1,5 @@
-use crate::executor::TableSchema;
 use crate::parser::SqlValue;
+use crate::query::TableSchema;
 use crate::Result;
 use std::collections::HashMap;
 

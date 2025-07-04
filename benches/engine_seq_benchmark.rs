@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tegdb::Engine;
+use tegdb::StorageEngine;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -16,7 +16,7 @@ fn engine_benchmark(c: &mut Criterion, value_size: usize) {
     if path.exists() {
         fs::remove_file(&path).expect("Failed to remove existing test file");
     }
-    let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
+    let mut engine = StorageEngine::new(path.clone()).expect("Failed to create engine");
     let value = vec![0; value_size];
 
     // Insert some test data before running get benchmarks

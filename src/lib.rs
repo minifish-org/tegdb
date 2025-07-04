@@ -46,11 +46,12 @@
 //!
 //! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
 //! for direct engine manipulation.
+pub mod catalog;
 pub mod database;
-pub mod engine;
 pub mod error;
 pub mod native_row_format;
 pub mod sql_utils;
+pub mod storage;
 pub mod storage_format;
 
 // Make these modules public when dev feature is enabled or when running tests
@@ -60,9 +61,9 @@ pub mod parser;
 mod parser;
 
 #[cfg(any(feature = "dev", test))]
-pub mod executor;
+pub mod query;
 #[cfg(not(any(feature = "dev", test)))]
-mod executor;
+mod query;
 
 // Planner modules are now always available since they're the main execution path
 pub mod planner;
@@ -73,9 +74,7 @@ pub use error::{Error, Result};
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
-pub use engine::{Engine, EngineConfig, Transaction};
-#[cfg(feature = "dev")]
-pub use executor::{ColumnInfo, Executor, ResultSet, TableSchema};
+pub use catalog::Catalog;
 #[cfg(feature = "dev")]
 pub use parser::{
     parse_sql, Assignment, ColumnConstraint, ColumnDefinition, ComparisonOperator, Condition,
@@ -87,6 +86,10 @@ pub use planner::{
     ColumnStatistics, Cost, ExecutionPlan, PlannerConfig, QueryPlanner, TableStatistics,
 };
 #[cfg(feature = "dev")]
+pub use query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+#[cfg(feature = "dev")]
+pub use storage::{EngineConfig, StorageEngine, Transaction};
+#[cfg(feature = "dev")]
 pub use storage_format::StorageFormat;
 
 // Export SqlValue unconditionally as it's needed for working with query results
@@ -95,8 +98,9 @@ pub use parser::SqlValue;
 // For backward compatibility, also expose via modules when dev feature is enabled
 #[cfg(feature = "dev")]
 pub mod low_level {
-    pub use crate::engine::{Engine, EngineConfig, Transaction as EngineTransaction};
-    pub use crate::executor::{ColumnInfo, Executor, ResultSet, TableSchema};
+    pub use crate::catalog::Catalog;
     pub use crate::parser::{parse_sql, SqlValue, Statement};
     pub use crate::planner::{ExecutionPlan, PlannerConfig, QueryPlanner};
+    pub use crate::query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+    pub use crate::storage::{EngineConfig, StorageEngine, Transaction as EngineTransaction};
 }

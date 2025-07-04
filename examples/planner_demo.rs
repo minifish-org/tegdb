@@ -1,7 +1,7 @@
 //! Demonstration of the query planner architecture concept
 //!
 //! This example shows the conceptual flow of how a query planner would work:
-//! SQL Text -> Parser -> Planner -> Execution Plan -> Plan Executor -> Results
+//! SQL Text -> Parser -> Planner -> Execution Plan -> Plan QueryProcessor -> Results
 //!
 //! Run with: cargo run --example planner_demo
 
@@ -229,7 +229,7 @@ fn show_planner_architecture() {
     println!("5. Query Planner Architecture Overview:");
     println!();
     println!("   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐");
-    println!("   │   SQL Text  │ -> │   Parser    │ -> │   Planner   │ -> │  Executor   │");
+    println!("   │   SQL Text  │ -> │   Parser    │ -> │   Planner   │ -> │  QueryProcessor   │");
     println!("   └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘");
     println!("          │                   │                   │                   │");
     println!("          │                   │                   │                   │");
@@ -238,7 +238,7 @@ fn show_planner_architecture() {
     println!("   Components:");
     println!("   • Parser: Converts SQL text into AST (Abstract Syntax Tree)");
     println!("   • Planner: Analyzes AST and generates optimized execution plan");
-    println!("   • Executor: Executes the plan against the storage engine");
+    println!("   • QueryProcessor: Executes the plan against the storage engine");
     println!();
     println!("   Plan Types:");
     println!("   • PrimaryKeyLookup: Direct key access for equality on PK");

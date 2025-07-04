@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tegdb::{Engine, EngineConfig, Result};
+use tegdb::{EngineConfig, Result, StorageEngine};
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -17,7 +17,7 @@ fn test_engine() -> Result<()> {
         fs::remove_file(&path)?;
     }
 
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     // Test set and get
     let key = b"key";
@@ -72,7 +72,7 @@ fn test_persistence() -> Result<()> {
 
     // Create engine and set values
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
 
         engine.set(b"key1", b"value1".to_vec())?;
         engine.set(b"key2", b"value2".to_vec())?;
@@ -84,7 +84,7 @@ fn test_persistence() -> Result<()> {
 
     // Reopen and verify values
     {
-        let engine = Engine::new(path.clone())?;
+        let engine = StorageEngine::new(path.clone())?;
 
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
@@ -109,7 +109,7 @@ fn test_persistence() -> Result<()> {
 
     // Reopen, update some values, and verify again
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
 
         engine.set(b"key2", b"updated_value".to_vec())?;
         engine.set(b"key4", b"value4".to_vec())?;
@@ -120,7 +120,7 @@ fn test_persistence() -> Result<()> {
 
     // Reopen and verify updated values
     {
-        let engine = Engine::new(path.clone())?;
+        let engine = StorageEngine::new(path.clone())?;
 
         let value1 = engine.get(b"key1").unwrap();
         let value2 = engine.get(b"key2").unwrap();
@@ -144,7 +144,7 @@ fn test_persistence() -> Result<()> {
 
     // Reopen, delete a key, and verify again
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
 
         engine.del(b"key3")?;
 
@@ -154,7 +154,7 @@ fn test_persistence() -> Result<()> {
 
     // Reopen and verify deletion
     {
-        let engine = Engine::new(path.clone())?;
+        let engine = StorageEngine::new(path.clone())?;
 
         let value3 = engine.get(b"key3");
 
@@ -177,7 +177,7 @@ fn test_basic_operations() -> Result<()> {
         fs::remove_file(&path)?;
     }
 
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     engine.set(b"key", b"value".to_vec())?;
     let value = engine.get(b"key").unwrap();
@@ -196,10 +196,10 @@ fn test_concurrent_access() -> Result<()> {
     }
 
     // First engine instance
-    let engine1 = Engine::new(path.clone())?;
+    let engine1 = StorageEngine::new(path.clone())?;
 
     // This should fail - file should be locked
-    let engine2_result = Engine::new(path.clone());
+    let engine2_result = StorageEngine::new(path.clone());
     assert!(
         engine2_result.is_err(),
         "Second engine should not be able to open locked database"
@@ -209,7 +209,7 @@ fn test_concurrent_access() -> Result<()> {
     drop(engine1);
 
     // After dropping the first instance, we should be able to open it again
-    let _engine3 = Engine::new(path.clone())?;
+    let _engine3 = StorageEngine::new(path.clone())?;
 
     fs::remove_file(path)?;
 
@@ -223,7 +223,7 @@ fn test_empty_string_values() -> Result<()> {
         fs::remove_file(&path)?;
     }
 
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     // Empty value should be treated as delete
     engine.set(b"key1", vec![])?;
@@ -253,7 +253,7 @@ fn test_len_and_empty() -> Result<()> {
         fs::remove_file(&path)?;
     }
 
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     // Should start empty
     assert_eq!(engine.len(), 0);
@@ -294,7 +294,7 @@ fn test_engine_basic_operations_moved() -> Result<()> {
         fs::remove_file(&path)?;
     }
 
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     // Set and get
     engine.set(b"key1", b"value1".to_vec())?;
@@ -319,7 +319,7 @@ fn test_overwrite_key() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     engine.set(b"key1", b"value1".to_vec())?;
     assert_eq!(
@@ -344,7 +344,7 @@ fn test_delete_non_existent_key() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     // Delete a key that doesn't exist
     engine.del(b"non_existent_key")?;
@@ -360,7 +360,7 @@ fn test_scan_empty_db() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let engine = Engine::new(path.clone())?;
+    let engine = StorageEngine::new(path.clone())?;
 
     let scan_result = engine
         .scan(b"a".to_vec()..b"z".to_vec())?
@@ -377,7 +377,7 @@ fn test_scan_no_match() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     engine.set(b"key1", b"value1".to_vec())?;
     engine.set(b"key2", b"value2".to_vec())?;
@@ -398,7 +398,7 @@ fn test_special_characters_keys_values() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     let keys = [
         b"key with spaces".to_vec(),
@@ -436,7 +436,7 @@ fn test_scan_reverse_range() {
     if path.exists() {
         fs::remove_file(&path).unwrap();
     }
-    let mut engine = Engine::new(path.clone()).unwrap();
+    let mut engine = StorageEngine::new(path.clone()).unwrap();
 
     engine.set(b"a", b"val_a".to_vec()).unwrap();
     engine.set(b"b", b"val_b".to_vec()).unwrap();
@@ -459,7 +459,7 @@ fn test_scan_boundary_conditions() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
 
     engine.set(b"key1", b"value1".to_vec())?;
     engine.set(b"key2", b"value2".to_vec())?;
@@ -532,7 +532,7 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
 
     // Session 1: Write some data
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
         engine.set(b"iso_key1", b"val1_session1".to_vec())?;
         engine.set(b"iso_key2", b"val2_session1".to_vec())?;
         drop(engine);
@@ -540,7 +540,7 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
 
     // Session 2: Read data from session 1, modify some, add new
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
         assert_eq!(
             engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()),
             Some(b"val1_session1".to_vec())
@@ -557,7 +557,7 @@ fn test_isolation_sequential_sessions_data_visibility() -> Result<()> {
 
     // Session 3: Verify changes from session 2 and original from session 1
     {
-        let engine = Engine::new(path.clone())?;
+        let engine = StorageEngine::new(path.clone())?;
         assert_eq!(
             engine.get(b"iso_key1").map(|a| a.as_ref().to_vec()),
             Some(b"val1_session1".to_vec())
@@ -589,7 +589,7 @@ fn test_engine_value_size_limit() {
         max_value_size: 1,
         ..Default::default()
     };
-    let mut engine = Engine::with_config(path.clone(), config).unwrap();
+    let mut engine = StorageEngine::with_config(path.clone(), config).unwrap();
     // setting oversized value should error
     let err = engine.set(b"k", vec![0, 1]);
     assert!(

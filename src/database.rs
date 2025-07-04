@@ -4,11 +4,11 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::planner::QueryPlanner;
-use crate::sql_utils;
 use crate::{
-    engine::Engine,
-    executor::{Executor, TableSchema},
+    catalog::Catalog,
     parser::{parse_sql, SqlValue},
+    query::{QueryProcessor, TableSchema},
+    storage::StorageEngine,
     Result,
 };
 use std::{
@@ -19,67 +19,52 @@ use std::{
 
 /// Database connection, similar to sqlite::Connection
 ///
-/// This struct maintains a schema cache at the database level to avoid
-/// repeated schema loading from disk for every executor creation.
+/// This struct maintains a schema catalog at the database level to avoid
+/// repeated schema loading from disk for every query processor creation.
 /// Schemas are loaded once when the database is opened and kept in sync
 /// with DDL operations (CREATE TABLE, DROP TABLE).
 pub struct Database {
-    engine: Engine,
-    /// Shared table schemas cache, loaded once and shared across executors
-    /// Uses Arc<RwLock<>> for thread-safe access with multiple readers
-    table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
+    storage: StorageEngine,
+    /// Schema catalog for managing table metadata
+    catalog: Arc<RwLock<Catalog>>,
 }
 
 impl Database {
     /// Create or open database
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let engine = Engine::new(path.as_ref().to_path_buf())?;
+        let storage = StorageEngine::new(path.as_ref().to_path_buf())?;
 
-        // Load all table schemas at database initialization
-        let mut table_schemas = HashMap::new();
-
-        // Load schemas directly from engine (no transaction needed for reads)
-        Self::load_schemas_from_engine(&engine, &mut table_schemas)?;
+        // Load all table schemas into the catalog at database initialization
+        let catalog = Catalog::load_from_storage(&storage)?;
 
         Ok(Self {
-            engine,
-            table_schemas: Arc::new(RwLock::new(table_schemas)),
+            storage,
+            catalog: Arc::new(RwLock::new(catalog)),
         })
     }
 
     /// Helper function to create TableSchema from CreateTableStatement
     /// Centralizes schema creation logic to avoid duplication
     fn create_table_schema(create_table: &crate::parser::CreateTableStatement) -> TableSchema {
-        TableSchema {
-            name: create_table.table.clone(),
-            columns: create_table
-                .columns
-                .iter()
-                .map(|col| crate::executor::ColumnInfo {
-                    name: col.name.clone(),
-                    data_type: col.data_type.clone(),
-                    constraints: col.constraints.clone(),
-                })
-                .collect(),
-        }
+        Catalog::create_table_schema(create_table)
     }
 
-    /// Helper function to update schema cache for DDL operations
-    /// Centralizes schema cache update logic to avoid duplication
-    fn update_schema_cache_for_ddl(
-        table_schemas: &Arc<RwLock<HashMap<String, TableSchema>>>,
+    /// Helper function to update schema catalog for DDL operations
+    /// Centralizes schema catalog update logic to avoid duplication
+    fn update_schema_catalog_for_ddl(
+        catalog: &Arc<RwLock<Catalog>>,
         statement: &crate::parser::Statement,
     ) {
         match statement {
             crate::parser::Statement::CreateTable(create_table) => {
                 let schema = Self::create_table_schema(create_table);
-                table_schemas
-                    .write()
-                    .unwrap()
-                    .insert(create_table.table.clone(), schema);
+                catalog.write().unwrap().add_table_schema(schema);
             }
             crate::parser::Statement::DropTable(drop_table) => {
-                table_schemas.write().unwrap().remove(&drop_table.table);
+                catalog
+                    .write()
+                    .unwrap()
+                    .remove_table_schema(&drop_table.table);
             }
             _ => {} // No schema changes for other statements
         }
@@ -87,28 +72,28 @@ impl Database {
 
     /// Centralized query execution helper to eliminate duplication
     /// Executes SELECT statements and returns QueryResult
-    fn execute_query_with_executor(
-        mut executor: Executor<'_>,
+    fn execute_query_with_processor(
+        mut processor: QueryProcessor<'_>,
         sql: &str,
         schemas: HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
-        Self::execute_query_core(&mut executor, sql, schemas)
+        Self::execute_query_core(&mut processor, sql, schemas)
     }
 
     /// Centralized query execution helper for mutable reference
     /// Executes SELECT statements and returns QueryResult
-    fn execute_query_with_executor_ref(
-        executor: &mut Executor<'_>,
+    fn execute_query_with_processor_ref(
+        processor: &mut QueryProcessor<'_>,
         sql: &str,
         schemas: HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
-        Self::execute_query_core(executor, sql, schemas)
+        Self::execute_query_core(processor, sql, schemas)
     }
 
     /// Core query execution logic - the actual implementation
     /// Executes SELECT statements and returns QueryResult
     fn execute_query_core(
-        executor: &mut Executor<'_>,
+        processor: &mut QueryProcessor<'_>,
         sql: &str,
         schemas: HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
@@ -123,9 +108,9 @@ impl Database {
                 let plan = planner.plan(statement)?;
 
                 // Execute and immediately collect results
-                let result = executor.execute_plan(plan)?;
+                let result = processor.execute_plan(plan)?;
                 match result {
-                    crate::executor::ResultSet::Select { columns, rows } => {
+                    crate::query::ResultSet::Select { columns, rows } => {
                         // Collect all rows from the iterator
                         let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
                         let final_rows = collected_rows?;
@@ -148,62 +133,36 @@ impl Database {
         }
     }
 
-    /// Load schemas from engine into the provided HashMap
-    fn load_schemas_from_engine(
-        engine: &Engine,
-        schemas: &mut HashMap<String, TableSchema>,
-    ) -> Result<()> {
-        // Scan for all schema keys
-        let schema_prefix = "__schema__:".as_bytes().to_vec();
-        let schema_end = "__schema__~".as_bytes().to_vec(); // '~' comes after ':'
-
-        let schema_entries = engine.scan(schema_prefix..schema_end)?;
-
-        for (key, value) in schema_entries {
-            // Extract table name from key
-            let key_str = String::from_utf8_lossy(&key);
-            if let Some(table_name) = key_str.strip_prefix("__schema__:") {
-                // Deserialize schema using centralized utility
-                if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value) {
-                    schema.name = table_name.to_string(); // Set the actual table name
-                    schemas.insert(table_name.to_string(), schema);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Clone schemas for the executor
-        let schemas = self.table_schemas.read().unwrap().clone();
-
         // Use a single transaction for this operation
-        let transaction = self.engine.begin_transaction();
+        let transaction = self.storage.begin_transaction();
 
         // Use the new planner pipeline with executor
-        let planner = QueryPlanner::new(schemas.clone());
-        let mut executor = Executor::new_with_schemas(transaction, schemas.clone());
+        let planner = QueryPlanner::new(self.catalog.read().unwrap().get_all_schemas().clone());
+        let mut processor = QueryProcessor::new_with_schemas(
+            transaction,
+            self.catalog.read().unwrap().get_all_schemas().clone(),
+        );
 
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
-        let result = executor.execute_plan(plan)?;
+        let result = processor.execute_plan(plan)?;
 
         // Process the result immediately to avoid lifetime conflicts
         let final_result = match result {
-            crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Update { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::executor::ResultSet::CreateTable => 0,
-            crate::executor::ResultSet::DropTable => 0,
-            crate::executor::ResultSet::Begin => 0,
-            crate::executor::ResultSet::Commit => 0,
-            crate::executor::ResultSet::Rollback => 0,
-            crate::executor::ResultSet::Select { .. } => {
+            crate::query::ResultSet::Insert { rows_affected } => rows_affected,
+            crate::query::ResultSet::Update { rows_affected } => rows_affected,
+            crate::query::ResultSet::Delete { rows_affected } => rows_affected,
+            crate::query::ResultSet::CreateTable => 0,
+            crate::query::ResultSet::DropTable => 0,
+            crate::query::ResultSet::Begin => 0,
+            crate::query::ResultSet::Commit => 0,
+            crate::query::ResultSet::Rollback => 0,
+            crate::query::ResultSet::Select { .. } => {
                 return Err(crate::Error::Other(
                     "execute() should not be used for SELECT statements. Use query() instead."
                         .to_string(),
@@ -214,10 +173,10 @@ impl Database {
         drop(result);
 
         // Update our shared schemas cache for DDL operations using centralized helper
-        Self::update_schema_cache_for_ddl(&self.table_schemas, &statement);
+        Self::update_schema_catalog_for_ddl(&self.catalog, &statement);
 
         // Actually commit the engine transaction
-        executor.transaction_mut().commit()?;
+        processor.transaction_mut().commit()?;
 
         Ok(final_result)
     }
@@ -226,50 +185,49 @@ impl Database {
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         // Clone schemas for the executor
-        let schemas = self.table_schemas.read().unwrap().clone();
+        let schemas = self.catalog.read().unwrap().get_all_schemas().clone();
 
         // Use a single transaction for this operation
-        let transaction = self.engine.begin_transaction();
+        let transaction = self.storage.begin_transaction();
 
         // Create executor with schemas
-        let executor = Executor::new_with_schemas(transaction, schemas.clone());
+        let processor = QueryProcessor::new_with_schemas(
+            transaction,
+            self.catalog.read().unwrap().get_all_schemas().clone(),
+        );
 
         // Use centralized query execution helper
-        let result = Self::execute_query_with_executor(executor, sql, schemas)?;
+        let result = Self::execute_query_with_processor(processor, sql, schemas)?;
 
         Ok(result)
     }
 
     /// Begin a new database transaction
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
-        let schemas = self.table_schemas.read().unwrap().clone();
-        let transaction = self.engine.begin_transaction();
-        let executor = Executor::new_with_schemas(transaction, schemas);
+        let schemas = self.catalog.read().unwrap().get_all_schemas().clone();
+        let transaction = self.storage.begin_transaction();
+        let processor = QueryProcessor::new_with_schemas(transaction, schemas);
 
         Ok(DatabaseTransaction {
-            executor,
-            table_schemas: Arc::clone(&self.table_schemas),
+            processor,
+            catalog: Arc::clone(&self.catalog),
         })
     }
 
-    /// Reload table schemas from disk
+    /// Reload table schemas from storage
     /// This can be useful if the database was modified externally
     pub fn refresh_schema_cache(&mut self) -> Result<()> {
-        let mut schemas = HashMap::new();
-
-        // Reload schemas directly from engine
-        Self::load_schemas_from_engine(&self.engine, &mut schemas)?;
-
-        // Update the shared cache
-        *self.table_schemas.write().unwrap() = schemas;
-
+        self.catalog
+            .write()
+            .unwrap()
+            .reload_from_storage(&self.storage)?;
         Ok(())
     }
 
     /// Get a copy of all cached table schemas
     /// Useful for debugging or introspection
     pub fn get_table_schemas(&self) -> HashMap<String, TableSchema> {
-        self.table_schemas.read().unwrap().clone()
+        self.catalog.read().unwrap().get_all_schemas().clone()
     }
 }
 
@@ -322,8 +280,8 @@ impl IntoIterator for QueryResult {
 
 /// Transaction handle for batch operations
 pub struct DatabaseTransaction<'a> {
-    executor: Executor<'a>,
-    table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
+    processor: QueryProcessor<'a>,
+    catalog: Arc<RwLock<Catalog>>,
 }
 
 impl DatabaseTransaction<'_> {
@@ -332,22 +290,22 @@ impl DatabaseTransaction<'_> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Get schemas from shared cache
-        let schemas = self.table_schemas.read().unwrap().clone();
+        // Get schemas from shared catalog
+        let schemas = self.catalog.read().unwrap().get_all_schemas().clone();
 
         // Use the planner pipeline
         let planner = QueryPlanner::new(schemas);
         let plan = planner.plan(statement.clone())?;
-        let result = self.executor.execute_plan(plan)?;
+        let result = self.processor.execute_plan(plan)?;
 
         // Update schema cache for DDL operations using centralized helper
-        Database::update_schema_cache_for_ddl(&self.table_schemas, &statement);
+        Database::update_schema_catalog_for_ddl(&self.catalog, &statement);
 
         match result {
-            crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::CreateTable => Ok(0),
+            crate::query::ResultSet::Insert { rows_affected } => Ok(rows_affected),
+            crate::query::ResultSet::Update { rows_affected } => Ok(rows_affected),
+            crate::query::ResultSet::Delete { rows_affected } => Ok(rows_affected),
+            crate::query::ResultSet::CreateTable => Ok(0),
             _ => Ok(0),
         }
     }
@@ -356,21 +314,21 @@ impl DatabaseTransaction<'_> {
     /// Following the parse -> plan -> execute_plan pipeline
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         // Get schemas from shared cache
-        let schemas = self.table_schemas.read().unwrap().clone();
+        let schemas = self.catalog.read().unwrap().get_all_schemas().clone();
 
         // Use centralized query execution helper
         // Note: We need to be careful about borrowing here since we can't move self.executor
         // Instead, we'll use a more direct approach that's still centralized
-        Database::execute_query_with_executor_ref(&mut self.executor, sql, schemas)
+        Database::execute_query_with_processor_ref(&mut self.processor, sql, schemas)
     }
 
     /// Commit the transaction
     pub fn commit(mut self) -> Result<()> {
-        self.executor.transaction_mut().commit()
+        self.processor.transaction_mut().commit()
     }
 
     /// Rollback the transaction
     pub fn rollback(mut self) -> Result<()> {
-        self.executor.transaction_mut().rollback()
+        self.processor.transaction_mut().rollback()
     }
 }
