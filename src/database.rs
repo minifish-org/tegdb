@@ -7,7 +7,7 @@ use crate::planner::QueryPlanner;
 use crate::sql_utils;
 use crate::{
     storage::StorageEngine,
-    executor::{Executor, TableSchema},
+    query::{QueryProcessor, TableSchema, ColumnInfo},
     parser::{parse_sql, SqlValue},
     Result,
 };
@@ -55,7 +55,7 @@ impl Database {
             columns: create_table
                 .columns
                 .iter()
-                .map(|col| crate::executor::ColumnInfo {
+                .map(|col| ColumnInfo {
                     name: col.name.clone(),
                     data_type: col.data_type.clone(),
                     constraints: col.constraints.clone(),
@@ -87,28 +87,28 @@ impl Database {
 
     /// Centralized query execution helper to eliminate duplication
     /// Executes SELECT statements and returns QueryResult
-    fn execute_query_with_executor(
-        mut executor: Executor<'_>,
+    fn execute_query_with_processor(
+        mut processor: QueryProcessor<'_>,
         sql: &str,
         schemas: HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
-        Self::execute_query_core(&mut executor, sql, schemas)
+        Self::execute_query_core(&mut processor, sql, schemas)
     }
 
     /// Centralized query execution helper for mutable reference
     /// Executes SELECT statements and returns QueryResult
-    fn execute_query_with_executor_ref(
-        executor: &mut Executor<'_>,
+    fn execute_query_with_processor_ref(
+        processor: &mut QueryProcessor<'_>,
         sql: &str,
         schemas: HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
-        Self::execute_query_core(executor, sql, schemas)
+        Self::execute_query_core(processor, sql, schemas)
     }
 
     /// Core query execution logic - the actual implementation
     /// Executes SELECT statements and returns QueryResult
     fn execute_query_core(
-        executor: &mut Executor<'_>,
+        processor: &mut QueryProcessor<'_>,
         sql: &str,
         schemas: HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
@@ -123,9 +123,9 @@ impl Database {
                 let plan = planner.plan(statement)?;
 
                 // Execute and immediately collect results
-                let result = executor.execute_plan(plan)?;
+                let result = processor.execute_plan(plan)?;
                 match result {
-                    crate::executor::ResultSet::Select { columns, rows } => {
+                    crate::query::ResultSet::Select { columns, rows } => {
                         // Collect all rows from the iterator
                         let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
                         let final_rows = collected_rows?;
@@ -187,23 +187,23 @@ impl Database {
 
         // Use the new planner pipeline with executor
         let planner = QueryPlanner::new(schemas.clone());
-        let mut executor = Executor::new_with_schemas(transaction, schemas.clone());
+        let mut processor = QueryProcessor::new_with_schemas(transaction, schemas.clone());
 
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
-        let result = executor.execute_plan(plan)?;
+        let result = processor.execute_plan(plan)?;
 
         // Process the result immediately to avoid lifetime conflicts
         let final_result = match result {
-            crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Update { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::executor::ResultSet::CreateTable => 0,
-            crate::executor::ResultSet::DropTable => 0,
-            crate::executor::ResultSet::Begin => 0,
-            crate::executor::ResultSet::Commit => 0,
-            crate::executor::ResultSet::Rollback => 0,
-            crate::executor::ResultSet::Select { .. } => {
+            crate::query::ResultSet::Insert { rows_affected } => rows_affected,
+            crate::query::ResultSet::Update { rows_affected } => rows_affected,
+            crate::query::ResultSet::Delete { rows_affected } => rows_affected,
+            crate::query::ResultSet::CreateTable => 0,
+            crate::query::ResultSet::DropTable => 0,
+            crate::query::ResultSet::Begin => 0,
+            crate::query::ResultSet::Commit => 0,
+            crate::query::ResultSet::Rollback => 0,
+            crate::query::ResultSet::Select { .. } => {
                 return Err(crate::Error::Other(
                     "execute() should not be used for SELECT statements. Use query() instead."
                         .to_string(),
@@ -217,7 +217,7 @@ impl Database {
         Self::update_schema_cache_for_ddl(&self.table_schemas, &statement);
 
         // Actually commit the engine transaction
-        executor.transaction_mut().commit()?;
+        processor.transaction_mut().commit()?;
 
         Ok(final_result)
     }
@@ -232,10 +232,10 @@ impl Database {
         let transaction = self.engine.begin_transaction();
 
         // Create executor with schemas
-        let executor = Executor::new_with_schemas(transaction, schemas.clone());
+        let processor = QueryProcessor::new_with_schemas(transaction, schemas.clone());
 
         // Use centralized query execution helper
-        let result = Self::execute_query_with_executor(executor, sql, schemas)?;
+        let result = Self::execute_query_with_processor(processor, sql, schemas)?;
 
         Ok(result)
     }
@@ -244,10 +244,10 @@ impl Database {
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
         let schemas = self.table_schemas.read().unwrap().clone();
         let transaction = self.engine.begin_transaction();
-        let executor = Executor::new_with_schemas(transaction, schemas);
+        let processor = QueryProcessor::new_with_schemas(transaction, schemas);
 
         Ok(DatabaseTransaction {
-            executor,
+            processor,
             table_schemas: Arc::clone(&self.table_schemas),
         })
     }
@@ -322,7 +322,7 @@ impl IntoIterator for QueryResult {
 
 /// Transaction handle for batch operations
 pub struct DatabaseTransaction<'a> {
-    executor: Executor<'a>,
+    processor: QueryProcessor<'a>,
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
 }
 
@@ -338,16 +338,16 @@ impl DatabaseTransaction<'_> {
         // Use the planner pipeline
         let planner = QueryPlanner::new(schemas);
         let plan = planner.plan(statement.clone())?;
-        let result = self.executor.execute_plan(plan)?;
+        let result = self.processor.execute_plan(plan)?;
 
         // Update schema cache for DDL operations using centralized helper
         Database::update_schema_cache_for_ddl(&self.table_schemas, &statement);
 
         match result {
-            crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::CreateTable => Ok(0),
+            crate::query::ResultSet::Insert { rows_affected } => Ok(rows_affected),
+            crate::query::ResultSet::Update { rows_affected } => Ok(rows_affected),
+            crate::query::ResultSet::Delete { rows_affected } => Ok(rows_affected),
+            crate::query::ResultSet::CreateTable => Ok(0),
             _ => Ok(0),
         }
     }
@@ -361,16 +361,16 @@ impl DatabaseTransaction<'_> {
         // Use centralized query execution helper
         // Note: We need to be careful about borrowing here since we can't move self.executor
         // Instead, we'll use a more direct approach that's still centralized
-        Database::execute_query_with_executor_ref(&mut self.executor, sql, schemas)
+        Database::execute_query_with_processor_ref(&mut self.processor, sql, schemas)
     }
 
     /// Commit the transaction
     pub fn commit(mut self) -> Result<()> {
-        self.executor.transaction_mut().commit()
+        self.processor.transaction_mut().commit()
     }
 
     /// Rollback the transaction
     pub fn rollback(mut self) -> Result<()> {
-        self.executor.transaction_mut().rollback()
+        self.processor.transaction_mut().rollback()
     }
 }

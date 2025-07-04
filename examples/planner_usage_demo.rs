@@ -98,7 +98,7 @@ fn main() -> Result<()> {
         println!("✓ Optimized execution plans selected automatically");
         println!("✓ Performance benefits from plan-based optimization");
 
-        println!("\n[PLANNER ENABLED] - Using QueryPlanner + PlanExecutor pipeline");
+        println!("\n[PLANNER ENABLED] - Using QueryPlanner + PlanQueryProcessor pipeline");
     }
 
     // Clean up

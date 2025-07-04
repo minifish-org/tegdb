@@ -4,7 +4,7 @@
 //! optimized execution plans. The planner sits between the parser and executor,
 //! similar to PostgreSQL and SQLite architectures.
 
-use crate::executor::{ColumnInfo, TableSchema};
+use crate::query::{ColumnInfo, TableSchema};
 #[cfg(test)]
 use crate::parser::WhereClause;
 use crate::parser::{

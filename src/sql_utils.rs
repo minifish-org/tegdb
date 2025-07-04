@@ -3,7 +3,7 @@
 //! This module contains common functions used across the codebase for SQL value
 //! comparison, condition evaluation, and other SQL-related operations.
 
-use crate::executor::{ColumnInfo, TableSchema};
+use crate::query::{ColumnInfo, TableSchema};
 use crate::parser::{ColumnConstraint, ComparisonOperator, Condition, DataType, SqlValue};
 use std::collections::HashMap;
 
