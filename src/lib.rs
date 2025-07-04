@@ -74,7 +74,6 @@ pub use error::{Error, Result};
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
-#[cfg(feature = "dev")]
 pub use catalog::Catalog;
 #[cfg(feature = "dev")]
 pub use parser::{

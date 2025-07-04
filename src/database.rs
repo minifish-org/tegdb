@@ -133,21 +133,10 @@ impl Database {
         }
     }
 
-    /// Load schemas from storage engine into the provided HashMap
-    fn load_schemas_from_storage(
-        engine: &StorageEngine,
-        schemas: &mut HashMap<String, TableSchema>,
-    ) -> Result<()> {
-        Catalog::load_schemas_from_storage(engine, schemas)
-    }
-
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
-
-        // Clone schemas for the executor
-        let schemas = self.catalog.read().unwrap().get_all_schemas().clone();
 
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
