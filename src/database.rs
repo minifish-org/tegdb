@@ -6,7 +6,7 @@
 use crate::planner::QueryPlanner;
 use crate::sql_utils;
 use crate::{
-    engine::Engine,
+    storage::StorageEngine,
     executor::{Executor, TableSchema},
     parser::{parse_sql, SqlValue},
     Result,
@@ -24,7 +24,7 @@ use std::{
 /// Schemas are loaded once when the database is opened and kept in sync
 /// with DDL operations (CREATE TABLE, DROP TABLE).
 pub struct Database {
-    engine: Engine,
+    engine: StorageEngine,
     /// Shared table schemas cache, loaded once and shared across executors
     /// Uses Arc<RwLock<>> for thread-safe access with multiple readers
     table_schemas: Arc<RwLock<HashMap<String, TableSchema>>>,
@@ -33,7 +33,7 @@ pub struct Database {
 impl Database {
     /// Create or open database
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let engine = Engine::new(path.as_ref().to_path_buf())?;
+        let engine = StorageEngine::new(path.as_ref().to_path_buf())?;
 
         // Load all table schemas at database initialization
         let mut table_schemas = HashMap::new();
@@ -150,7 +150,7 @@ impl Database {
 
     /// Load schemas from engine into the provided HashMap
     fn load_schemas_from_engine(
-        engine: &Engine,
+        engine: &StorageEngine,
         schemas: &mut HashMap<String, TableSchema>,
     ) -> Result<()> {
         // Scan for all schema keys

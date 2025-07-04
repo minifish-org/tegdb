@@ -60,7 +60,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     });
 
     // Benchmark transaction creation
-    let mut engine = tegdb::Engine::new(temp_db_path("tx_test")).unwrap();
+    let mut engine = tegdb::StorageEngine::new(temp_db_path("tx_test")).unwrap();
     c.bench_function("transaction creation", |b| {
         b.iter(|| {
             let tx = engine.begin_transaction();

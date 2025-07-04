@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod commit_marker_tests {
     use std::path::PathBuf;
-    use tegdb::engine::Engine;
+    use tegdb::storage::StorageEngine;
 
     #[test]
     fn test_commit_marker_and_crash_recovery() {
@@ -14,7 +14,7 @@ mod commit_marker_tests {
 
         // Create a new engine and perform transactions
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
 
             // Begin a transaction and commit it
             {
@@ -34,7 +34,7 @@ mod commit_marker_tests {
 
         // Reopen the database to simulate crash recovery
         {
-            let engine = Engine::new(test_db_path.clone()).unwrap();
+            let engine = StorageEngine::new(test_db_path.clone()).unwrap();
 
             // Check that committed data is still there
             assert_eq!(engine.get(b"key1").as_deref(), Some(b"value1" as &[u8]));
@@ -61,7 +61,7 @@ mod commit_marker_tests {
         }
 
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
 
             // Transaction 1: committed
             {

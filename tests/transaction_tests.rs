@@ -1,5 +1,5 @@
 use std::{env, fs, path::PathBuf};
-use tegdb::{Engine, EngineConfig, Result};
+use tegdb::{StorageEngine, EngineConfig, Result};
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -14,7 +14,7 @@ fn test_transaction_commit() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     // initial values
     engine.set(b"a", b"1".to_vec())?;
     engine.set(b"b", b"2".to_vec())?;
@@ -49,7 +49,7 @@ fn test_transaction_rollback() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"x", b"alpha".to_vec())?;
 
     // begin transaction and perform operations without commit
@@ -78,7 +78,7 @@ fn test_transaction_empty_commit() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"a", b"1".to_vec())?;
     {
         let mut tx = engine.begin_transaction();
@@ -100,7 +100,7 @@ fn test_transaction_empty_rollback() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"b", b"2".to_vec())?;
     {
         let mut tx = engine.begin_transaction();
@@ -122,7 +122,7 @@ fn test_transaction_snapshot_isolation() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"k", b"v1".to_vec())?;
     engine.set(b"k", b"v2".to_vec())?;
     {
@@ -145,7 +145,7 @@ fn test_sequential_transactions() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"x", b"1".to_vec())?;
     {
         let mut tx1 = engine.begin_transaction();
@@ -172,7 +172,7 @@ fn test_double_commit_fails() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     {
         let mut tx = engine.begin_transaction();
         tx.set(b"k", b"v".to_vec())?;
@@ -189,7 +189,7 @@ fn test_commit_after_rollback_fails() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     {
         let mut tx = engine.begin_transaction();
         tx.set(b"a", b"1".to_vec())?;
@@ -206,7 +206,7 @@ fn test_delete_then_set_in_transaction() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"x", b"old".to_vec())?;
     {
         let mut tx = engine.begin_transaction();
@@ -229,12 +229,12 @@ fn test_durability_after_commit() -> Result<()> {
         fs::remove_file(&path)?;
     }
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
         let mut tx = engine.begin_transaction();
         tx.set(b"a", b"2".to_vec())?;
         tx.commit()?;
     }
-    let engine2 = Engine::new(path.clone())?;
+    let engine2 = StorageEngine::new(path.clone())?;
     assert_eq!(
         engine2.get(b"a").map(|a| a.as_ref().to_vec()),
         Some(b"2".to_vec())
@@ -249,7 +249,7 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     {
         let mut tx = engine.begin_transaction();
         for i in 0..5000 {
@@ -278,7 +278,7 @@ fn test_transaction_get_behaviour() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"k1", b"v1".to_vec())?;
     engine.set(b"k2", b"v2".to_vec())?;
     engine.set(b"k3", b"v3".to_vec())?;
@@ -318,7 +318,7 @@ fn test_transaction_scan_behaviour() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"a", b"1".to_vec())?;
     engine.set(b"b", b"2".to_vec())?;
     engine.set(b"c", b"3".to_vec())?;
@@ -371,7 +371,7 @@ fn test_implicit_rollback_on_drop() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"x", b"init".to_vec())?;
     {
         let _tx = engine.begin_transaction();
@@ -390,7 +390,7 @@ fn test_transaction_snapshot_after_rollback() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = Engine::new(path.clone())?;
+    let mut engine = StorageEngine::new(path.clone())?;
     engine.set(b"k", b"orig".to_vec())?;
     let mut tx = engine.begin_transaction();
     tx.set(b"k", b"new".to_vec())?;
@@ -416,7 +416,7 @@ fn test_transaction_key_size_limit() {
         max_key_size: 1,
         ..Default::default()
     };
-    let mut engine = Engine::with_config(path.clone(), config).unwrap();
+    let mut engine = StorageEngine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
         let err = tx.set(&[0, 1], b"v".to_vec());
@@ -441,7 +441,7 @@ fn test_transaction_value_size_limit() {
         max_value_size: 1,
         ..Default::default()
     };
-    let mut engine = Engine::with_config(path.clone(), config).unwrap();
+    let mut engine = StorageEngine::with_config(path.clone(), config).unwrap();
     {
         let mut tx = engine.begin_transaction();
         let err = tx.set(b"k", vec![0, 1]);
@@ -463,7 +463,7 @@ fn test_transaction_error_propagation_in_transaction() -> Result<()> {
         max_key_size: 1,
         ..Default::default()
     };
-    let mut engine = Engine::with_config(path.clone(), config)?;
+    let mut engine = StorageEngine::with_config(path.clone(), config)?;
     {
         let mut tx = engine.begin_transaction();
         tx.set(b"a", b"1".to_vec())?;
@@ -494,7 +494,7 @@ fn test_pure_transaction_crash_recovery() -> Result<()> {
 
     // Simulate a crash: start transaction, perform writes, but don't commit
     {
-        let mut engine = Engine::new(path.clone())?;
+        let mut engine = StorageEngine::new(path.clone())?;
         let mut tx = engine.begin_transaction();
         tx.set(b"key1", b"value1".to_vec())?;
         tx.set(b"key2", b"value2".to_vec())?;
@@ -502,7 +502,7 @@ fn test_pure_transaction_crash_recovery() -> Result<()> {
     }
 
     // Reopen engine to trigger recovery
-    let engine2 = Engine::new(path.clone())?;
+    let engine2 = StorageEngine::new(path.clone())?;
 
     // Uncommitted transaction should be rolled back
     assert_eq!(engine2.get(b"key1"), None);

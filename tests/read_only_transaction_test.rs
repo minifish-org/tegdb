@@ -2,7 +2,7 @@
 mod read_only_transaction_tests {
     use std::fs;
     use std::path::PathBuf;
-    use tegdb::engine::Engine;
+    use tegdb::storage::StorageEngine;
 
     #[test]
     fn test_read_only_transaction_optimization() {
@@ -15,7 +15,7 @@ mod read_only_transaction_tests {
 
         // Create a new engine and populate with some data
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
             engine.set(b"key1", b"value1".to_vec()).unwrap();
             engine.set(b"key2", b"value2".to_vec()).unwrap();
             drop(engine);
@@ -26,7 +26,7 @@ mod read_only_transaction_tests {
 
         // Perform multiple read-only transactions
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
 
             // Read-only transaction 1
             {
@@ -65,14 +65,14 @@ mod read_only_transaction_tests {
 
         // Verify data is still accessible after read-only transactions
         {
-            let engine = Engine::new(test_db_path.clone()).unwrap();
+            let engine = StorageEngine::new(test_db_path.clone()).unwrap();
             assert_eq!(engine.get(b"key1").as_deref(), Some(b"value1" as &[u8]));
             assert_eq!(engine.get(b"key2").as_deref(), Some(b"value2" as &[u8]));
         }
 
         // Now do a write transaction and verify file size increases
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
             {
                 let mut tx = engine.begin_transaction();
                 tx.set(b"key3", b"value3".to_vec()).unwrap();
@@ -103,7 +103,7 @@ mod read_only_transaction_tests {
 
         // Create a new engine and populate with some data
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
             engine.set(b"key1", b"value1".to_vec()).unwrap();
             drop(engine);
         }
@@ -113,7 +113,7 @@ mod read_only_transaction_tests {
 
         // Perform a transaction that starts with reads but then does a write
         {
-            let mut engine = Engine::new(test_db_path.clone()).unwrap();
+            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
             {
                 let mut tx = engine.begin_transaction();
                 // Start with reads

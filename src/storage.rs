@@ -1,4 +1,4 @@
-// filepath: /Users/yusp/work/tegdb/src/engine.rs
+// filepath: /home/runner/work/tegdb/tegdb/src/storage.rs
 use fs2::FileExt;
 use std::collections::BTreeMap;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -36,8 +36,8 @@ impl Default for EngineConfig {
     }
 }
 
-/// The main database engine
-pub struct Engine {
+/// The main database storage engine
+pub struct StorageEngine {
     log: Log,
     key_map: KeyMap,
     config: EngineConfig,
@@ -51,7 +51,7 @@ type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
 // Type alias for scan result (returns keys and shared buffer Arcs for values)
 type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
 
-impl Engine {
+impl StorageEngine {
     /// Creates a new database engine with default configuration
     pub fn new(path: PathBuf) -> Result<Self> {
         Self::with_config(path, EngineConfig::default())
@@ -188,7 +188,7 @@ impl Engine {
     }
 }
 
-impl Drop for Engine {
+impl Drop for StorageEngine {
     fn drop(&mut self) {
         // Ignore errors during drop, but try to flush
         let _ = self.flush();
@@ -203,7 +203,7 @@ struct UndoEntry {
 
 /// Write-through transactional context for ACID operations
 pub struct Transaction<'a> {
-    engine: &'a mut Engine,
+    engine: &'a mut StorageEngine,
     undo_log: Option<Vec<UndoEntry>>, // Lazy initialization
     finalized: bool,                  // Track if transaction has been committed or rolled back
 }

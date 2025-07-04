@@ -3,7 +3,7 @@
 //! This module provides the core execution engine that works directly with the
 //! native binary row format for optimal performance.
 
-use crate::engine::Transaction;
+use crate::storage::Transaction;
 use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };

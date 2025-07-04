@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tegdb::Engine;
+use tegdb::StorageEngine;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -20,7 +20,7 @@ fn pure_rollback_benchmark(c: &mut Criterion) {
     // Simple rollback with minimal setup
     c.bench_function("optimized rollback", |b| {
         b.iter(|| {
-            let mut engine = Engine::new(path.clone()).expect("Failed to create engine");
+            let mut engine = StorageEngine::new(path.clone()).expect("Failed to create engine");
             let mut tx = engine.begin_transaction();
             // Add minimal operation to have something to rollback
             tx.set(b"k", b"v".to_vec()).unwrap();
