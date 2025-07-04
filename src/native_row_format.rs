@@ -399,7 +399,6 @@ impl NativeRowFormat {
 mod tests {
     use super::*;
     use crate::parser::DataType;
-    
 
     fn create_test_schema() -> TableSchema {
         TableSchema {
