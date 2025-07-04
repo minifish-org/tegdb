@@ -1,5 +1,5 @@
-use crate::query::TableSchema;
 use crate::parser::SqlValue;
+use crate::query::TableSchema;
 use std::collections::HashMap;
 
 /// SQLite-inspired native binary row format for TegDB
@@ -398,8 +398,8 @@ impl NativeRowFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::ColumnInfo;
     use crate::parser::DataType;
+    use crate::query::ColumnInfo;
 
     fn create_test_schema() -> TableSchema {
         TableSchema {

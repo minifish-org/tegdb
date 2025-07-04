@@ -3,11 +3,11 @@
 //! This module provides the core query execution engine that works directly with the
 //! native binary row format for optimal performance.
 
-use crate::storage::Transaction;
 use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };
 use crate::sql_utils;
+use crate::storage::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -904,7 +904,7 @@ impl<'a> QueryProcessor<'a> {
 
         for (key, value_bytes) in scan_iter {
             let key_str = String::from_utf8_lossy(&key);
-            
+
             // If we have a key to exclude, check if this is the same key
             if let Some(exclude_key_str) = exclude_key {
                 if key_str == exclude_key_str {

@@ -6,9 +6,9 @@
 use crate::planner::QueryPlanner;
 use crate::{
     catalog::Catalog,
-    storage::StorageEngine,
-    query::{QueryProcessor, TableSchema},
     parser::{parse_sql, SqlValue},
+    query::{QueryProcessor, TableSchema},
+    storage::StorageEngine,
     Result,
 };
 use std::{
@@ -61,7 +61,10 @@ impl Database {
                 catalog.write().unwrap().add_table_schema(schema);
             }
             crate::parser::Statement::DropTable(drop_table) => {
-                catalog.write().unwrap().remove_table_schema(&drop_table.table);
+                catalog
+                    .write()
+                    .unwrap()
+                    .remove_table_schema(&drop_table.table);
             }
             _ => {} // No schema changes for other statements
         }
@@ -151,7 +154,10 @@ impl Database {
 
         // Use the new planner pipeline with executor
         let planner = QueryPlanner::new(self.catalog.read().unwrap().get_all_schemas().clone());
-        let mut processor = QueryProcessor::new_with_schemas(transaction, self.catalog.read().unwrap().get_all_schemas().clone());
+        let mut processor = QueryProcessor::new_with_schemas(
+            transaction,
+            self.catalog.read().unwrap().get_all_schemas().clone(),
+        );
 
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
@@ -196,7 +202,10 @@ impl Database {
         let transaction = self.storage.begin_transaction();
 
         // Create executor with schemas
-        let processor = QueryProcessor::new_with_schemas(transaction, self.catalog.read().unwrap().get_all_schemas().clone());
+        let processor = QueryProcessor::new_with_schemas(
+            transaction,
+            self.catalog.read().unwrap().get_all_schemas().clone(),
+        );
 
         // Use centralized query execution helper
         let result = Self::execute_query_with_processor(processor, sql, schemas)?;
@@ -219,7 +228,10 @@ impl Database {
     /// Reload table schemas from storage
     /// This can be useful if the database was modified externally
     pub fn refresh_schema_cache(&mut self) -> Result<()> {
-        self.catalog.write().unwrap().reload_from_storage(&self.storage)?;
+        self.catalog
+            .write()
+            .unwrap()
+            .reload_from_storage(&self.storage)?;
         Ok(())
     }
 

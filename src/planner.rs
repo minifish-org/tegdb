@@ -4,13 +4,13 @@
 //! optimized execution plans. The planner sits between the parser and executor,
 //! similar to PostgreSQL and SQLite architectures.
 
-use crate::query::{ColumnInfo, TableSchema};
 #[cfg(test)]
 use crate::parser::WhereClause;
 use crate::parser::{
     ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
     InsertStatement, SelectStatement, SqlValue, Statement, UpdateStatement,
 };
+use crate::query::{ColumnInfo, TableSchema};
 use crate::Result;
 use std::collections::HashMap;
 

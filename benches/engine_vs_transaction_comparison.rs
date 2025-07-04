@@ -176,7 +176,7 @@ fn engine_vs_transaction_comparison(c: &mut Criterion) {
 }
 
 /// Helper function to create and populate a raw engine with test data
-fn create_and_populate_raw_engine(path: &PathBuf) -> Engine {
+fn create_and_populate_raw_engine(path: &PathBuf) -> StorageEngine {
     // Clean up any existing file
     if path.exists() {
         fs::remove_file(path).expect("Failed to remove existing raw test file");
@@ -201,7 +201,7 @@ fn create_and_populate_raw_engine(path: &PathBuf) -> Engine {
 }
 
 /// Helper function to create and populate a tx engine with test data using transactions
-fn create_and_populate_tx_engine(path: &PathBuf) -> Engine {
+fn create_and_populate_tx_engine(path: &PathBuf) -> StorageEngine {
     // Clean up any existing file
     if path.exists() {
         fs::remove_file(path).expect("Failed to remove existing tx test file");
@@ -336,8 +336,8 @@ fn transaction_overhead_analysis(c: &mut Criterion) {
             .expect("Failed to remove existing tx overhead test file");
     }
 
-    let mut raw_engine =
-        StorageEngine::new(raw_overhead_path.clone()).expect("Failed to create raw overhead engine");
+    let mut raw_engine = StorageEngine::new(raw_overhead_path.clone())
+        .expect("Failed to create raw overhead engine");
     let mut tx_engine =
         StorageEngine::new(tx_overhead_path.clone()).expect("Failed to create tx overhead engine");
 

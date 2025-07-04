@@ -4,13 +4,13 @@
 //! similar to the system catalog in traditional RDBMS systems.
 
 use crate::query::{ColumnInfo, TableSchema};
-use crate::storage::StorageEngine;
 use crate::sql_utils;
+use crate::storage::StorageEngine;
 use crate::Result;
 use std::collections::HashMap;
 
 /// Schema catalog manager for TegDB
-/// 
+///
 /// The catalog maintains metadata about tables, columns, indexes, and other
 /// database objects, similar to the system catalog in traditional RDBMS.
 pub struct Catalog {
@@ -150,7 +150,7 @@ mod tests {
         catalog.add_table_schema(schema);
         assert_eq!(catalog.table_count(), 1);
         assert!(catalog.table_exists("users"));
-        
+
         let retrieved = catalog.get_table_schema("users").unwrap();
         assert_eq!(retrieved.name, "users");
         assert_eq!(retrieved.columns.len(), 2);
