@@ -4,6 +4,7 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::planner::QueryPlanner;
+use crate::sql_utils;
 use crate::{
     engine::Engine,
     executor::{Executor, TableSchema},
@@ -46,6 +47,107 @@ impl Database {
         })
     }
 
+    /// Helper function to create TableSchema from CreateTableStatement
+    /// Centralizes schema creation logic to avoid duplication
+    fn create_table_schema(create_table: &crate::parser::CreateTableStatement) -> TableSchema {
+        TableSchema {
+            name: create_table.table.clone(),
+            columns: create_table
+                .columns
+                .iter()
+                .map(|col| crate::executor::ColumnInfo {
+                    name: col.name.clone(),
+                    data_type: col.data_type.clone(),
+                    constraints: col.constraints.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Helper function to update schema cache for DDL operations
+    /// Centralizes schema cache update logic to avoid duplication
+    fn update_schema_cache_for_ddl(
+        table_schemas: &Arc<RwLock<HashMap<String, TableSchema>>>,
+        statement: &crate::parser::Statement,
+    ) {
+        match statement {
+            crate::parser::Statement::CreateTable(create_table) => {
+                let schema = Self::create_table_schema(create_table);
+                table_schemas
+                    .write()
+                    .unwrap()
+                    .insert(create_table.table.clone(), schema);
+            }
+            crate::parser::Statement::DropTable(drop_table) => {
+                table_schemas.write().unwrap().remove(&drop_table.table);
+            }
+            _ => {} // No schema changes for other statements
+        }
+    }
+
+    /// Centralized query execution helper to eliminate duplication
+    /// Executes SELECT statements and returns QueryResult
+    fn execute_query_with_executor(
+        mut executor: Executor<'_>,
+        sql: &str,
+        schemas: HashMap<String, TableSchema>,
+    ) -> Result<QueryResult> {
+        Self::execute_query_core(&mut executor, sql, schemas)
+    }
+
+    /// Centralized query execution helper for mutable reference
+    /// Executes SELECT statements and returns QueryResult
+    fn execute_query_with_executor_ref(
+        executor: &mut Executor<'_>,
+        sql: &str,
+        schemas: HashMap<String, TableSchema>,
+    ) -> Result<QueryResult> {
+        Self::execute_query_core(executor, sql, schemas)
+    }
+
+    /// Core query execution logic - the actual implementation
+    /// Executes SELECT statements and returns QueryResult
+    fn execute_query_core(
+        executor: &mut Executor<'_>,
+        sql: &str,
+        schemas: HashMap<String, TableSchema>,
+    ) -> Result<QueryResult> {
+        let (_, statement) =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+
+        // Only SELECT statements make sense for queries
+        match &statement {
+            crate::parser::Statement::Select(_) => {
+                // Use the planner to generate an optimized execution plan
+                let planner = QueryPlanner::new(schemas);
+                let plan = planner.plan(statement)?;
+
+                // Execute and immediately collect results
+                let result = executor.execute_plan(plan)?;
+                match result {
+                    crate::executor::ResultSet::Select { columns, rows } => {
+                        // Collect all rows from the iterator
+                        let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
+                        let final_rows = collected_rows?;
+                        Ok(QueryResult {
+                            columns,
+                            rows: final_rows,
+                        })
+                    }
+                    _ => Err(crate::Error::Other(
+                        "Expected SELECT result but got something else".to_string(),
+                    )),
+                }
+            }
+            _ => {
+                // For non-SELECT statements, this doesn't make sense
+                Err(crate::Error::Other(
+                    "query() should only be used for SELECT statements".to_string(),
+                ))
+            }
+        }
+    }
+
     /// Load schemas from engine into the provided HashMap
     fn load_schemas_from_engine(
         engine: &Engine,
@@ -61,8 +163,8 @@ impl Database {
             // Extract table name from key
             let key_str = String::from_utf8_lossy(&key);
             if let Some(table_name) = key_str.strip_prefix("__schema__:") {
-                // Deserialize schema
-                if let Ok(mut schema) = Self::deserialize_schema(&value) {
+                // Deserialize schema using centralized utility
+                if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value) {
                     schema.name = table_name.to_string(); // Set the actual table name
                     schemas.insert(table_name.to_string(), schema);
                 }
@@ -70,69 +172,6 @@ impl Database {
         }
 
         Ok(())
-    }
-
-    /// Deserialize table schema from bytes (copied from Executor)
-    fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
-        let mut columns = Vec::new();
-        let mut start = 0;
-
-        for (i, &byte) in data.iter().enumerate() {
-            if byte == b'|' {
-                if i > start {
-                    let column_part = &data[start..i];
-                    Self::parse_column_part(column_part, &mut columns);
-                }
-                start = i + 1;
-            }
-        }
-
-        if start < data.len() {
-            let column_part = &data[start..];
-            Self::parse_column_part(column_part, &mut columns);
-        }
-
-        Ok(TableSchema {
-            name: "unknown".to_string(), // Will be set by caller
-            columns,
-        })
-    }
-
-    // Helper to parse a single column entry to avoid repetition
-    fn parse_column_part(column_part: &[u8], columns: &mut Vec<crate::executor::ColumnInfo>) {
-        let mut parts = column_part.splitn(3, |&b| b == b':');
-        if let (Some(name_bytes), Some(type_bytes)) = (parts.next(), parts.next()) {
-            let name = String::from_utf8_lossy(name_bytes).to_string();
-            let type_str = String::from_utf8_lossy(type_bytes);
-
-            let data_type = match type_str.as_ref() {
-                "Integer" | "INTEGER" => crate::parser::DataType::Integer,
-                "Text" | "TEXT" => crate::parser::DataType::Text,
-                "Real" | "REAL" => crate::parser::DataType::Real,
-                "Blob" | "BLOB" => crate::parser::DataType::Blob,
-                _ => crate::parser::DataType::Text, // Default fallback
-            };
-
-            let constraints = if let Some(constraints_bytes) = parts.next() {
-                constraints_bytes
-                    .split(|&b| b == b',')
-                    .filter_map(|c| match c {
-                        b"PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
-                        b"NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
-                        b"UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
-                        _ => None,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-            columns.push(crate::executor::ColumnInfo {
-                name,
-                data_type,
-                constraints,
-            });
-        }
     }
 
     /// Execute SQL statement, return number of affected rows
@@ -174,35 +213,8 @@ impl Database {
         // Drop the result to release the borrow
         drop(result);
 
-        // Update our shared schemas cache for DDL operations
-        match &statement {
-            crate::parser::Statement::CreateTable(create_table) => {
-                let schema = crate::executor::TableSchema {
-                    name: create_table.table.clone(),
-                    columns: create_table
-                        .columns
-                        .iter()
-                        .map(|col| crate::executor::ColumnInfo {
-                            name: col.name.clone(),
-                            data_type: col.data_type.clone(),
-                            constraints: col.constraints.clone(),
-                        })
-                        .collect(),
-                };
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .insert(create_table.table.clone(), schema);
-            }
-            crate::parser::Statement::DropTable(drop_table) => {
-                // Remove table schema from cache when table is dropped
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .remove(&drop_table.table);
-            }
-            _ => {} // No schema changes for other statements
-        }
+        // Update our shared schemas cache for DDL operations using centralized helper
+        Self::update_schema_cache_for_ddl(&self.table_schemas, &statement);
 
         // Actually commit the engine transaction
         executor.transaction_mut().commit()?;
@@ -213,55 +225,19 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        // Clone schemas for the executor
+        let schemas = self.table_schemas.read().unwrap().clone();
 
-        // Only SELECT statements make sense for queries
-        match &statement {
-            crate::parser::Statement::Select(_) => {
-                // Clone schemas for the executor
-                let schemas = self.table_schemas.read().unwrap().clone();
+        // Use a single transaction for this operation
+        let transaction = self.engine.begin_transaction();
 
-                // Use a single transaction for this operation
-                let transaction = self.engine.begin_transaction();
+        // Create executor with schemas
+        let executor = Executor::new_with_schemas(transaction, schemas.clone());
 
-                // Use the planner pipeline with executor
-                let planner = QueryPlanner::new(schemas.clone());
-                let mut executor = Executor::new_with_schemas(transaction, schemas);
+        // Use centralized query execution helper
+        let result = Self::execute_query_with_executor(executor, sql, schemas)?;
 
-                // Generate and execute the plan
-                let plan = planner.plan(statement)?;
-
-                // Execute and immediately collect results to avoid lifetime issues
-                let final_result = {
-                    let result = executor.execute_plan(plan)?;
-                    match result {
-                        crate::executor::ResultSet::Select { columns, rows } => {
-                            // Collect all rows from the iterator immediately
-                            let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
-                            collected_rows.map(|final_rows| QueryResult {
-                                columns,
-                                rows: final_rows,
-                            })
-                        }
-                        _ => Err(crate::Error::Other(
-                            "Expected SELECT result but got something else".to_string(),
-                        )),
-                    }
-                };
-
-                // Now commit the transaction
-                executor.transaction_mut().commit()?;
-
-                final_result
-            }
-            _ => {
-                // For non-SELECT statements, this doesn't make sense
-                Err(crate::Error::Other(
-                    "query() should only be used for SELECT statements".to_string(),
-                ))
-            }
-        }
+        Ok(result)
     }
 
     /// Begin a new database transaction
@@ -364,34 +340,8 @@ impl DatabaseTransaction<'_> {
         let plan = planner.plan(statement.clone())?;
         let result = self.executor.execute_plan(plan)?;
 
-        // Update schema cache for DDL operations
-        match &statement {
-            crate::parser::Statement::CreateTable(create_table) => {
-                let schema = crate::executor::TableSchema {
-                    name: create_table.table.clone(),
-                    columns: create_table
-                        .columns
-                        .iter()
-                        .map(|col| crate::executor::ColumnInfo {
-                            name: col.name.clone(),
-                            data_type: col.data_type.clone(),
-                            constraints: col.constraints.clone(),
-                        })
-                        .collect(),
-                };
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .insert(create_table.table.clone(), schema);
-            }
-            crate::parser::Statement::DropTable(drop_table) => {
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .remove(&drop_table.table);
-            }
-            _ => {}
-        }
+        // Update schema cache for DDL operations using centralized helper
+        Database::update_schema_cache_for_ddl(&self.table_schemas, &statement);
 
         match result {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
@@ -405,43 +355,13 @@ impl DatabaseTransaction<'_> {
     /// Execute SQL query within transaction, return all results materialized in memory
     /// Following the parse -> plan -> execute_plan pipeline
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        // Get schemas from shared cache
+        let schemas = self.table_schemas.read().unwrap().clone();
 
-        // Only SELECT statements make sense for queries
-        match &statement {
-            crate::parser::Statement::Select(_) => {
-                // Get schemas from shared cache
-                let schemas = self.table_schemas.read().unwrap().clone();
-
-                // Use the planner to generate an optimized execution plan
-                let planner = QueryPlanner::new(schemas);
-                let plan = planner.plan(statement)?;
-
-                // Execute and immediately collect results
-                let result = self.executor.execute_plan(plan)?;
-                match result {
-                    crate::executor::ResultSet::Select { columns, rows } => {
-                        // Collect all rows from the iterator
-                        let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
-                        let final_rows = collected_rows?;
-                        Ok(QueryResult {
-                            columns,
-                            rows: final_rows,
-                        })
-                    }
-                    _ => Err(crate::Error::Other(
-                        "Expected SELECT result but got something else".to_string(),
-                    )),
-                }
-            }
-            _ => {
-                // For non-SELECT statements, this doesn't make sense
-                Err(crate::Error::Other(
-                    "query() should only be used for SELECT statements".to_string(),
-                ))
-            }
-        }
+        // Use centralized query execution helper
+        // Note: We need to be careful about borrowing here since we can't move self.executor
+        // Instead, we'll use a more direct approach that's still centralized
+        Database::execute_query_with_executor_ref(&mut self.executor, sql, schemas)
     }
 
     /// Commit the transaction
