@@ -88,6 +88,69 @@ impl Database {
         }
     }
 
+    /// Centralized query execution helper to eliminate duplication
+    /// Executes SELECT statements and returns QueryResult
+    fn execute_query_with_executor(
+        mut executor: Executor<'_>,
+        sql: &str,
+        schemas: HashMap<String, TableSchema>,
+    ) -> Result<QueryResult> {
+        Self::execute_query_core(&mut executor, sql, schemas)
+    }
+
+    /// Centralized query execution helper for mutable reference
+    /// Executes SELECT statements and returns QueryResult
+    fn execute_query_with_executor_ref(
+        executor: &mut Executor<'_>,
+        sql: &str,
+        schemas: HashMap<String, TableSchema>,
+    ) -> Result<QueryResult> {
+        Self::execute_query_core(executor, sql, schemas)
+    }
+
+    /// Core query execution logic - the actual implementation
+    /// Executes SELECT statements and returns QueryResult
+    fn execute_query_core(
+        executor: &mut Executor<'_>,
+        sql: &str,
+        schemas: HashMap<String, TableSchema>,
+    ) -> Result<QueryResult> {
+        let (_, statement) =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+
+        // Only SELECT statements make sense for queries
+        match &statement {
+            crate::parser::Statement::Select(_) => {
+                // Use the planner to generate an optimized execution plan
+                let planner = QueryPlanner::new(schemas);
+                let plan = planner.plan(statement)?;
+
+                // Execute and immediately collect results
+                let result = executor.execute_plan(plan)?;
+                match result {
+                    crate::executor::ResultSet::Select { columns, rows } => {
+                        // Collect all rows from the iterator
+                        let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
+                        let final_rows = collected_rows?;
+                        Ok(QueryResult {
+                            columns,
+                            rows: final_rows,
+                        })
+                    }
+                    _ => Err(crate::Error::Other(
+                        "Expected SELECT result but got something else".to_string(),
+                    )),
+                }
+            }
+            _ => {
+                // For non-SELECT statements, this doesn't make sense
+                Err(crate::Error::Other(
+                    "query() should only be used for SELECT statements".to_string(),
+                ))
+            }
+        }
+    }
+
     /// Load schemas from engine into the provided HashMap
     fn load_schemas_from_engine(
         engine: &Engine,
@@ -165,55 +228,19 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        // Clone schemas for the executor
+        let schemas = self.table_schemas.read().unwrap().clone();
 
-        // Only SELECT statements make sense for queries
-        match &statement {
-            crate::parser::Statement::Select(_) => {
-                // Clone schemas for the executor
-                let schemas = self.table_schemas.read().unwrap().clone();
+        // Use a single transaction for this operation
+        let transaction = self.engine.begin_transaction();
 
-                // Use a single transaction for this operation
-                let transaction = self.engine.begin_transaction();
+        // Create executor with schemas
+        let executor = Executor::new_with_schemas(transaction, schemas.clone());
 
-                // Use the planner pipeline with executor
-                let planner = QueryPlanner::new(schemas.clone());
-                let mut executor = Executor::new_with_schemas(transaction, schemas);
+        // Use centralized query execution helper
+        let result = Self::execute_query_with_executor(executor, sql, schemas)?;
 
-                // Generate and execute the plan
-                let plan = planner.plan(statement)?;
-
-                // Execute and immediately collect results to avoid lifetime issues
-                let final_result = {
-                    let result = executor.execute_plan(plan)?;
-                    match result {
-                        crate::executor::ResultSet::Select { columns, rows } => {
-                            // Collect all rows from the iterator immediately
-                            let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
-                            collected_rows.map(|final_rows| QueryResult {
-                                columns,
-                                rows: final_rows,
-                            })
-                        }
-                        _ => Err(crate::Error::Other(
-                            "Expected SELECT result but got something else".to_string(),
-                        )),
-                    }
-                };
-
-                // Now commit the transaction
-                executor.transaction_mut().commit()?;
-
-                final_result
-            }
-            _ => {
-                // For non-SELECT statements, this doesn't make sense
-                Err(crate::Error::Other(
-                    "query() should only be used for SELECT statements".to_string(),
-                ))
-            }
-        }
+        Ok(result)
     }
 
     /// Begin a new database transaction
@@ -331,43 +358,13 @@ impl DatabaseTransaction<'_> {
     /// Execute SQL query within transaction, return all results materialized in memory
     /// Following the parse -> plan -> execute_plan pipeline
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        // Get schemas from shared cache
+        let schemas = self.table_schemas.read().unwrap().clone();
 
-        // Only SELECT statements make sense for queries
-        match &statement {
-            crate::parser::Statement::Select(_) => {
-                // Get schemas from shared cache
-                let schemas = self.table_schemas.read().unwrap().clone();
-
-                // Use the planner to generate an optimized execution plan
-                let planner = QueryPlanner::new(schemas);
-                let plan = planner.plan(statement)?;
-
-                // Execute and immediately collect results
-                let result = self.executor.execute_plan(plan)?;
-                match result {
-                    crate::executor::ResultSet::Select { columns, rows } => {
-                        // Collect all rows from the iterator
-                        let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
-                        let final_rows = collected_rows?;
-                        Ok(QueryResult {
-                            columns,
-                            rows: final_rows,
-                        })
-                    }
-                    _ => Err(crate::Error::Other(
-                        "Expected SELECT result but got something else".to_string(),
-                    )),
-                }
-            }
-            _ => {
-                // For non-SELECT statements, this doesn't make sense
-                Err(crate::Error::Other(
-                    "query() should only be used for SELECT statements".to_string(),
-                ))
-            }
-        }
+        // Use centralized query execution helper
+        // Note: We need to be careful about borrowing here since we can't move self.executor
+        // Instead, we'll use a more direct approach that's still centralized
+        Database::execute_query_with_executor_ref(&mut self.executor, sql, schemas)
     }
 
     /// Commit the transaction
