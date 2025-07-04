@@ -779,7 +779,8 @@ impl<'a> Executor<'a> {
                 if !self.table_schemas.contains_key(table_name) {
                     // Parse the schema using centralized utility
                     if let Ok(schema_data) = String::from_utf8(value.to_vec()) {
-                        if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data) {
+                        if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
+                        {
                             self.table_schemas.insert(table_name.to_string(), schema);
                         }
                     }

@@ -79,10 +79,7 @@ impl Database {
                     .insert(create_table.table.clone(), schema);
             }
             crate::parser::Statement::DropTable(drop_table) => {
-                table_schemas
-                    .write()
-                    .unwrap()
-                    .remove(&drop_table.table);
+                table_schemas.write().unwrap().remove(&drop_table.table);
             }
             _ => {} // No schema changes for other statements
         }
