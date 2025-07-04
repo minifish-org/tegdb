@@ -242,7 +242,6 @@ fn show_planner_architecture() {
     println!();
     println!("   Plan Types:");
     println!("   • PrimaryKeyLookup: Direct key access for equality on PK");
-    println!("   • IndexScan: Secondary index scan (when implemented)");
     println!("   • TableScan: Sequential table scan with optimizations");
     println!("   • Insert/Update/Delete: Modification plans");
     println!("   • DDL: Schema change operations");

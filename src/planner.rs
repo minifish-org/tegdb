@@ -24,15 +24,6 @@ pub enum ExecutionPlan {
         selected_columns: Vec<String>,
         additional_filter: Option<Condition>,
     },
-    /// Index scan (if secondary indexes are implemented)
-    IndexScan {
-        table: String,
-        index_name: String,
-        key_conditions: Vec<IndexCondition>,
-        selected_columns: Vec<String>,
-        filter: Option<Condition>,
-        limit: Option<u64>,
-    },
     /// Full table scan with optimizations
     TableScan {
         table: String,
@@ -637,7 +628,6 @@ impl ExecutionPlan {
     pub fn primary_table(&self) -> Option<&str> {
         match self {
             ExecutionPlan::PrimaryKeyLookup { table, .. } => Some(table),
-            ExecutionPlan::IndexScan { table, .. } => Some(table),
             ExecutionPlan::TableScan { table, .. } => Some(table),
             ExecutionPlan::Insert { table, .. } => Some(table),
             ExecutionPlan::Update { table, .. } => Some(table),
@@ -669,11 +659,6 @@ impl ExecutionPlan {
                     table,
                     pk_values.len()
                 )
-            }
-            ExecutionPlan::IndexScan {
-                table, index_name, ..
-            } => {
-                format!("Index Scan on {table}.{index_name}")
             }
             ExecutionPlan::TableScan {
                 table,

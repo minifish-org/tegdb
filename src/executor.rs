@@ -386,8 +386,6 @@ impl<'a> Executor<'a> {
             ExecutionPlan::Begin => self.begin_transaction(),
             ExecutionPlan::Commit => self.commit_transaction(),
             ExecutionPlan::Rollback => self.rollback_transaction(),
-            // For any other plans, return an error for now
-            _ => Err(Error::Other("Unsupported execution plan".to_string())),
         }
     }
 
@@ -715,43 +713,6 @@ impl<'a> Executor<'a> {
                             keys.push(key_str);
                             count += 1;
                         }
-                    }
-                }
-            }
-            ExecutionPlan::IndexScan {
-                table,
-                filter,
-                limit,
-                ..
-            } => {
-                // NOTE: This is a temporary implementation.
-                // Once secondary indexes are fully supported, this should use an index scan.
-                let schema = self.get_table_schema(table)?;
-                let table_prefix = format!("{table}:");
-                let start_key = table_prefix.as_bytes().to_vec();
-                let end_key = format!("{table}~").as_bytes().to_vec();
-                let mut count = 0;
-
-                let table_scan_iter = self.transaction.scan(start_key..end_key)?;
-
-                for (key, value) in table_scan_iter {
-                    if let Some(limit) = limit {
-                        if count >= *limit {
-                            break;
-                        }
-                    }
-
-                    let matches = if let Some(filter_cond) = filter {
-                        self.storage_format
-                            .matches_condition(&value, &schema, filter_cond)
-                            .unwrap_or(false)
-                    } else {
-                        true
-                    };
-
-                    if matches {
-                        keys.push(String::from_utf8(key).unwrap());
-                        count += 1;
                     }
                 }
             }
