@@ -46,6 +46,7 @@
 //!
 //! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
 //! for direct engine manipulation.
+pub mod catalog;
 pub mod database;
 pub mod storage;
 pub mod error;
@@ -73,6 +74,9 @@ pub use error::{Error, Result};
 
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
+#[cfg(feature = "dev")]
+pub use catalog::Catalog;
+#[cfg(feature = "dev")]
 pub use storage::{EngineConfig, StorageEngine, Transaction};
 #[cfg(feature = "dev")]
 pub use query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
@@ -95,6 +99,7 @@ pub use parser::SqlValue;
 // For backward compatibility, also expose via modules when dev feature is enabled
 #[cfg(feature = "dev")]
 pub mod low_level {
+    pub use crate::catalog::Catalog;
     pub use crate::storage::{EngineConfig, StorageEngine, Transaction as EngineTransaction};
     pub use crate::query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
     pub use crate::parser::{parse_sql, SqlValue, Statement};
