@@ -4,6 +4,7 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::planner::QueryPlanner;
+use crate::sql_utils;
 use crate::{
     engine::Engine,
     executor::{Executor, TableSchema},
@@ -46,6 +47,47 @@ impl Database {
         })
     }
 
+    /// Helper function to create TableSchema from CreateTableStatement
+    /// Centralizes schema creation logic to avoid duplication
+    fn create_table_schema(create_table: &crate::parser::CreateTableStatement) -> TableSchema {
+        TableSchema {
+            name: create_table.table.clone(),
+            columns: create_table
+                .columns
+                .iter()
+                .map(|col| crate::executor::ColumnInfo {
+                    name: col.name.clone(),
+                    data_type: col.data_type.clone(),
+                    constraints: col.constraints.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Helper function to update schema cache for DDL operations
+    /// Centralizes schema cache update logic to avoid duplication
+    fn update_schema_cache_for_ddl(
+        table_schemas: &Arc<RwLock<HashMap<String, TableSchema>>>,
+        statement: &crate::parser::Statement,
+    ) {
+        match statement {
+            crate::parser::Statement::CreateTable(create_table) => {
+                let schema = Self::create_table_schema(create_table);
+                table_schemas
+                    .write()
+                    .unwrap()
+                    .insert(create_table.table.clone(), schema);
+            }
+            crate::parser::Statement::DropTable(drop_table) => {
+                table_schemas
+                    .write()
+                    .unwrap()
+                    .remove(&drop_table.table);
+            }
+            _ => {} // No schema changes for other statements
+        }
+    }
+
     /// Load schemas from engine into the provided HashMap
     fn load_schemas_from_engine(
         engine: &Engine,
@@ -61,8 +103,8 @@ impl Database {
             // Extract table name from key
             let key_str = String::from_utf8_lossy(&key);
             if let Some(table_name) = key_str.strip_prefix("__schema__:") {
-                // Deserialize schema
-                if let Ok(mut schema) = Self::deserialize_schema(&value) {
+                // Deserialize schema using centralized utility
+                if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value) {
                     schema.name = table_name.to_string(); // Set the actual table name
                     schemas.insert(table_name.to_string(), schema);
                 }
@@ -70,69 +112,6 @@ impl Database {
         }
 
         Ok(())
-    }
-
-    /// Deserialize table schema from bytes (copied from Executor)
-    fn deserialize_schema(data: &[u8]) -> Result<TableSchema> {
-        let mut columns = Vec::new();
-        let mut start = 0;
-
-        for (i, &byte) in data.iter().enumerate() {
-            if byte == b'|' {
-                if i > start {
-                    let column_part = &data[start..i];
-                    Self::parse_column_part(column_part, &mut columns);
-                }
-                start = i + 1;
-            }
-        }
-
-        if start < data.len() {
-            let column_part = &data[start..];
-            Self::parse_column_part(column_part, &mut columns);
-        }
-
-        Ok(TableSchema {
-            name: "unknown".to_string(), // Will be set by caller
-            columns,
-        })
-    }
-
-    // Helper to parse a single column entry to avoid repetition
-    fn parse_column_part(column_part: &[u8], columns: &mut Vec<crate::executor::ColumnInfo>) {
-        let mut parts = column_part.splitn(3, |&b| b == b':');
-        if let (Some(name_bytes), Some(type_bytes)) = (parts.next(), parts.next()) {
-            let name = String::from_utf8_lossy(name_bytes).to_string();
-            let type_str = String::from_utf8_lossy(type_bytes);
-
-            let data_type = match type_str.as_ref() {
-                "Integer" | "INTEGER" => crate::parser::DataType::Integer,
-                "Text" | "TEXT" => crate::parser::DataType::Text,
-                "Real" | "REAL" => crate::parser::DataType::Real,
-                "Blob" | "BLOB" => crate::parser::DataType::Blob,
-                _ => crate::parser::DataType::Text, // Default fallback
-            };
-
-            let constraints = if let Some(constraints_bytes) = parts.next() {
-                constraints_bytes
-                    .split(|&b| b == b',')
-                    .filter_map(|c| match c {
-                        b"PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
-                        b"NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
-                        b"UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
-                        _ => None,
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-            columns.push(crate::executor::ColumnInfo {
-                name,
-                data_type,
-                constraints,
-            });
-        }
     }
 
     /// Execute SQL statement, return number of affected rows
@@ -174,35 +153,8 @@ impl Database {
         // Drop the result to release the borrow
         drop(result);
 
-        // Update our shared schemas cache for DDL operations
-        match &statement {
-            crate::parser::Statement::CreateTable(create_table) => {
-                let schema = crate::executor::TableSchema {
-                    name: create_table.table.clone(),
-                    columns: create_table
-                        .columns
-                        .iter()
-                        .map(|col| crate::executor::ColumnInfo {
-                            name: col.name.clone(),
-                            data_type: col.data_type.clone(),
-                            constraints: col.constraints.clone(),
-                        })
-                        .collect(),
-                };
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .insert(create_table.table.clone(), schema);
-            }
-            crate::parser::Statement::DropTable(drop_table) => {
-                // Remove table schema from cache when table is dropped
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .remove(&drop_table.table);
-            }
-            _ => {} // No schema changes for other statements
-        }
+        // Update our shared schemas cache for DDL operations using centralized helper
+        Self::update_schema_cache_for_ddl(&self.table_schemas, &statement);
 
         // Actually commit the engine transaction
         executor.transaction_mut().commit()?;
@@ -364,34 +316,8 @@ impl DatabaseTransaction<'_> {
         let plan = planner.plan(statement.clone())?;
         let result = self.executor.execute_plan(plan)?;
 
-        // Update schema cache for DDL operations
-        match &statement {
-            crate::parser::Statement::CreateTable(create_table) => {
-                let schema = crate::executor::TableSchema {
-                    name: create_table.table.clone(),
-                    columns: create_table
-                        .columns
-                        .iter()
-                        .map(|col| crate::executor::ColumnInfo {
-                            name: col.name.clone(),
-                            data_type: col.data_type.clone(),
-                            constraints: col.constraints.clone(),
-                        })
-                        .collect(),
-                };
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .insert(create_table.table.clone(), schema);
-            }
-            crate::parser::Statement::DropTable(drop_table) => {
-                self.table_schemas
-                    .write()
-                    .unwrap()
-                    .remove(&drop_table.table);
-            }
-            _ => {}
-        }
+        // Update schema cache for DDL operations using centralized helper
+        Database::update_schema_cache_for_ddl(&self.table_schemas, &statement);
 
         match result {
             crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),

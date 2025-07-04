@@ -7,6 +7,7 @@ use crate::engine::Transaction;
 use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };
+use crate::sql_utils;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -776,9 +777,9 @@ impl<'a> Executor<'a> {
             if let Some(table_name) = key_str.strip_prefix("__schema__:") {
                 // Only load from storage if we don't already have this schema
                 if !self.table_schemas.contains_key(table_name) {
-                    // Parse the simple schema format we're using
+                    // Parse the schema using centralized utility
                     if let Ok(schema_data) = String::from_utf8(value.to_vec()) {
-                        if let Some(schema) = self.parse_schema_data(table_name, &schema_data) {
+                        if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data) {
                             self.table_schemas.insert(table_name.to_string(), schema);
                         }
                     }
@@ -787,71 +788,6 @@ impl<'a> Executor<'a> {
         }
 
         Ok(())
-    }
-
-    /// Parse schema data from our simple string format
-    fn parse_schema_data(&self, table_name: &str, schema_data: &str) -> Option<TableSchema> {
-        // Format: "col1:DataType:constraints|col2:DataType:constraints|..."
-        let mut columns = Vec::new();
-
-        for column_part in schema_data.split('|') {
-            if column_part.is_empty() {
-                continue;
-            }
-
-            let components: Vec<&str> = column_part.splitn(3, ':').collect();
-            if components.len() >= 2 {
-                let column_name = components[0].to_string();
-                let data_type_str = components[1];
-                let constraints_str = if components.len() > 2 {
-                    components[2]
-                } else {
-                    ""
-                };
-
-                let data_type = match data_type_str {
-                    "Integer" => crate::parser::DataType::Integer,
-                    "Text" => crate::parser::DataType::Text,
-                    "Real" => crate::parser::DataType::Real,
-                    "Blob" => crate::parser::DataType::Blob,
-                    // Also accept uppercase for backward compatibility
-                    "INTEGER" => crate::parser::DataType::Integer,
-                    "TEXT" => crate::parser::DataType::Text,
-                    "REAL" => crate::parser::DataType::Real,
-                    "BLOB" => crate::parser::DataType::Blob,
-                    _ => continue, // Skip unknown types
-                };
-
-                let constraints = if constraints_str.is_empty() {
-                    Vec::new()
-                } else {
-                    constraints_str
-                        .split(',')
-                        .filter_map(|c| match c {
-                            "PRIMARY_KEY" => Some(crate::parser::ColumnConstraint::PrimaryKey),
-                            "NOT_NULL" => Some(crate::parser::ColumnConstraint::NotNull),
-                            "UNIQUE" => Some(crate::parser::ColumnConstraint::Unique),
-                            _ => None,
-                        })
-                        .collect()
-                };
-
-                columns.push(ColumnInfo {
-                    name: column_name,
-                    data_type,
-                    constraints,
-                });
-            }
-        }
-
-        if columns.is_empty() {
-            None
-        } else {
-            Some(TableSchema {
-                name: table_name.to_string(),
-                columns,
-            })
-        }
     }
 
     /// Get table schema
