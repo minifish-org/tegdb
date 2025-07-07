@@ -1,15 +1,10 @@
 // filepath: /home/runner/work/tegdb/tegdb/src/storage.rs
-use fs2::FileExt;
-use std::collections::BTreeMap;
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::Arc; // For file locking
+use std::sync::Arc;
 
 use crate::error::{Error, Result};
-
-/// Type alias for uncommitted changes list
-type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
+use crate::log::{Log, KeyMap, LogConfig, TX_COMMIT_MARKER};
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -43,11 +38,6 @@ pub struct StorageEngine {
     config: EngineConfig,
 }
 
-// Transaction commit marker - special marker that won't be part of keymap
-const TX_COMMIT_MARKER: &[u8] = b"__TX_COMMIT__";
-
-// KeyMap maps keys to shared buffers instead of owned Vecs
-type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
 // Type alias for scan result (returns keys and shared buffer Arcs for values)
 type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
 
@@ -60,7 +50,11 @@ impl StorageEngine {
     /// Creates a new database engine with custom configuration
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
         let mut log = Log::new(path)?;
-        let key_map = log.build_key_map(&config)?;
+        let log_config = LogConfig {
+            max_key_size: config.max_key_size,
+            max_value_size: config.max_value_size,
+        };
+        let key_map = log.build_key_map(&log_config)?;
 
         let mut engine = Self {
             log,
@@ -144,8 +138,7 @@ impl StorageEngine {
 
     /// Explicitly flushes data to disk
     pub fn flush(&mut self) -> Result<()> {
-        self.log.file.sync_all()?;
-        Ok(())
+        self.log.sync_all()
     }
 
     /// Manually triggers compaction to reclaim space
@@ -178,7 +171,7 @@ impl StorageEngine {
     fn construct_log(&mut self, path: PathBuf) -> Result<(Log, KeyMap)> {
         let mut new_key_map = KeyMap::new();
         let mut new_log = Log::new(path)?;
-        new_log.file.set_len(0)?;
+        new_log.set_len(0)?;
         for (key, value) in &self.key_map {
             new_log.write_entry(key, value.as_ref())?;
             new_key_map.insert(key.clone(), value.clone());
@@ -363,145 +356,4 @@ impl Drop for Transaction<'_> {
     }
 }
 
-/// Internal log file structure
-struct Log {
-    path: PathBuf,
-    file: std::fs::File,
-}
 
-impl Log {
-    fn new(path: PathBuf) -> Result<Self> {
-        // Create directory if it doesn't exist
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(Error::from)?;
-        }
-
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false) // Don't truncate existing database files
-            .open(&path)
-            .map_err(Error::from)?;
-
-        // Try to obtain an exclusive lock
-        file.try_lock_exclusive()
-            .map_err(|e| Error::FileLocked(e.to_string()))?;
-
-        Ok(Self { path, file })
-    }
-
-    fn build_key_map(&mut self, config: &EngineConfig) -> Result<KeyMap> {
-        let mut key_map = KeyMap::new();
-        let mut uncommitted_changes: UncommittedChanges = Vec::new();
-        let file_len = self.file.metadata()?.len();
-        let mut reader = BufReader::new(&mut self.file);
-        let mut pos = reader.seek(SeekFrom::Start(0))?;
-        let mut len_buf = [0u8; 4];
-        let mut committed = false;
-
-        while pos < file_len {
-            // Read key length
-            if reader.read_exact(&mut len_buf).is_err() {
-                break; // Corrupted entry
-            }
-            let key_len = u32::from_be_bytes(len_buf);
-
-            // Read value length
-            if reader.read_exact(&mut len_buf).is_err() {
-                break; // Corrupted
-            }
-            let value_len = u32::from_be_bytes(len_buf);
-
-            // Basic validation
-            if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size
-            {
-                break; // Invalid entry, treat as corruption
-            }
-
-            // Read key
-            let mut key = vec![0; key_len as usize];
-            if reader.read_exact(&mut key).is_err() {
-                break; // Corrupted
-            }
-
-            // Check for commit marker
-            if key == TX_COMMIT_MARKER {
-                uncommitted_changes.clear();
-                committed = true;
-                reader.seek(SeekFrom::Current(value_len as i64))?;
-            } else {
-                // Read value
-                let mut value = vec![0; value_len as usize];
-                if reader.read_exact(&mut value).is_err() {
-                    break; // Corrupted
-                }
-
-                let old_value = if value.is_empty() {
-                    key_map.remove(&key)
-                } else {
-                    key_map.insert(key.clone(), Arc::from(value.into_boxed_slice()))
-                };
-                uncommitted_changes.push((key, old_value));
-            }
-
-            pos = reader.stream_position()?;
-        }
-
-        // Rollback uncommitted changes if any commit marker was seen
-        if committed {
-            for (key, old_value) in uncommitted_changes.into_iter().rev() {
-                if let Some(value) = old_value {
-                    key_map.insert(key, value);
-                } else {
-                    key_map.remove(&key);
-                }
-            }
-        }
-
-        Ok(key_map)
-    }
-
-    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
-        if key.len() > 1024 || value.len() > 256 * 1024 {
-            return Err(Error::Other(format!(
-                "Key or value length exceeds limits: key_len={}, value_len={}",
-                key.len(),
-                value.len()
-            )));
-        }
-
-        // Calculate entry size
-        let key_len = key.len() as u32;
-        let value_len = value.len() as u32;
-        let len = 4 + 4 + key_len + value_len;
-
-        // Prepare buffer
-        let mut buffer = Vec::with_capacity(len as usize);
-        buffer.extend_from_slice(&key_len.to_be_bytes());
-        buffer.extend_from_slice(&value_len.to_be_bytes());
-        buffer.extend_from_slice(key);
-        buffer.extend_from_slice(value);
-
-        // Write to file
-        self.file.seek(SeekFrom::End(0))?;
-        {
-            let mut writer = BufWriter::with_capacity(len as usize, &mut self.file);
-            writer.write_all(&buffer)?;
-            writer.flush()?;
-        }
-
-        // Note: No fsync for performance - latest commits may not persist on crash
-
-        Ok(())
-    }
-}
-
-// Add a Drop implementation for Log to unlock the file
-impl Drop for Log {
-    fn drop(&mut self) {
-        // Ignore errors during drop, but try to unlock
-        // Use fully qualified syntax to avoid name collisions
-        let _ = FileExt::unlock(&self.file);
-    }
-}

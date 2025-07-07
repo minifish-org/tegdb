@@ -49,6 +49,7 @@
 pub mod catalog;
 pub mod database;
 pub mod error;
+pub mod log;
 pub mod native_row_format;
 pub mod sql_utils;
 pub mod storage;
