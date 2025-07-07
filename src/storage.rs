@@ -148,8 +148,7 @@ impl StorageEngine {
 
         let (mut new_log, new_key_map) = self.construct_log(tmp_path)?;
 
-        std::fs::rename(&new_log.path, &self.log.path)?;
-        new_log.path = self.log.path.clone();
+        new_log.rename_to(self.log.path.clone())?;
 
         self.log = new_log;
         self.key_map = new_key_map;

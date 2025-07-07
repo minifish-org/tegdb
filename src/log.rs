@@ -164,6 +164,13 @@ impl Log {
     pub fn set_len(&mut self, size: u64) -> Result<()> {
         self.file.set_len(size).map_err(Error::from)
     }
+
+    /// Atomically rename this log file to a new path
+    pub fn rename_to(&mut self, new_path: PathBuf) -> Result<()> {
+        std::fs::rename(&self.path, &new_path)?;
+        self.path = new_path;
+        Ok(())
+    }
 }
 
 // Add a Drop implementation for Log to unlock the file
