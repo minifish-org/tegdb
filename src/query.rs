@@ -159,13 +159,7 @@ pub enum ResultSet<'a> {
 }
 
 impl<'a> ResultSet<'a> {
-    /// Get columns from a SELECT result
-    pub fn columns(&self) -> Option<&[String]> {
-        match self {
-            ResultSet::Select { columns, .. } => Some(columns),
-            _ => None,
-        }
-    }
+    // No methods needed - columns() is provided by QueryResult in database.rs
 }
 
 /// SQL query processor with native row format support
@@ -193,11 +187,6 @@ impl<'a> QueryProcessor<'a> {
         let _ = processor.load_schemas_from_storage();
 
         processor
-    }
-
-    /// Get reference to the transaction
-    pub fn transaction(&self) -> &Transaction<'a> {
-        &self.transaction
     }
 
     /// Get mutable reference to the transaction

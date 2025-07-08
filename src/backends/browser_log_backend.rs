@@ -13,6 +13,7 @@ use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::log::LogBackend;
 #[cfg(target_arch = "wasm32")]
 use std::sync::Arc;
+#[cfg(target_arch = "wasm32")]
 use crate::protocol_utils::parse_storage_identifier;
 
 /// Browser-based storage backend for WASM platforms

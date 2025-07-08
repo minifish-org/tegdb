@@ -6,16 +6,18 @@
 //! - Clean, SQLite-like interface
 
 use tegdb::Database;
+use tempfile::NamedTempFile;
 
 fn main() -> tegdb::Result<()> {
     println!("=== TegDB Simple Usage Example ===\n");
 
-    // Clean up any existing database
-    let _ = std::fs::remove_file("simple_example.db");
+    // Create a temporary file for the database
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
     // 1. Open database (that's it - no configuration needed!)
     println!("1. Opening database...");
-    let mut db = Database::open("file://simple_example.db")?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
     println!("   ✓ Database opened with native binary format");
 
     // 2. Create table
@@ -68,7 +70,7 @@ fn main() -> tegdb::Result<()> {
     println!("   - SQLite-like interface for familiar usage");
 
     // Clean up
-    let _ = std::fs::remove_file("simple_example.db");
+    let _ = std::fs::remove_file(db_path);
 
     Ok(())
 }

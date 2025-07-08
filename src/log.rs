@@ -4,9 +4,6 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::backends::DefaultLogBackend;
 
-/// Type alias for uncommitted changes list
-type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
-
 /// KeyMap maps keys to shared buffers instead of owned Vecs
 pub type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
 
