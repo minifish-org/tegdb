@@ -86,7 +86,14 @@
             <button onclick="clearOutput()">Clear Output</button>
             <button onclick="clearStorage()">Clear Storage</button>
         </div>
-        
+        <div style="margin: 15px 0;">
+            <input id="sqlInput" type="text" placeholder="Enter SQL (e.g., SELECT * FROM users)" style="width: 70%; padding: 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc;">
+            <button onclick="runCustomSQL()">Run SQL</button>
+        </div>
+        <div style="margin: 15px 0;">
+            <input id="ddlInput" type="text" placeholder="Enter DDL/DML (e.g., CREATE TABLE, INSERT ...)" style="width: 70%; padding: 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc;">
+            <button onclick="runDDL()">Run DDL/DML</button>
+        </div>
         <div id="status" class="status" style="display: none;"></div>
         
         <div id="output"></div>
@@ -95,7 +102,9 @@
     <script type="module">
         import init, { 
             run_tegdb_browser_test, 
-            test_tegdb_performance 
+            test_tegdb_performance, 
+            query_sql,
+            execute_sql
         } from './pkg/tegdb_browser_test.js';
 
         let wasmModule = null;
@@ -178,12 +187,56 @@
             }
         };
 
+        window.runCustomSQL = async function() {
+            if (!wasmModule) {
+                showStatus('WASM module not loaded', 'error');
+                return;
+            }
+            const sql = document.getElementById('sqlInput').value.trim();
+            if (!sql) {
+                showStatus('Please enter a SQL statement.', 'error');
+                return;
+            }
+            showStatus('Running custom SQL...', 'loading');
+            appendOutput('▶️ SQL: ' + sql, 'info');
+            try {
+                const result = await query_sql(sql);
+                appendOutput('Result:\n' + result, 'success');
+                showStatus('✅ SQL executed successfully!', 'success');
+            } catch (error) {
+                appendOutput('❌ SQL error: ' + error, 'error');
+                showStatus('❌ SQL execution failed: ' + error, 'error');
+            }
+        };
+
+        window.runDDL = async function() {
+            if (!wasmModule) {
+                showStatus('WASM module not loaded', 'error');
+                return;
+            }
+            const sql = document.getElementById('ddlInput').value.trim();
+            if (!sql) {
+                showStatus('Please enter a DDL/DML statement.', 'error');
+                return;
+            }
+            showStatus('Running DDL/DML...', 'loading');
+            appendOutput('▶️ DDL/DML: ' + sql, 'info');
+            try {
+                const result = await execute_sql(sql);
+                appendOutput('Result:\n' + result, 'success');
+                showStatus('✅ DDL/DML executed successfully!', 'success');
+            } catch (error) {
+                appendOutput('❌ DDL/DML error: ' + error, 'error');
+                showStatus('❌ DDL/DML execution failed: ' + error, 'error');
+            }
+        };
+
         window.clearOutput = function() {
             output.innerHTML = '';
             hideStatus();
         };
 
-        window.clearStorage = function() {
+        window.clearStorage = async function() {
             try {
                 // Clear localStorage items that might be TegDB related
                 const keys = [];
@@ -193,11 +246,25 @@
                         keys.push(key);
                     }
                 }
-                
                 keys.forEach(key => localStorage.removeItem(key));
-                
-                appendOutput(`🧹 Cleared ${keys.length} storage items`, 'info');
-                showStatus(`Cleared ${keys.length} storage items`, 'success');
+                let indexedDBCleared = 0;
+                // Attempt to clear TegDB-related IndexedDB databases
+                if (window.indexedDB && indexedDB.databases) {
+                    const dbs = await indexedDB.databases();
+                    for (const db of dbs) {
+                        if (db.name && (db.name.includes('tegdb') || db.name.includes('browser://') || db.name.includes('localstorage://'))) {
+                            await new Promise((resolve, reject) => {
+                                const req = indexedDB.deleteDatabase(db.name);
+                                req.onsuccess = () => resolve();
+                                req.onerror = () => reject();
+                                req.onblocked = () => resolve(); // still count as attempted
+                            });
+                            indexedDBCleared++;
+                        }
+                    }
+                }
+                appendOutput(`🧹 Cleared ${keys.length} localStorage items and ${indexedDBCleared} IndexedDB databases`, 'info');
+                showStatus(`Cleared ${keys.length} localStorage items and ${indexedDBCleared} IndexedDB databases`, 'success');
             } catch (error) {
                 appendOutput('❌ Failed to clear storage: ' + error, 'error');
                 showStatus('Failed to clear storage: ' + error, 'error');
