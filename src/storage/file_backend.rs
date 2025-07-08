@@ -5,9 +5,9 @@ use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
-use crate::storage_trait::StorageBackend;
-use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::error::{Error, Result};
+use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
+use crate::storage_trait::StorageBackend;
 use std::sync::Arc;
 
 /// Type alias for uncommitted changes list
@@ -24,7 +24,7 @@ pub struct FileBackend {
 impl StorageBackend for FileBackend {
     fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
         let path = PathBuf::from(identifier);
-        
+
         // Create directory if it doesn't exist
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(Error::from)?;
@@ -68,7 +68,8 @@ impl StorageBackend for FileBackend {
             let value_len = u32::from_be_bytes(len_buf);
 
             // Basic validation
-            if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size {
+            if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size
+            {
                 break; // Invalid entry, treat as corruption
             }
 

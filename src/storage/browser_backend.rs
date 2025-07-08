@@ -1,16 +1,16 @@
 #[cfg(target_arch = "wasm32")]
+use serde::{Deserialize, Serialize};
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{window, Storage};
-#[cfg(target_arch = "wasm32")]
-use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "wasm32")]
-use crate::storage_trait::StorageBackend;
+use crate::error::{Error, Result};
 #[cfg(target_arch = "wasm32")]
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 #[cfg(target_arch = "wasm32")]
-use crate::error::{Error, Result};
+use crate::storage_trait::StorageBackend;
 #[cfg(target_arch = "wasm32")]
 use std::sync::Arc;
 
@@ -38,7 +38,8 @@ impl StorageBackend for BrowserBackend {
             .trim_start_matches("indexeddb://")
             .to_string();
 
-        let window = window().ok_or_else(|| Error::Other("No window object available".to_string()))?;
+        let window =
+            window().ok_or_else(|| Error::Other("No window object available".to_string()))?;
         let storage = window
             .local_storage()
             .map_err(|_| Error::Other("Cannot access localStorage".to_string()))?
@@ -50,15 +51,15 @@ impl StorageBackend for BrowserBackend {
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
         let mut key_map = KeyMap::new();
         let log_key = format!("{}:log", self.db_name);
-        
+
         // Load existing log data from localStorage
         if let Ok(Some(log_data)) = self.storage.get_item(&log_key) {
             let entries: Vec<LogEntry> = serde_json::from_str(&log_data)
                 .map_err(|e| Error::Other(format!("Failed to parse stored log: {}", e)))?;
-            
+
             let mut uncommitted_changes = Vec::new();
             let mut committed = false;
-            
+
             // Replay log entries (same logic as file backend)
             for entry in entries {
                 if entry.key == TX_COMMIT_MARKER {
@@ -66,10 +67,12 @@ impl StorageBackend for BrowserBackend {
                     committed = true;
                 } else {
                     // Validate entry size
-                    if entry.key.len() > config.max_key_size || entry.value.len() > config.max_value_size {
+                    if entry.key.len() > config.max_key_size
+                        || entry.value.len() > config.max_value_size
+                    {
                         break; // Invalid entry
                     }
-                    
+
                     let old_value = if entry.value.is_empty() {
                         key_map.remove(&entry.key)
                     } else {
@@ -78,7 +81,7 @@ impl StorageBackend for BrowserBackend {
                     uncommitted_changes.push((entry.key, old_value));
                 }
             }
-            
+
             // Rollback uncommitted changes if we saw a commit marker
             if committed {
                 for (key, old_value) in uncommitted_changes.into_iter().rev() {
@@ -90,7 +93,7 @@ impl StorageBackend for BrowserBackend {
                 }
             }
         }
-        
+
         Ok(key_map)
     }
 
@@ -104,28 +107,28 @@ impl StorageBackend for BrowserBackend {
         }
 
         let log_key = format!("{}:log", self.db_name);
-        
+
         // Read existing log
         let mut entries: Vec<LogEntry> = if let Ok(Some(data)) = self.storage.get_item(&log_key) {
             serde_json::from_str(&data).unwrap_or_default()
         } else {
             Vec::new()
         };
-        
+
         // Append new entry
         entries.push(LogEntry {
             key: key.to_vec(),
             value: value.to_vec(),
         });
-        
+
         // Store back to localStorage
         let serialized = serde_json::to_string(&entries)
             .map_err(|e| Error::Other(format!("Failed to serialize log: {}", e)))?;
-        
+
         self.storage
             .set_item(&log_key, &serialized)
             .map_err(|_| Error::Other("Failed to write to localStorage".to_string()))?;
-        
+
         Ok(())
     }
 
@@ -154,19 +157,19 @@ impl StorageBackend for BrowserBackend {
 
         let old_log_key = format!("{}:log", self.db_name);
         let new_log_key = format!("{}:log", new_db_name);
-        
+
         // Copy data from old key to new key
         if let Ok(Some(data)) = self.storage.get_item(&old_log_key) {
             self.storage
                 .set_item(&new_log_key, &data)
                 .map_err(|_| Error::Other("Failed to copy to new storage key".to_string()))?;
-            
+
             // Remove old data
             self.storage
                 .remove_item(&old_log_key)
                 .map_err(|_| Error::Other("Failed to remove old storage key".to_string()))?;
         }
-        
+
         self.db_name = new_db_name;
         Ok(())
     }

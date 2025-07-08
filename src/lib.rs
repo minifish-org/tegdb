@@ -52,9 +52,9 @@ pub mod error;
 pub mod log;
 pub mod native_row_format;
 pub mod sql_utils;
-pub mod storage_format;
-pub mod storage_engine;
 pub mod storage;
+pub mod storage_engine;
+pub mod storage_format;
 pub mod storage_trait;
 
 // Make these modules public when dev feature is enabled or when running tests
@@ -105,5 +105,7 @@ pub mod low_level {
     pub use crate::parser::{parse_sql, SqlValue, Statement};
     pub use crate::planner::{ExecutionPlan, PlannerConfig, QueryPlanner};
     pub use crate::query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
-    pub use crate::storage_engine::{EngineConfig, StorageEngine, Transaction as EngineTransaction};
+    pub use crate::storage_engine::{
+        EngineConfig, StorageEngine, Transaction as EngineTransaction,
+    };
 }

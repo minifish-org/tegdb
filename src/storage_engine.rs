@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
-use crate::log::{Log, KeyMap, LogConfig, TX_COMMIT_MARKER};
+use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub struct StorageEngine {
     log: Log,
     key_map: KeyMap,
     config: EngineConfig,
-    identifier: String,  // Store the database identifier
+    identifier: String, // Store the database identifier
 }
 
 // Type alias for scan result (returns keys and shared buffer Arcs for values)
@@ -148,7 +148,7 @@ impl StorageEngine {
     pub fn compact(&mut self) -> Result<()> {
         // Create a temporary identifier for the new log
         let tmp_identifier = format!("{}.new", self.current_identifier());
-        
+
         let (mut new_log, new_key_map) = self.construct_log(tmp_identifier.clone())?;
 
         // Rename the new log to replace the current one
@@ -367,5 +367,3 @@ impl Drop for Transaction<'_> {
         }
     }
 }
-
-

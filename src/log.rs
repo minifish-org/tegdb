@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::Result;
-use crate::storage_trait::StorageBackend;
 use crate::storage::DefaultBackend;
+use crate::storage_trait::StorageBackend;
 
 /// Type alias for uncommitted changes list
 type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;

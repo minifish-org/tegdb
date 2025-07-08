@@ -913,7 +913,10 @@ impl<'a> QueryProcessor<'a> {
             }
 
             // Deserialize the row and check the column value
-            if let Ok(row_data) = self.storage_format.deserialize_row(&value_bytes_arc, schema) {
+            if let Ok(row_data) = self
+                .storage_format
+                .deserialize_row(&value_bytes_arc, schema)
+            {
                 if let Some(existing_value) = row_data.get(column_name) {
                     if existing_value == value && existing_value != &SqlValue::Null {
                         return Ok(true); // Violation found - value exists for a different primary key
