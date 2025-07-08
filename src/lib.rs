@@ -11,7 +11,7 @@
 //!
 //! # fn main() -> Result<()> {
 //!     // Open or create a database
-//!     let mut db = Database::open("my_database.db")?;
+//!     let mut db = Database::open("file://my_database.db")?;
 //!     
 //!     // Create table
 //!     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
@@ -55,6 +55,7 @@ pub mod native_row_format;
 pub mod sql_utils;
 pub mod storage_engine;
 pub mod storage_format;
+pub mod protocol_utils;
 
 // Make these modules public when dev feature is enabled or when running tests
 #[cfg(any(feature = "dev", test))]

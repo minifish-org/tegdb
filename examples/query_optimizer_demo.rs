@@ -2,7 +2,7 @@ use std::time::Instant;
 use tegdb::{Database, Result};
 
 fn main() -> Result<()> {
-    let mut db = Database::open("query_optimizer_demo.db")?;
+    let mut db = Database::open("file://query_optimizer_demo.db")?;
 
     // Create a test table with composite primary key
     db.execute("DROP TABLE IF EXISTS products")?;

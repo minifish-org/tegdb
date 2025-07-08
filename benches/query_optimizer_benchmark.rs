@@ -6,7 +6,7 @@ fn setup_test_database() -> Result<Database> {
     // Clean up any existing test database
     let _ = fs::remove_file("bench_optimizer_test.db");
 
-    let mut db = Database::open("bench_optimizer_test.db")?;
+    let mut db = Database::open("file://bench_optimizer_test.db")?;
 
     // Create a table with composite primary key
     db.execute("DROP TABLE IF EXISTS products")?;

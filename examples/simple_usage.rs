@@ -15,7 +15,7 @@ fn main() -> tegdb::Result<()> {
 
     // 1. Open database (that's it - no configuration needed!)
     println!("1. Opening database...");
-    let mut db = Database::open("simple_example.db")?;
+    let mut db = Database::open("file://simple_example.db")?;
     println!("   ✓ Database opened with native binary format");
 
     // 2. Create table

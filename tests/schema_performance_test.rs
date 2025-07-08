@@ -12,7 +12,7 @@ fn test_schema_loading_performance() -> Result<()> {
 
     // Create database with multiple tables
     {
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path))?;
 
         // Create several tables to make schema loading noticeable
         for i in 0..5 {
@@ -31,7 +31,7 @@ fn test_schema_loading_performance() -> Result<()> {
     // Measure performance of multiple database operations
     {
         let start = Instant::now();
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path))?;
         let schema_load_time = start.elapsed();
 
         println!("Schema loading time: {schema_load_time:?}");
@@ -70,7 +70,7 @@ fn test_schema_sharing_across_operations() -> Result<()> {
 
     // Test that schemas are properly shared and updated
     {
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path))?;
 
         // Create a table
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")?;
@@ -95,7 +95,7 @@ fn test_schema_sharing_across_operations() -> Result<()> {
 
     // Verify persistence
     {
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path))?;
 
         // Both tables should still be available
         let users_result = db.query("SELECT * FROM users").unwrap();

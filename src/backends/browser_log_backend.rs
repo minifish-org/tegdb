@@ -13,6 +13,7 @@ use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::log::LogBackend;
 #[cfg(target_arch = "wasm32")]
 use std::sync::Arc;
+use crate::protocol_utils::parse_storage_identifier;
 
 /// Browser-based storage backend for WASM platforms
 #[cfg(target_arch = "wasm32")]
@@ -31,12 +32,16 @@ struct LogEntry {
 #[cfg(target_arch = "wasm32")]
 impl LogBackend for BrowserLogBackend {
     fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
-        // Parse different browser storage formats
-        let db_name = identifier
-            .trim_start_matches("browser://")
-            .trim_start_matches("localstorage://")
-            .trim_start_matches("indexeddb://")
-            .to_string();
+        // Parse protocol and extract database name
+        let (protocol, db_name) = parse_storage_identifier(&identifier);
+        
+        // Validate protocol for browser backend
+        if !matches!(protocol, "browser" | "localstorage" | "indexeddb") {
+            return Err(Error::Other(format!(
+                "BrowserLogBackend only supports 'browser://', 'localstorage://', or 'indexeddb://' protocols, got '{}://'",
+                protocol
+            )));
+        }
 
         let window =
             window().ok_or_else(|| Error::Other("No window object available".to_string()))?;
@@ -45,7 +50,7 @@ impl LogBackend for BrowserLogBackend {
             .map_err(|_| Error::Other("Cannot access localStorage".to_string()))?
             .ok_or_else(|| Error::Other("localStorage not available".to_string()))?;
 
-        Ok(Self { db_name, storage })
+        Ok(Self { db_name: db_name.to_string(), storage })
     }
 
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {

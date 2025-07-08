@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 fn test_transaction_atomicity() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup initial data
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
@@ -54,7 +54,7 @@ fn test_transaction_atomicity() -> Result<()> {
 fn test_transaction_consistency() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test schema
     db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER NOT NULL)")?;
@@ -98,7 +98,7 @@ fn test_transaction_consistency() -> Result<()> {
 fn test_transaction_isolation() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER)")?;
@@ -136,7 +136,7 @@ fn test_transaction_durability() -> Result<()> {
 
     // Phase 1: Create data and commit
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
         db.execute("CREATE TABLE persistent_data (id INTEGER PRIMARY KEY, value TEXT)")?;
 
         let mut tx = db.begin_transaction()?;
@@ -147,7 +147,7 @@ fn test_transaction_durability() -> Result<()> {
 
     // Phase 2: Reopen and verify data survived
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
         let result = db.query("SELECT * FROM persistent_data ORDER BY id")?;
         assert_eq!(result.rows().len(), 2);
 
@@ -173,7 +173,7 @@ fn test_transaction_durability() -> Result<()> {
 fn test_transaction_rollback_scenarios() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db.execute("CREATE TABLE test_rollback (id INTEGER PRIMARY KEY, name TEXT)")?;
@@ -219,7 +219,7 @@ fn test_transaction_rollback_scenarios() -> Result<()> {
 fn test_concurrent_transaction_patterns() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup shared counter table
     db.execute("CREATE TABLE shared_counter (id INTEGER PRIMARY KEY, value INTEGER)")?;

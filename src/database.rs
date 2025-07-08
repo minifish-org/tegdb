@@ -11,6 +11,7 @@ use crate::{
     storage_engine::StorageEngine,
     Result,
 };
+use crate::protocol_utils::parse_storage_identifier;
 use std::{
     collections::HashMap,
     path::Path,
@@ -31,8 +32,34 @@ pub struct Database {
 
 impl Database {
     /// Create or open database
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let storage = StorageEngine::new(path.as_ref().to_path_buf())?;
+    /// 
+    /// Only accepts absolute paths with the file:// protocol.
+    /// Examples:
+    /// - ✅ file:///absolute/path/to/db
+    /// - ❌ relative/path (no protocol)
+    /// - ❌ file://relative/path (relative path with protocol)
+    pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
+        let path_str = path.as_ref();
+        let (protocol, path_part) = parse_storage_identifier(path_str);
+        
+        // Only support file protocol
+        if protocol != "file" {
+            return Err(crate::Error::Other(format!(
+                "Unsupported protocol: {}. Only 'file://' protocol is supported.",
+                protocol
+            )));
+        }
+        
+        // Check if path is absolute
+        let path_buf = Path::new(path_part);
+        if !path_buf.is_absolute() {
+            return Err(crate::Error::Other(format!(
+                "Path must be absolute. Got: '{}'. Use absolute path like 'file:///absolute/path/to/db'",
+                path_str
+            )));
+        }
+        
+        let storage = StorageEngine::new(path_buf.to_path_buf())?;
 
         // Load all table schemas into the catalog at database initialization
         let catalog = Catalog::load_from_storage(&storage)?;

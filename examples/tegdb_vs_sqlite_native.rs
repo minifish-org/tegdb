@@ -153,7 +153,7 @@ struct BenchmarkResults {
 fn test_tegdb_native(row_count: usize) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
     let start = Instant::now();
 
-    let mut db = TegDatabase::open("tegdb_native.db")?;
+    let mut db = TegDatabase::open("file://tegdb_native.db")?;
     let creation_time = start.elapsed().as_nanos();
 
     // Create table

@@ -1,14 +1,15 @@
 //! Integration test for simplified Database API
 
 use tegdb::{Database, SqlValue};
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_simplified_api() {
-    let db_path = "test_simplified.db";
-    let _ = std::fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
     // Test that we can create database without configuration
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     // Test DDL
     db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value REAL)")
@@ -53,18 +54,15 @@ fn test_simplified_api() {
         .expect("Failed to query after commit");
 
     assert_eq!(final_result.rows()[0][0], SqlValue::Real(3.0));
-
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
 }
 
 #[test]
 fn test_database_without_config() {
-    let db_path = "test_no_config.db";
-    let _ = std::fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
     // This should work without any configuration
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     // Should be able to create and use table immediately
     db.execute("CREATE TABLE simple (id INTEGER PRIMARY KEY)")
@@ -77,7 +75,4 @@ fn test_database_without_config() {
 
     assert_eq!(result.len(), 1);
     assert_eq!(result.rows()[0][0], SqlValue::Integer(42));
-
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
 }

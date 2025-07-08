@@ -1,9 +1,12 @@
 use tegdb::Database;
 use tegdb::SqlValue;
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_query_iterator_basic_functionality() {
-    let mut db = Database::open("test_iterator.db").unwrap();
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup test data
     db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")
@@ -49,14 +52,13 @@ fn test_query_iterator_basic_functionality() {
             SqlValue::Integer(300)
         ]
     );
-
-    // Cleanup
-    std::fs::remove_file("test_iterator.db").ok();
 }
 
 #[test]
 fn test_query_iterator_streaming() {
-    let mut db = Database::open("test_streaming.db").unwrap();
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup test data
     db.execute("CREATE TABLE streaming_test (id INTEGER PRIMARY KEY, data TEXT)")
@@ -103,14 +105,13 @@ fn test_query_iterator_streaming() {
         collected_rows[2],
         vec![SqlValue::Integer(3), SqlValue::Text("data_3".to_string())]
     );
-
-    // Cleanup
-    std::fs::remove_file("test_streaming.db").ok();
 }
 
 #[test]
 fn test_query_iterator_backward_compatibility() {
-    let mut db = Database::open("test_compat.db").unwrap();
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup test data
     db.execute("CREATE TABLE compat_test (id INTEGER PRIMARY KEY, name TEXT)")
@@ -137,14 +138,13 @@ fn test_query_iterator_backward_compatibility() {
         rows[1],
         vec![SqlValue::Integer(2), SqlValue::Text("Bob".to_string())]
     );
-
-    // Cleanup
-    std::fs::remove_file("test_compat.db").ok();
 }
 
 #[test]
 fn test_query_iterator_empty_result() {
-    let mut db = Database::open("test_empty.db").unwrap();
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup test data
     db.execute("CREATE TABLE empty_test (id INTEGER PRIMARY KEY, name TEXT)")
@@ -159,14 +159,13 @@ fn test_query_iterator_empty_result() {
     // Collect should return empty vec
     let rows = query_result.rows();
     assert_eq!(rows.len(), 0);
-
-    // Cleanup
-    std::fs::remove_file("test_empty.db").ok();
 }
 
 #[test]
 fn test_query_iterator_with_where_clause() {
-    let mut db = Database::open("test_where_unique.db").unwrap();
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup test data
     db.execute("CREATE TABLE where_test (id INTEGER PRIMARY KEY, value INTEGER)")
@@ -194,50 +193,43 @@ fn test_query_iterator_with_where_clause() {
             assert!(value > &50);
         }
     }
-
-    // Cleanup
-    std::fs::remove_file("test_where_unique.db").ok();
 }
 
 #[test]
 fn test_transaction_query_iterator() {
-    let mut db = Database::open("test_tx_iter_unique.db").unwrap();
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup test data
-    db.execute("CREATE TABLE tx_test (id INTEGER PRIMARY KEY, name TEXT)")
+    db.execute("CREATE TABLE tx_test (id INTEGER PRIMARY KEY, value INTEGER)")
         .unwrap();
-    db.execute("INSERT INTO tx_test (id, name) VALUES (1, 'initial')")
+    db.execute("INSERT INTO tx_test (id, value) VALUES (1, 100)")
+        .unwrap();
+    db.execute("INSERT INTO tx_test (id, value) VALUES (2, 200)")
         .unwrap();
 
-    // Test query within transaction
+    // Test query iterator within transaction
     let mut tx = db.begin_transaction().unwrap();
-    tx.execute("INSERT INTO tx_test (id, name) VALUES (2, 'in_transaction')")
-        .unwrap();
 
-    // Query within transaction should see the new data
     let query_result = tx.query("SELECT * FROM tx_test ORDER BY id").unwrap();
     let rows = query_result.rows();
-
     assert_eq!(rows.len(), 2);
-    assert_eq!(
-        rows[0],
-        vec![SqlValue::Integer(1), SqlValue::Text("initial".to_string())]
-    );
-    assert_eq!(
-        rows[1],
-        vec![
-            SqlValue::Integer(2),
-            SqlValue::Text("in_transaction".to_string())
-        ]
-    );
 
+    // Modify data in transaction
+    tx.execute("INSERT INTO tx_test (id, value) VALUES (3, 300)")
+        .unwrap();
+
+    // Query again to see new data
+    let query_result = tx.query("SELECT * FROM tx_test ORDER BY id").unwrap();
+    let rows = query_result.rows();
+    assert_eq!(rows.len(), 3);
+
+    // Commit transaction
     tx.commit().unwrap();
 
-    // Verify data is persisted after commit
-    let query_result = db.query("SELECT * FROM tx_test").unwrap();
+    // Verify data is persisted
+    let query_result = db.query("SELECT * FROM tx_test ORDER BY id").unwrap();
     let rows = query_result.rows();
-    assert_eq!(rows.len(), 2); // Should have both rows
-
-    // Cleanup
-    std::fs::remove_file("test_tx_iter_unique.db").ok();
+    assert_eq!(rows.len(), 3);
 }

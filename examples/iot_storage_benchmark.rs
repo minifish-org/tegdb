@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     // Clean up any existing file
     let _ = std::fs::remove_file(&db_path);
 
-    let mut db = Database::open(&db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Create a table with a meaningful composite primary key
     db.execute(

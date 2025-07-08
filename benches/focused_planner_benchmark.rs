@@ -21,7 +21,7 @@ fn focused_planner_benchmark(c: &mut Criterion) {
     let _ = fs::remove_file(&sqlite_path);
 
     // Setup TegDB
-    let mut tegdb = tegdb::Database::open(&tegdb_path).expect("Failed to create TegDB database");
+    let mut tegdb = tegdb::Database::open(&format!("file://{}", tegdb_path.display())).expect("Failed to create TegDB database");
 
     // Setup SQLite
     let sqlite = Connection::open(&sqlite_path).unwrap();

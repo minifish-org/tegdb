@@ -15,7 +15,7 @@ fn main() -> tegdb::Result<()> {
     let _ = std::fs::remove_file("arithmetic_example.db");
 
     // Create database
-    let mut db = Database::open("arithmetic_example.db")?;
+    let mut db = Database::open("file://arithmetic_example.db")?;
 
     // Create a products table
     println!("1. Creating products table...");

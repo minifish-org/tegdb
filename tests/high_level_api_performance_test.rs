@@ -106,7 +106,7 @@ impl SqlExecutionMetrics {
 fn create_test_db() -> Result<Database> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
-    Database::open(db_path)
+    Database::open(&format!("file://{}", db_path.display()))
 }
 
 /// Setup a test table with sample data

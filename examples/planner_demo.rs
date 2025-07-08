@@ -29,7 +29,7 @@ fn main() -> Result<()> {
 fn setup_test_database() -> Result<()> {
     println!("1. Setting up test database with sample data...");
 
-    let mut db = Database::open("planner_demo.db")?;
+    let mut db = Database::open("file://planner_demo.db")?;
 
     // Clean up existing tables
     let _ = db.execute("DROP TABLE IF EXISTS users");
@@ -169,7 +169,7 @@ fn demonstrate_optimization_strategies() -> Result<()> {
 fn demonstrate_execution_comparison() -> Result<()> {
     println!("4. Comparing execution approaches...");
 
-    let mut db = Database::open("planner_demo.db")?;
+    let mut db = Database::open("file://planner_demo.db")?;
 
     // Test different query patterns
     let test_queries = vec![

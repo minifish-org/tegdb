@@ -1,15 +1,13 @@
-use std::fs;
 use tegdb::{Database, Result};
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_planner_integration_in_database() -> Result<()> {
-    let db_path = "test_planner_integration.db";
-
-    // Clean up any existing database
-    let _ = fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
     {
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         // Create a test table
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
@@ -43,21 +41,16 @@ fn test_planner_integration_in_database() -> Result<()> {
         println!("✓ Planner integration test passed - queries executed successfully through planner pipeline");
     }
 
-    // Clean up
-    let _ = fs::remove_file(db_path);
-
     Ok(())
 }
 
 #[test]
 fn test_crud_operations_with_planner() -> Result<()> {
-    let db_path = "test_crud_planner.db";
-
-    // Clean up any existing database
-    let _ = fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
     {
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         // CREATE
         db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
@@ -93,9 +86,6 @@ fn test_crud_operations_with_planner() -> Result<()> {
 
         println!("✓ CRUD operations through planner pipeline work correctly");
     }
-
-    // Clean up
-    let _ = fs::remove_file(db_path);
 
     Ok(())
 }

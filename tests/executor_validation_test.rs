@@ -5,7 +5,7 @@ fn setup_test_db() -> Result<(Database, TempDir)> {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().join("test.db");
 
-    let mut db = Database::open(&path)?;
+    let mut db = Database::open(&format!("file://{}", path.display()))?;
 
     // Create test table
     db.execute(

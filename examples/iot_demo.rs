@@ -6,7 +6,7 @@ fn main() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     println!("=== IOT (Index-Organized Table) Demo ===");
 

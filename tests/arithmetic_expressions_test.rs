@@ -1,13 +1,14 @@
 //! Test arithmetic expressions in UPDATE statements
 
 use tegdb::Database;
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_arithmetic_expressions_in_update() {
-    let db_path = "test_arithmetic.db";
-    let _ = std::fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     // Create test table
     db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, value INTEGER, score REAL)")
@@ -89,9 +90,6 @@ fn test_arithmetic_expressions_in_update() {
             assert_eq!(*value, tegdb::SqlValue::Integer(35)); // 15 + (10 * 2) = 35
         }
     }
-
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
 }
 
 #[test]
@@ -101,10 +99,10 @@ fn test_arithmetic_expression_parsing() {
 
     // This requires accessing the parser directly, which needs dev features
     // For now, we'll test through the database API which exercises the parser
-    let db_path = "test_parsing.db";
-    let _ = std::fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, a INTEGER, b INTEGER)")
         .expect("Failed to create table");
@@ -134,7 +132,4 @@ fn test_arithmetic_expression_parsing() {
             }
         }
     }
-
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
 }

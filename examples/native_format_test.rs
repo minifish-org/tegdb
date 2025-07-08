@@ -12,7 +12,7 @@ fn main() -> tegdb::Result<()> {
 
     // Test 1: Create database (now always uses native format)
     println!("1. Creating database with native binary row format...");
-    let mut db = Database::open("test_native.db")?;
+    let mut db = Database::open("file://test_native.db")?;
     println!("   ✓ Database created successfully");
 
     // Test 2: Create table

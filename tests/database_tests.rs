@@ -16,7 +16,7 @@ fn test_database_open_and_basic_operations() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Test CREATE TABLE
     let affected =
@@ -64,7 +64,7 @@ fn test_query_result_interface() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db.execute(
@@ -112,7 +112,7 @@ fn test_database_transactions() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test table
     db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER)")?;
@@ -200,7 +200,7 @@ fn test_database_data_types() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Test all supported data types
     db.execute(
@@ -276,7 +276,7 @@ fn test_database_where_clauses() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db.execute(
@@ -319,7 +319,7 @@ fn test_database_order_by_and_limit() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db.execute("CREATE TABLE scores (id INTEGER PRIMARY KEY, player TEXT, score INTEGER)")?;
@@ -429,7 +429,7 @@ fn test_database_error_handling() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Test SQL parse errors
     let result = db.execute("INVALID SQL STATEMENT");
@@ -470,14 +470,14 @@ fn test_database_schema_persistence() -> Result<()> {
 
     // Create database and table in first session
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
         db.execute("CREATE TABLE persistent_test (id INTEGER PRIMARY KEY, data TEXT)")?;
         db.execute("INSERT INTO persistent_test (id, data) VALUES (1, 'test data')")?;
     }
 
     // Reopen database and verify schema and data are preserved
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         // Should be able to query existing data
         let result = db.query("SELECT * FROM persistent_test").unwrap();
@@ -520,17 +520,17 @@ fn test_database_concurrent_access() -> Result<()> {
 
     // Create database with initial data
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
         db.execute("CREATE TABLE counter (id INTEGER PRIMARY KEY, value INTEGER)")?;
         db.execute("INSERT INTO counter (id, value) VALUES (1, 0)")?;
     }
 
     // Test that multiple Database instances can be created
     // (though they might conflict at the engine level)
-    let mut db1 = Database::open(&db_path)?;
+    let mut db1 = Database::open(&format!("file://{}", db_path.display()))?;
 
     // This might fail if the engine doesn't support concurrent access
-    let db2_result = Database::open(&db_path);
+    let db2_result = Database::open(&format!("file://{}", db_path.display()));
 
     // Document current behavior
     match db2_result {
@@ -556,7 +556,7 @@ fn test_database_drop_table() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Create and populate table
     db.execute("CREATE TABLE temp_table (id INTEGER PRIMARY KEY, name TEXT)")?;
@@ -595,7 +595,7 @@ fn test_database_complex_queries() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Create more complex test scenario
     db.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, amount REAL, status TEXT)")?;
@@ -670,7 +670,7 @@ fn test_database_acid_atomicity() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test table
     db.execute(
@@ -749,7 +749,7 @@ fn test_database_acid_consistency() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test table with constraints
     db.execute("CREATE TABLE inventory (id INTEGER PRIMARY KEY, product_name TEXT NOT NULL, quantity INTEGER, min_stock INTEGER)")?;
@@ -808,7 +808,7 @@ fn test_database_acid_isolation() -> Result<()> {
     // Test isolation - transactions should not see uncommitted changes from other transactions
     // Note: This test assumes the database supports some level of isolation
 
-    let mut db1 = Database::open(&db_path)?;
+    let mut db1 = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db1.execute("CREATE TABLE shared_counter (id INTEGER PRIMARY KEY, value INTEGER)")?;
@@ -835,7 +835,7 @@ fn test_database_acid_isolation() -> Result<()> {
     tx1.commit()?;
 
     // Try to open a second database connection for isolation testing
-    let db2_result = Database::open(&db_path);
+    let db2_result = Database::open(&format!("file://{}", db_path.display()));
     match db2_result {
         Ok(mut db2) => {
             // Second connection available - test that committed changes are visible
@@ -889,7 +889,7 @@ fn test_database_acid_durability() -> Result<()> {
 
     // Phase 1: Create and populate database with committed transaction
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         db.execute(
             "CREATE TABLE durable_test (id INTEGER PRIMARY KEY, description TEXT, value INTEGER)",
@@ -914,7 +914,7 @@ fn test_database_acid_durability() -> Result<()> {
 
     // Phase 2: Reopen database and verify committed data survived
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         // Data should still be there after restart
         let result = db
@@ -940,7 +940,7 @@ fn test_database_acid_durability() -> Result<()> {
 
     // Phase 3: Final restart to verify new transaction was also durable
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         let _result = db.query("SELECT COUNT(*) as count FROM durable_test");
         // COUNT might not be implemented, so let's count manually
@@ -966,7 +966,7 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test data
     db.execute(
@@ -1029,7 +1029,7 @@ fn test_database_acid_transaction_boundaries() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test table
     db.execute("CREATE TABLE boundary_test (id INTEGER PRIMARY KEY, step INTEGER, data TEXT)")?;
@@ -1085,7 +1085,7 @@ fn test_database_acid_large_transaction() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Setup test table
     db.execute(
@@ -1145,4 +1145,27 @@ fn test_database_acid_large_transaction() -> Result<()> {
     assert_eq!(result.rows().len(), 0);
 
     Ok(())
+}
+
+#[test]
+fn test_absolute_path_requirement() {
+    // Test that relative paths are rejected
+    let result = Database::open("file://relative/path.db");
+    assert!(result.is_err());
+    if let Err(e) = result {
+        assert!(e.to_string().contains("Path must be absolute"));
+    }
+
+    // Test that paths without protocol are rejected (they default to file protocol but fail on absolute path check)
+    let result = Database::open("just_a_path.db");
+    assert!(result.is_err());
+    if let Err(e) = result {
+        assert!(e.to_string().contains("Path must be absolute"));
+    }
+
+    // Test that absolute paths work
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
+    let result = Database::open(&format!("file://{}", db_path.display()));
+    assert!(result.is_ok());
 }

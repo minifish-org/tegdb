@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     let _ = fs::remove_file(db_path);
 
     {
-        let mut db = Database::open(db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path))?;
 
         println!("1. Creating test table and inserting data...");
 

@@ -6,7 +6,7 @@ fn main() -> Result<()> {
     let db_path = temp_file.path().to_path_buf();
 
     {
-        let mut db = Database::open(&db_path)?;
+        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         println!("Creating table...");
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;

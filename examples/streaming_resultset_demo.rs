@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     println!("=== Streaming ResultSet::Select Demo ===\n");
 
     // Create test database
-    let mut db = Database::open("streaming_resultset_demo.db")?;
+    let mut db = Database::open("file://streaming_resultset_demo.db")?;
 
     // Create test table
     println!("1. Setting up test data...");

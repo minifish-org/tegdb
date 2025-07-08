@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== TegDB Streaming API Integration Demo ===\n");
 
     // Create database with optimized streaming performance
-    let mut db = Database::open("demo_streaming_integration.db")?;
+    let mut db = Database::open("file://demo_streaming_integration.db")?;
 
     // Create test table
     println!("1. Creating test table with streaming-optimized structure...");

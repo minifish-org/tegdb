@@ -6,7 +6,7 @@ use tempfile::tempdir;
 fn test_explicit_transaction_basic_workflow() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_basic.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Begin transaction
     let mut tx = db.begin_transaction().unwrap();
@@ -35,7 +35,7 @@ fn test_explicit_transaction_basic_workflow() {
 fn test_explicit_transaction_rollback() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_rollback.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup initial data
     db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")
@@ -84,7 +84,7 @@ fn test_explicit_transaction_rollback() {
 fn test_explicit_transaction_error_handling() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_errors.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Test that operations work with explicit transactions
     let mut tx = db.begin_transaction().unwrap();
@@ -109,7 +109,7 @@ fn test_explicit_transaction_error_handling() {
 fn test_explicit_transaction_complex_operations() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_complex.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Start transaction
     let mut tx = db.begin_transaction().unwrap();
@@ -161,7 +161,7 @@ fn test_explicit_transaction_complex_operations() {
 fn test_explicit_transaction_nested_behavior() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_explicit_nested.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Start first transaction
     let mut tx1 = db.begin_transaction().unwrap();

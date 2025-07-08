@@ -17,7 +17,7 @@ fn main() -> Result<()> {
 
 fn test_file_log_backend() -> Result<()> {
     println!("   Creating file-based database...");
-    let mut db = Database::open("demo_file_log_backend.db")?;
+    let mut db = Database::open("file://demo_file_log_backend.db")?;
 
     println!("   Creating table and inserting data...");
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, score REAL)")?;

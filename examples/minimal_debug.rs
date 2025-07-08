@@ -1,10 +1,11 @@
 use tegdb::{Database, Result};
+use tempfile::NamedTempFile;
 
 fn main() -> Result<()> {
-    let db_path = "minimal_test.db";
-    let _ = std::fs::remove_file(db_path);
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = temp_file.path();
 
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
     // Create table
     println!("Creating table...");
@@ -58,6 +59,5 @@ fn main() -> Result<()> {
         println!("  Row {i}: {row:?}");
     }
 
-    let _ = std::fs::remove_file(db_path);
     Ok(())
 }

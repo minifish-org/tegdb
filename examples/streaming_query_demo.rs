@@ -2,7 +2,7 @@ use tegdb::Database;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a temporary database
-    let mut db = Database::open("streaming_demo.db")?;
+    let mut db = Database::open("file://streaming_demo.db")?;
 
     // Setup test data
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;

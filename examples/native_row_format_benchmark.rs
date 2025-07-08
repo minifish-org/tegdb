@@ -105,7 +105,7 @@ fn test_storage_format(
     let start = Instant::now();
 
     // Create database (now always uses native format)
-    let mut db = Database::open(db_path)?;
+    let mut db = Database::open(&format!("file://{}", db_path))?;
     let creation_time = start.elapsed().as_nanos();
 
     // Create table

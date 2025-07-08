@@ -5,7 +5,7 @@ use tempfile::tempdir;
 fn test_sql_integration_basic_operations() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_integration.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Create table
     let create_sql =
@@ -50,7 +50,7 @@ fn test_sql_integration_basic_operations() {
 fn test_sql_parser_edge_cases() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_parser.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Test case-insensitive keywords
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER)")
@@ -74,7 +74,7 @@ fn test_sql_parser_edge_cases() {
 fn test_sql_integration_transaction_isolation() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_isolation.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Setup initial data
     db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL)")
@@ -102,7 +102,7 @@ fn test_sql_integration_transaction_isolation() {
 fn test_sql_integration_constraints() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_constraints.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Create table with constraints
     let create_sql =
@@ -124,7 +124,7 @@ fn test_sql_integration_constraints() {
 fn test_sql_integration_complex_queries() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_complex.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Create table
     let create_sql =
@@ -153,7 +153,7 @@ fn test_sql_integration_complex_queries() {
 fn test_sql_drop_table() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("test_drop.db");
-    let mut db = Database::open(db_path).unwrap();
+    let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
 
     // Create table
     let create_sql = "CREATE TABLE temp_table (id INTEGER PRIMARY KEY, data TEXT)";

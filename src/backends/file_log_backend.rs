@@ -9,6 +9,7 @@ use crate::error::{Error, Result};
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::log::LogBackend;
 use std::sync::Arc;
+use crate::protocol_utils::parse_storage_identifier;
 
 /// Type alias for uncommitted changes list
 type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
@@ -23,7 +24,18 @@ pub struct FileLogBackend {
 #[cfg(not(target_arch = "wasm32"))]
 impl LogBackend for FileLogBackend {
     fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
-        let path = PathBuf::from(identifier);
+        // Parse protocol and extract file path
+        let (protocol, path_str) = parse_storage_identifier(&identifier);
+        
+        // Validate protocol for file backend
+        if protocol != "file" {
+            return Err(Error::Other(format!(
+                "FileLogBackend only supports 'file://' protocol, got '{}://'",
+                protocol
+            )));
+        }
+        
+        let path = PathBuf::from(path_str);
 
         // Create directory if it doesn't exist
         if let Some(dir) = path.parent() {

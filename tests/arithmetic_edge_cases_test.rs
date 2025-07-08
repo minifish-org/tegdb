@@ -1,13 +1,14 @@
 //! Test edge cases and error handling for arithmetic expressions
 
 use tegdb::Database;
+use std::fs;
 
 #[test]
 fn test_arithmetic_error_handling() {
-    let db_path = "test_error_handling.db";
-    let _ = std::fs::remove_file(db_path);
+    let db_path = std::env::current_dir().unwrap().join("test_arithmetic_error_handling.db");
+    let _ = fs::remove_file(&db_path);
 
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     // Create test table
     db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER)")
@@ -24,16 +25,15 @@ fn test_arithmetic_error_handling() {
     let result = db.execute("UPDATE test SET value = nonexistent + 5 WHERE id = 1");
     assert!(result.is_err(), "Should fail on non-existent column");
 
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
+    let _ = fs::remove_file(&db_path);
 }
 
 #[test]
 fn test_operator_precedence() {
-    let db_path = "test_precedence.db";
-    let _ = std::fs::remove_file(db_path);
+    let db_path = std::env::current_dir().unwrap().join("test_operator_precedence.db");
+    let _ = fs::remove_file(&db_path);
 
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     // Create test table
     db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER)")
@@ -76,16 +76,15 @@ fn test_operator_precedence() {
         }
     }
 
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
+    let _ = fs::remove_file(&db_path);
 }
 
 #[test]
 fn test_text_concatenation() {
-    let db_path = "test_concat.db";
-    let _ = std::fs::remove_file(db_path);
+    let db_path = std::env::current_dir().unwrap().join("test_text_concatenation.db");
+    let _ = fs::remove_file(&db_path);
 
-    let mut db = Database::open(db_path).expect("Failed to open database");
+    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
     // Create test table
     db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, text1 TEXT, text2 TEXT)")
@@ -108,6 +107,5 @@ fn test_text_concatenation() {
         }
     }
 
-    // Clean up
-    let _ = std::fs::remove_file(db_path);
+    let _ = fs::remove_file(&db_path);
 }
