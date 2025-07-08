@@ -5,19 +5,19 @@ fn main() -> Result<()> {
 
     // Native file backend (default)
     println!("1. Testing file backend...");
-    test_file_backend()?;
+    test_file_log_backend()?;
 
     // Browser storage backend (simulated - would work in WASM)
     println!("\n2. Testing browser storage backend simulation...");
-    test_browser_backend()?;
+    test_browser_log_backend()?;
 
     println!("\n🎉 Dual storage backend test completed successfully!");
     Ok(())
 }
 
-fn test_file_backend() -> Result<()> {
+fn test_file_log_backend() -> Result<()> {
     println!("   Creating file-based database...");
-    let mut db = Database::open("demo_file_backend.db")?;
+    let mut db = Database::open("demo_file_log_backend.db")?;
 
     println!("   Creating table and inserting data...");
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, score REAL)")?;
@@ -37,14 +37,14 @@ fn test_file_backend() -> Result<()> {
     Ok(())
 }
 
-fn test_browser_backend() -> Result<()> {
+fn test_browser_log_backend() -> Result<()> {
     // Note: This demonstrates how browser storage would work
     // In actual WASM, you'd use "browser://my-app-db" or "localstorage://my-app-db"
 
     println!("   Simulating browser storage with localstorage:// prefix...");
 
     // This will still use file backend on native, but demonstrates the interface
-    let mut db = Database::open("localstorage://demo_browser_backend")?;
+    let mut db = Database::open("localstorage://demo_browser_log_backend")?;
 
     println!("   Creating table and inserting data...");
     db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;

@@ -4,10 +4,10 @@ fn main() -> Result<()> {
     println!("=== TegDB Comprehensive Storage Backend Test ===\n");
 
     // Test file backend
-    test_file_backend()?;
+    test_file_log_backend()?;
 
     // Test browser backend simulation
-    test_browser_backend_simulation()?;
+    test_browser_log_backend_simulation()?;
 
     // Test edge cases
     test_edge_cases()?;
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn test_file_backend() -> Result<()> {
+fn test_file_log_backend() -> Result<()> {
     println!("1. Testing File Backend...");
 
     // Test 1: Basic CRUD operations
@@ -108,7 +108,7 @@ fn test_file_backend() -> Result<()> {
     Ok(())
 }
 
-fn test_browser_backend_simulation() -> Result<()> {
+fn test_browser_log_backend_simulation() -> Result<()> {
     println!("\n2. Testing Browser Backend Simulation...");
 
     // Test 1: Basic operations with browser-like identifiers

@@ -10,13 +10,13 @@ use crate::error::{Error, Result};
 #[cfg(target_arch = "wasm32")]
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 #[cfg(target_arch = "wasm32")]
-use crate::storage_trait::StorageBackend;
+use crate::log::LogBackend;
 #[cfg(target_arch = "wasm32")]
 use std::sync::Arc;
 
 /// Browser-based storage backend for WASM platforms
 #[cfg(target_arch = "wasm32")]
-pub struct BrowserBackend {
+pub struct BrowserLogBackend {
     db_name: String,
     storage: Storage,
 }
@@ -29,7 +29,7 @@ struct LogEntry {
 }
 
 #[cfg(target_arch = "wasm32")]
-impl StorageBackend for BrowserBackend {
+impl LogBackend for BrowserLogBackend {
     fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
         // Parse different browser storage formats
         let db_name = identifier
@@ -177,4 +177,4 @@ impl StorageBackend for BrowserBackend {
 
 // Export only when targeting WASM
 #[cfg(target_arch = "wasm32")]
-pub use BrowserBackend as DefaultBackend;
+pub use BrowserLogBackend as DefaultLogBackend;

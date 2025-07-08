@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
-use crate::storage_trait::StorageBackend;
+use crate::log::LogBackend;
 use std::sync::Arc;
 
 /// Type alias for uncommitted changes list
@@ -15,13 +15,13 @@ type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
 
 /// File-based storage backend for native platforms
 #[cfg(not(target_arch = "wasm32"))]
-pub struct FileBackend {
+pub struct FileLogBackend {
     path: PathBuf,
     file: std::fs::File,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl StorageBackend for FileBackend {
+impl LogBackend for FileLogBackend {
     fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
         let path = PathBuf::from(identifier);
 
@@ -165,7 +165,7 @@ impl StorageBackend for FileBackend {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl Drop for FileBackend {
+impl Drop for FileLogBackend {
     fn drop(&mut self) {
         // Ignore errors during drop, but try to unlock
         let _ = FileExt::unlock(&self.file);
@@ -174,4 +174,4 @@ impl Drop for FileBackend {
 
 // Export only when not targeting WASM
 #[cfg(not(target_arch = "wasm32"))]
-pub use FileBackend as DefaultBackend;
+pub use FileLogBackend as DefaultLogBackend;

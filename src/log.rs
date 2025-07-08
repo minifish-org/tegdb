@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::Result;
-use crate::storage::DefaultBackend;
-use crate::storage_trait::StorageBackend;
+use crate::backends::DefaultLogBackend;
 
 /// Type alias for uncommitted changes list
 type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
@@ -23,14 +22,37 @@ pub struct LogConfig {
     pub max_value_size: usize,
 }
 
+/// Trait for different log storage backends (file, browser, etc.)
+pub trait LogBackend {
+    /// Initialize storage with the given identifier and configuration
+    fn new(identifier: String, config: &LogConfig) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Build key map from stored data (load existing database)
+    fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap>;
+
+    /// Write an entry to storage
+    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()>;
+
+    /// Sync/flush data to persistent storage
+    fn sync_all(&mut self) -> Result<()>;
+
+    /// Truncate/clear storage to specified size
+    fn set_len(&mut self, size: u64) -> Result<()>;
+
+    /// Rename/move storage to new identifier
+    fn rename_to(&mut self, new_identifier: String) -> Result<()>;
+}
+
 /// Universal log structure that works with different storage backends
 pub struct Log {
-    backend: DefaultBackend,
+    backend: DefaultLogBackend,
 }
 
 impl Log {
     pub fn new(identifier: String, config: &LogConfig) -> Result<Self> {
-        let backend = DefaultBackend::new(identifier, config)?;
+        let backend = DefaultLogBackend::new(identifier, config)?;
         Ok(Self { backend })
     }
 

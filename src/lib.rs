@@ -50,12 +50,11 @@ pub mod catalog;
 pub mod database;
 pub mod error;
 pub mod log;
+pub mod backends;
 pub mod native_row_format;
 pub mod sql_utils;
-pub mod storage;
 pub mod storage_engine;
 pub mod storage_format;
-pub mod storage_trait;
 
 // Make these modules public when dev feature is enabled or when running tests
 #[cfg(any(feature = "dev", test))]
