@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>TegDB Browser Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #005a8b;
+        }
+        #output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 10px;
+            min-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007cba;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.loading {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status.success {
+            background-color: #d1edff;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗄️ TegDB Browser Backend Test</h1>
+        
+        <p>This page tests TegDB's browser storage backend using WebAssembly.</p>
+        <p><strong>Storage Backend:</strong> Browser (localStorage/IndexedDB simulation)</p>
+        
+        <div>
+            <button onclick="runBasicTest()">Run Basic Test</button>
+            <button onclick="runPerformanceTest()">Run Performance Test</button>
+            <button onclick="clearOutput()">Clear Output</button>
+            <button onclick="clearStorage()">Clear Storage</button>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div id="output"></div>
+    </div>
+
+    <script type="module">
+        import init, { 
+            run_tegdb_browser_test, 
+            test_tegdb_performance 
+        } from './pkg/tegdb_browser_test.js';
+
+        let wasmModule = null;
+        let output = null;
+        let status = null;
+
+        async function loadWasm() {
+            try {
+                wasmModule = await init();
+                console.log('✅ WASM module loaded successfully');
+                return true;
+            } catch (error) {
+                console.error('❌ Failed to load WASM module:', error);
+                showStatus('Failed to load WASM module: ' + error, 'error');
+                return false;
+            }
+        }
+
+        function showStatus(message, type = 'info') {
+            status.style.display = 'block';
+            status.className = `status ${type}`;
+            status.textContent = message;
+        }
+
+        function hideStatus() {
+            status.style.display = 'none';
+        }
+
+        function appendOutput(message, className = '') {
+            const line = document.createElement('div');
+            line.textContent = new Date().toLocaleTimeString() + ' | ' + message;
+            if (className) line.className = className;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Override console.log to capture WASM output
+        const originalLog = console.log;
+        console.log = function(...args) {
+            const message = args.join(' ');
+            appendOutput(message, 'info');
+            originalLog.apply(console, args);
+        };
+
+        window.runBasicTest = async function() {
+            if (!wasmModule) {
+                showStatus('WASM module not loaded', 'error');
+                return;
+            }
+
+            showStatus('Running basic TegDB browser test...', 'loading');
+            appendOutput('🚀 Starting TegDB Basic Test', 'info');
+            
+            try {
+                await run_tegdb_browser_test();
+                showStatus('✅ Basic test completed successfully!', 'success');
+                appendOutput('✅ Basic test completed successfully!', 'success');
+            } catch (error) {
+                showStatus('❌ Basic test failed: ' + error, 'error');
+                appendOutput('❌ Basic test failed: ' + error, 'error');
+            }
+        };
+
+        window.runPerformanceTest = async function() {
+            if (!wasmModule) {
+                showStatus('WASM module not loaded', 'error');
+                return;
+            }
+
+            showStatus('Running TegDB performance test...', 'loading');
+            appendOutput('🔥 Starting TegDB Performance Test', 'info');
+            
+            try {
+                await test_tegdb_performance();
+                showStatus('✅ Performance test completed successfully!', 'success');
+                appendOutput('✅ Performance test completed successfully!', 'success');
+            } catch (error) {
+                showStatus('❌ Performance test failed: ' + error, 'error');
+                appendOutput('❌ Performance test failed: ' + error, 'error');
+            }
+        };
+
+        window.clearOutput = function() {
+            output.innerHTML = '';
+            hideStatus();
+        };
+
+        window.clearStorage = function() {
+            try {
+                // Clear localStorage items that might be TegDB related
+                const keys = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key.includes('tegdb') || key.includes('localstorage://') || key.includes('browser://'))) {
+                        keys.push(key);
+                    }
+                }
+                
+                keys.forEach(key => localStorage.removeItem(key));
+                
+                appendOutput(`🧹 Cleared ${keys.length} storage items`, 'info');
+                showStatus(`Cleared ${keys.length} storage items`, 'success');
+            } catch (error) {
+                appendOutput('❌ Failed to clear storage: ' + error, 'error');
+                showStatus('Failed to clear storage: ' + error, 'error');
+            }
+        };
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', async function() {
+            output = document.getElementById('output');
+            status = document.getElementById('status');
+            
+            showStatus('Loading TegDB WASM module...', 'loading');
+            appendOutput('🔄 Loading TegDB WASM module...', 'info');
+            
+            const loaded = await loadWasm();
+            if (loaded) {
+                showStatus('✅ Ready to test TegDB browser backend!', 'success');
+                appendOutput('✅ TegDB WASM module loaded successfully!', 'success');
+                appendOutput('📱 Browser backend ready for testing', 'info');
+            }
+        });
+    </script>
+</body>
+</html>
