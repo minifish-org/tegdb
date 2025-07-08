@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod commit_marker_tests {
     use std::path::PathBuf;
-    use tegdb::storage::StorageEngine;
+    use tegdb::storage_engine::StorageEngine;
 
     #[test]
     fn test_commit_marker_and_crash_recovery() {

@@ -7,7 +7,7 @@ use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };
 use crate::sql_utils;
-use crate::storage::Transaction;
+use crate::storage_engine::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
 use std::collections::HashMap;
@@ -672,7 +672,7 @@ impl<'a> QueryProcessor<'a> {
 
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
 
-                for (key, value) in scan_iter {
+                for (key, value_arc) in scan_iter {
                     if let Some(limit) = limit {
                         if count >= *limit {
                             break;
@@ -681,7 +681,7 @@ impl<'a> QueryProcessor<'a> {
 
                     let matches = if let Some(filter_cond) = filter {
                         self.storage_format
-                            .matches_condition(&value, schema, filter_cond)
+                            .matches_condition(&value_arc, schema, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -712,13 +712,13 @@ impl<'a> QueryProcessor<'a> {
 
         let scan_results: Vec<_> = self.transaction.scan(schema_prefix..schema_end)?.collect();
 
-        for (key, value) in scan_results {
+        for (key, value_arc) in scan_results {
             let key_str = String::from_utf8_lossy(&key);
             if let Some(table_name) = key_str.strip_prefix("__schema__:") {
                 // Only load from storage if we don't already have this schema
                 if !self.table_schemas.contains_key(table_name) {
                     // Parse the schema using centralized utility
-                    if let Ok(schema_data) = String::from_utf8(value.to_vec()) {
+                    if let Ok(schema_data) = String::from_utf8(value_arc.to_vec()) {
                         if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
                         {
                             self.table_schemas.insert(table_name.to_string(), schema);
@@ -902,7 +902,7 @@ impl<'a> QueryProcessor<'a> {
 
         let scan_iter = self.transaction.scan(start_key..end_key)?;
 
-        for (key, value_bytes) in scan_iter {
+        for (key, value_bytes_arc) in scan_iter {
             let key_str = String::from_utf8_lossy(&key);
 
             // If we have a key to exclude, check if this is the same key
@@ -913,7 +913,7 @@ impl<'a> QueryProcessor<'a> {
             }
 
             // Deserialize the row and check the column value
-            if let Ok(row_data) = self.storage_format.deserialize_row(&value_bytes, schema) {
+            if let Ok(row_data) = self.storage_format.deserialize_row(&value_bytes_arc, schema) {
                 if let Some(existing_value) = row_data.get(column_name) {
                     if existing_value == value && existing_value != &SqlValue::Null {
                         return Ok(true); // Violation found - value exists for a different primary key

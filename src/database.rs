@@ -8,7 +8,7 @@ use crate::{
     catalog::Catalog,
     parser::{parse_sql, SqlValue},
     query::{QueryProcessor, TableSchema},
-    storage::StorageEngine,
+    storage_engine::StorageEngine,
     Result,
 };
 use std::{

@@ -2,7 +2,7 @@
 mod read_only_transaction_tests {
     use std::fs;
     use std::path::PathBuf;
-    use tegdb::storage::StorageEngine;
+    use tegdb::storage_engine::StorageEngine;
 
     #[test]
     fn test_read_only_transaction_optimization() {

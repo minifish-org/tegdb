@@ -36,6 +36,7 @@ pub struct StorageEngine {
     log: Log,
     key_map: KeyMap,
     config: EngineConfig,
+    identifier: String,  // Store the database identifier
 }
 
 // Type alias for scan result (returns keys and shared buffer Arcs for values)
@@ -49,17 +50,19 @@ impl StorageEngine {
 
     /// Creates a new database engine with custom configuration
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
-        let mut log = Log::new(path)?;
+        let path_str = path.to_string_lossy().to_string();
         let log_config = LogConfig {
             max_key_size: config.max_key_size,
             max_value_size: config.max_value_size,
         };
+        let mut log = Log::new(path_str.clone(), &log_config)?;
         let key_map = log.build_key_map(&log_config)?;
 
         let mut engine = Self {
             log,
             key_map,
             config,
+            identifier: path_str,
         };
 
         if engine.config.auto_compact {
@@ -143,17 +146,23 @@ impl StorageEngine {
 
     /// Manually triggers compaction to reclaim space
     pub fn compact(&mut self) -> Result<()> {
-        let mut tmp_path = self.log.path.clone();
-        tmp_path.set_extension("new");
+        // Create a temporary identifier for the new log
+        let tmp_identifier = format!("{}.new", self.current_identifier());
+        
+        let (mut new_log, new_key_map) = self.construct_log(tmp_identifier.clone())?;
 
-        let (mut new_log, new_key_map) = self.construct_log(tmp_path)?;
-
-        new_log.rename_to(self.log.path.clone())?;
+        // Rename the new log to replace the current one
+        new_log.rename_to(self.current_identifier())?;
 
         self.log = new_log;
         self.key_map = new_key_map;
 
         Ok(())
+    }
+
+    /// Get the current log identifier
+    fn current_identifier(&self) -> String {
+        self.identifier.clone()
     }
 
     /// Returns the number of key-value pairs in the database
@@ -167,9 +176,13 @@ impl StorageEngine {
     }
 
     /// Constructs a new log file with only current key-value pairs
-    fn construct_log(&mut self, path: PathBuf) -> Result<(Log, KeyMap)> {
+    fn construct_log(&mut self, identifier: String) -> Result<(Log, KeyMap)> {
         let mut new_key_map = KeyMap::new();
-        let mut new_log = Log::new(path)?;
+        let log_config = LogConfig {
+            max_key_size: self.config.max_key_size,
+            max_value_size: self.config.max_value_size,
+        };
+        let mut new_log = Log::new(identifier, &log_config)?;
         new_log.set_len(0)?;
         for (key, value) in &self.key_map {
             new_log.write_entry(key, value.as_ref())?;
