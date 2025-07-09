@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Remove existing file
     let _ = std::fs::remove_file(&path);
 
-    let mut db = Database::open(&format!("file://{}", path.display()))?;
+    let mut db = Database::open(format!("file://{}", path.display()))?;
 
     println!("Testing improved executor with validation...");
 

@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     // Clean up any existing file
     let _ = std::fs::remove_file(&db_path);
 
-    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+    let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     // Create table with a unique column
     println!("1. Creating table with UNIQUE constraint...");

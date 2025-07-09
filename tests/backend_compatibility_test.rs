@@ -65,7 +65,9 @@ fn test_basic_operations_both_backends() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Test CREATE TABLE
-        let affected = db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+        let affected = db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
+        )?;
         assert_eq!(affected, 0); // CREATE TABLE returns 0 affected rows
 
         // Test INSERT
@@ -89,7 +91,9 @@ fn test_basic_operations_both_backends() -> Result<()> {
         assert_eq!(affected, 0); // No rows deleted since Alice is now 31
 
         // Verify final state
-        let result = db.query("SELECT name, age FROM users ORDER BY name").unwrap();
+        let result = db
+            .query("SELECT name, age FROM users ORDER BY name")
+            .unwrap();
         assert_eq!(result.rows().len(), 1); // Alice remaining
         assert_eq!(result.rows()[0][0], SqlValue::Text("Alice".to_string()));
         assert_eq!(result.rows()[0][1], SqlValue::Integer(31));
@@ -120,7 +124,9 @@ fn test_transactions_both_backends() -> Result<()> {
             assert_eq!(affected2, 1);
 
             // Verify changes within transaction
-            let result = tx.query("SELECT id, balance FROM accounts ORDER BY id").unwrap();
+            let result = tx
+                .query("SELECT id, balance FROM accounts ORDER BY id")
+                .unwrap();
             assert_eq!(result.rows().len(), 2);
 
             // Check balances in transaction
@@ -134,7 +140,9 @@ fn test_transactions_both_backends() -> Result<()> {
         }
 
         // Verify changes persisted after transaction commit
-        let result = db.query("SELECT id, balance FROM accounts ORDER BY id").unwrap();
+        let result = db
+            .query("SELECT id, balance FROM accounts ORDER BY id")
+            .unwrap();
         let row1 = &result.rows()[0];
         let row2 = &result.rows()[1];
         assert_eq!(row1[1], SqlValue::Integer(800));
@@ -171,10 +179,26 @@ fn test_data_types_both_backends() -> Result<()> {
         // Test first row
         let row1 = &result.rows()[0];
         let id_pos = result.columns().iter().position(|c| c == "id").unwrap();
-        let text_pos = result.columns().iter().position(|c| c == "text_col").unwrap();
-        let int_pos = result.columns().iter().position(|c| c == "int_col").unwrap();
-        let real_pos = result.columns().iter().position(|c| c == "real_col").unwrap();
-        let null_pos = result.columns().iter().position(|c| c == "null_col").unwrap();
+        let text_pos = result
+            .columns()
+            .iter()
+            .position(|c| c == "text_col")
+            .unwrap();
+        let int_pos = result
+            .columns()
+            .iter()
+            .position(|c| c == "int_col")
+            .unwrap();
+        let real_pos = result
+            .columns()
+            .iter()
+            .position(|c| c == "real_col")
+            .unwrap();
+        let null_pos = result
+            .columns()
+            .iter()
+            .position(|c| c == "null_col")
+            .unwrap();
 
         assert_eq!(row1[id_pos], SqlValue::Integer(1));
         assert_eq!(row1[text_pos], SqlValue::Text("hello".to_string()));
@@ -205,11 +229,22 @@ fn test_schema_persistence_both_backends() -> Result<()> {
             assert_eq!(result.rows().len(), 1);
 
             // Find column positions
-            let id_pos = result.columns().iter().position(|c| c == "id").expect("id column not found");
-            let data_pos = result.columns().iter().position(|c| c == "data").expect("data column not found");
+            let id_pos = result
+                .columns()
+                .iter()
+                .position(|c| c == "id")
+                .expect("id column not found");
+            let data_pos = result
+                .columns()
+                .iter()
+                .position(|c| c == "data")
+                .expect("data column not found");
 
             assert_eq!(result.rows()[0][id_pos], SqlValue::Integer(1));
-            assert_eq!(result.rows()[0][data_pos], SqlValue::Text("test data".to_string()));
+            assert_eq!(
+                result.rows()[0][data_pos],
+                SqlValue::Text("test data".to_string())
+            );
 
             // Should be able to insert new data
             db.execute("INSERT INTO persistent_test (id, data) VALUES (2, 'more data')")?;
@@ -233,7 +268,9 @@ fn test_converted_from_existing_test() -> Result<()> {
         // but now it runs with both backends automatically!
 
         // Test CREATE TABLE
-        let affected = db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+        let affected = db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
+        )?;
         assert_eq!(affected, 0); // CREATE TABLE returns 0 affected rows
 
         // Test INSERT
@@ -264,9 +301,11 @@ fn test_converted_from_existing_test() -> Result<()> {
         assert_eq!(affected, 1); // Should delete Bob (age 25)
 
         // Verify final state
-        let result = db.query("SELECT name, age FROM users ORDER BY name").unwrap();
+        let result = db
+            .query("SELECT name, age FROM users ORDER BY name")
+            .unwrap();
         assert_eq!(result.rows().len(), 2); // Alice and Carol remaining
 
         Ok(())
     })
-} 
+}

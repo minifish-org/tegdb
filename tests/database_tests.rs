@@ -19,8 +19,9 @@ fn test_database_open_and_basic_operations() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Test CREATE TABLE
-        let affected =
-            db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+        let affected = db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
+        )?;
         assert_eq!(affected, 0); // CREATE TABLE returns 0 affected rows
 
         // Test INSERT
@@ -69,9 +70,13 @@ fn test_query_result_interface() -> Result<()> {
         db.execute(
             "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL, active INTEGER)",
         )?;
-        db.execute("INSERT INTO products (id, name, price, active) VALUES (1, 'Laptop', 999.99, 1)")?;
+        db.execute(
+            "INSERT INTO products (id, name, price, active) VALUES (1, 'Laptop', 999.99, 1)",
+        )?;
         db.execute("INSERT INTO products (id, name, price, active) VALUES (2, 'Mouse', 29.99, 1)")?;
-        db.execute("INSERT INTO products (id, name, price, active) VALUES (3, 'Keyboard', 79.99, 0)")?;
+        db.execute(
+            "INSERT INTO products (id, name, price, active) VALUES (3, 'Keyboard', 79.99, 0)",
+        )?;
 
         let result = db
             .query("SELECT id, name, price, active FROM products WHERE active = 1")
@@ -278,10 +283,16 @@ fn test_database_where_clauses() -> Result<()> {
         db.execute(
             "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, salary REAL)",
         )?;
-        db.execute("INSERT INTO employees (id, name, age, salary) VALUES (1, 'Alice', 30, 50000.0)")?;
+        db.execute(
+            "INSERT INTO employees (id, name, age, salary) VALUES (1, 'Alice', 30, 50000.0)",
+        )?;
         db.execute("INSERT INTO employees (id, name, age, salary) VALUES (2, 'Bob', 25, 45000.0)")?;
-        db.execute("INSERT INTO employees (id, name, age, salary) VALUES (3, 'Carol', 35, 60000.0)")?;
-        db.execute("INSERT INTO employees (id, name, age, salary) VALUES (4, 'David', 28, 48000.0)")?;
+        db.execute(
+            "INSERT INTO employees (id, name, age, salary) VALUES (3, 'Carol', 35, 60000.0)",
+        )?;
+        db.execute(
+            "INSERT INTO employees (id, name, age, salary) VALUES (4, 'David', 28, 48000.0)",
+        )?;
 
         // First verify all data was inserted correctly
         let all_result = db.query("SELECT name, age FROM employees").unwrap();
@@ -967,7 +978,9 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
             // Make several changes
             tx.execute("UPDATE transaction_test SET amount = 1500 WHERE id = 1")?;
             tx.execute("UPDATE transaction_test SET status = 'modified' WHERE id = 2")?;
-            tx.execute("INSERT INTO transaction_test (id, status, amount) VALUES (3, 'new', 3000)")?;
+            tx.execute(
+                "INSERT INTO transaction_test (id, status, amount) VALUES (3, 'new', 3000)",
+            )?;
 
             // Verify changes are visible within transaction
             let result = tx.query("SELECT * FROM transaction_test").unwrap();
@@ -1152,7 +1165,7 @@ fn test_absolute_path_requirement() -> Result<()> {
     {
         let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
         let db_path = temp_file.path();
-        let result = Database::open(&format!("file://{}", db_path.display()));
+        let result = Database::open(format!("file://{}", db_path.display()));
         assert!(result.is_ok());
     }
     #[cfg(target_arch = "wasm32")]

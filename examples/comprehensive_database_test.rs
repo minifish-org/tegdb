@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     let db_path = temp_file.path();
 
     // Create/open database
-    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+    let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     println!("=== Setting up database ===");
 

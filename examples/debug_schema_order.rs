@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     let db_path = temp_file.path();
 
     #[cfg(not(target_arch = "wasm32"))]
-    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+    let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     #[cfg(not(target_arch = "wasm32"))]
     println!("Creating table...");

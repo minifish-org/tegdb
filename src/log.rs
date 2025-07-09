@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::error::Result;
 use crate::backends::DefaultLogBackend;
+use crate::error::Result;
 
 /// KeyMap maps keys to shared buffers instead of owned Vecs
 pub type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;

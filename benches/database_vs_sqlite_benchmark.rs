@@ -17,7 +17,8 @@ fn database_benchmark(c: &mut Criterion) {
         fs::remove_file(&path).expect("Failed to remove existing test file");
     }
 
-    let mut db = tegdb::Database::open(&format!("file://{}", path.display())).expect("Failed to create database");
+    let mut db = tegdb::Database::open(format!("file://{}", path.display()))
+        .expect("Failed to create database");
 
     // Setup table for benchmarking
     db.execute("CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")

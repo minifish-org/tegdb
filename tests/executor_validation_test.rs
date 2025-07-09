@@ -14,8 +14,9 @@ fn test_insert_validation() -> Result<()> {
         )?;
 
         // Test valid insert
-        let result =
-            db.execute("INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")?;
+        let result = db.execute(
+            "INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')",
+        )?;
         println!("Valid insert result: {result:?}");
 
         // Test NOT NULL constraint violation
@@ -24,14 +25,16 @@ fn test_insert_validation() -> Result<()> {
         println!("NOT NULL validation: {result:?}");
 
         // Test UNIQUE constraint violation
-        let result = db
-            .execute("INSERT INTO users (id, name, email) VALUES (3, 'Charlie', 'alice@example.com')");
+        let result = db.execute(
+            "INSERT INTO users (id, name, email) VALUES (3, 'Charlie', 'alice@example.com')",
+        );
         assert!(result.is_err(), "Should fail for UNIQUE violation");
         println!("UNIQUE validation: {result:?}");
 
         // Test unknown column
-        let result =
-            db.execute("INSERT INTO users (id, name, unknown_column) VALUES (4, 'David', 'something')");
+        let result = db.execute(
+            "INSERT INTO users (id, name, unknown_column) VALUES (4, 'David', 'something')",
+        );
         assert!(result.is_err(), "Should fail for unknown column");
         println!("Unknown column validation: {result:?}");
 

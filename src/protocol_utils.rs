@@ -35,7 +35,10 @@ pub fn parse_storage_identifier(identifier: &str) -> (&str, &str) {
     } else if identifier.starts_with("browser://") {
         ("browser", identifier.trim_start_matches("browser://"))
     } else if identifier.starts_with("localstorage://") {
-        ("localstorage", identifier.trim_start_matches("localstorage://"))
+        (
+            "localstorage",
+            identifier.trim_start_matches("localstorage://"),
+        )
     } else if identifier.starts_with("indexeddb://") {
         ("indexeddb", identifier.trim_start_matches("indexeddb://"))
     } else {
@@ -46,7 +49,7 @@ pub fn parse_storage_identifier(identifier: &str) -> (&str, &str) {
 
 /// Check if an identifier uses a specific protocol
 pub fn has_protocol(identifier: &str, protocol: &str) -> bool {
-    identifier.starts_with(&format!("{}://", protocol))
+    identifier.starts_with(&format!("{protocol}://"))
 }
 
 /// Extract the path part from a storage identifier
@@ -106,4 +109,4 @@ mod tests {
         assert_eq!(extract_path("localstorage://my-app-db"), "my-app-db");
         assert_eq!(extract_path("my_database.db"), "my_database.db");
     }
-} 
+}

@@ -1,5 +1,5 @@
 //! WASM-specific tests using wasm-bindgen-test
-//! 
+//!
 //! This module contains tests that can run in WASM environment.
 //! Use `wasm-bindgen-test-runner` to execute these tests.
 
@@ -20,7 +20,8 @@ fn test_wasm_basic_functionality() -> Result<()> {
     let mut db = Database::open("browser://test_db")?;
 
     // Test CREATE TABLE
-    let affected = db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    let affected =
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
     assert_eq!(affected, 0); // CREATE TABLE returns 0 affected rows
 
     // Test INSERT
@@ -78,10 +79,26 @@ fn test_wasm_data_types() -> Result<()> {
     // Test first row
     let row1 = &result.rows()[0];
     let id_pos = result.columns().iter().position(|c| c == "id").unwrap();
-    let text_pos = result.columns().iter().position(|c| c == "text_col").unwrap();
-    let int_pos = result.columns().iter().position(|c| c == "int_col").unwrap();
-    let real_pos = result.columns().iter().position(|c| c == "real_col").unwrap();
-    let null_pos = result.columns().iter().position(|c| c == "null_col").unwrap();
+    let text_pos = result
+        .columns()
+        .iter()
+        .position(|c| c == "text_col")
+        .unwrap();
+    let int_pos = result
+        .columns()
+        .iter()
+        .position(|c| c == "int_col")
+        .unwrap();
+    let real_pos = result
+        .columns()
+        .iter()
+        .position(|c| c == "real_col")
+        .unwrap();
+    let null_pos = result
+        .columns()
+        .iter()
+        .position(|c| c == "null_col")
+        .unwrap();
 
     assert_eq!(row1[id_pos], SqlValue::Integer(1));
     assert_eq!(row1[text_pos], SqlValue::Text("hello".to_string()));
@@ -115,7 +132,9 @@ fn test_wasm_transactions() -> Result<()> {
         assert_eq!(affected2, 1);
 
         // Verify changes within transaction
-        let result = tx.query("SELECT id, balance FROM accounts ORDER BY id").unwrap();
+        let result = tx
+            .query("SELECT id, balance FROM accounts ORDER BY id")
+            .unwrap();
         assert_eq!(result.rows().len(), 2);
 
         // Commit transaction
@@ -123,7 +142,9 @@ fn test_wasm_transactions() -> Result<()> {
     }
 
     // Verify changes persisted after transaction commit
-    let result = db.query("SELECT id, balance FROM accounts ORDER BY id").unwrap();
+    let result = db
+        .query("SELECT id, balance FROM accounts ORDER BY id")
+        .unwrap();
     let row1 = &result.rows()[0];
     let row2 = &result.rows()[1];
     assert_eq!(row1[1], SqlValue::Integer(800));
@@ -151,11 +172,22 @@ fn test_wasm_schema_persistence() -> Result<()> {
         let result = db.query("SELECT * FROM persistent_test").unwrap();
         assert_eq!(result.rows().len(), 1);
 
-        let id_pos = result.columns().iter().position(|c| c == "id").expect("id column not found");
-        let data_pos = result.columns().iter().position(|c| c == "data").expect("data column not found");
+        let id_pos = result
+            .columns()
+            .iter()
+            .position(|c| c == "id")
+            .expect("id column not found");
+        let data_pos = result
+            .columns()
+            .iter()
+            .position(|c| c == "data")
+            .expect("data column not found");
 
         assert_eq!(result.rows()[0][id_pos], SqlValue::Integer(1));
-        assert_eq!(result.rows()[0][data_pos], SqlValue::Text("test data".to_string()));
+        assert_eq!(
+            result.rows()[0][data_pos],
+            SqlValue::Text("test data".to_string())
+        );
 
         // Should be able to insert new data
         db.execute("INSERT INTO persistent_test (id, data) VALUES (2, 'more data')")?;
@@ -194,4 +226,4 @@ fn test_wasm_error_handling() -> Result<()> {
     assert!(result.is_err());
 
     Ok(())
-} 
+}

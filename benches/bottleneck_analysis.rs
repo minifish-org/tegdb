@@ -17,7 +17,8 @@ fn bottleneck_analysis(c: &mut Criterion) {
         fs::remove_file(&path).expect("Failed to remove existing test file");
     }
 
-    let mut db = tegdb::Database::open(&format!("file://{}", path.display())).expect("Failed to create database");
+    let mut db = tegdb::Database::open(format!("file://{}", path.display()))
+        .expect("Failed to create database");
     db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER)")
         .unwrap();
 

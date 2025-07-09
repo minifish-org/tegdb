@@ -5,7 +5,7 @@ fn main() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
 
-    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+    let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     // Create table
     println!("Creating table...");

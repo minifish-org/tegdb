@@ -25,7 +25,8 @@ fn test_arithmetic_error_handling() {
         assert!(result.is_err(), "Should fail on non-existent column");
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }
 
 #[test]
@@ -75,7 +76,8 @@ fn test_operator_precedence() {
         }
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }
 
 #[test]
@@ -105,5 +107,6 @@ fn test_text_concatenation() {
         }
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }

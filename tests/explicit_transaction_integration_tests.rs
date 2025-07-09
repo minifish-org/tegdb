@@ -13,12 +13,14 @@ fn test_explicit_transaction_basic_workflow() -> Result<(), tegdb::Error> {
         let mut tx = db.begin_transaction().unwrap();
 
         // Create table
-        let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
+        let create_sql =
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
         let result = tx.execute(create_sql).unwrap();
         assert_eq!(result, 0); // CREATE TABLE returns 0 affected rows
 
         // Insert data
-        let insert_sql = "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30), (2, 'Bob', 25)";
+        let insert_sql =
+            "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30), (2, 'Bob', 25)";
         let result = tx.execute(insert_sql).unwrap();
         assert_eq!(result, 2); // 2 rows inserted
 

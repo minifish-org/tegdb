@@ -2,8 +2,8 @@ mod test_helpers;
 
 #[cfg(test)]
 mod read_only_transaction_tests {
-    use tegdb::{Database, Result, SqlValue};
     use crate::test_helpers::run_with_both_backends;
+    use tegdb::{Database, Result, SqlValue};
 
     #[test]
     fn test_read_only_transaction_optimization() -> Result<()> {
@@ -28,7 +28,8 @@ mod read_only_transaction_tests {
                 // Read-only transaction 2 - range scan
                 {
                     let mut tx = db.begin_transaction()?;
-                    let _scan_results = tx.query("SELECT * FROM test_data WHERE key >= 'key1' AND key < 'key3'")?;
+                    let _scan_results =
+                        tx.query("SELECT * FROM test_data WHERE key >= 'key1' AND key < 'key3'")?;
                     tx.commit()?;
                 }
 
@@ -76,10 +77,11 @@ mod read_only_transaction_tests {
             // Perform a transaction that starts with reads but then does a write
             {
                 let mut tx = db.begin_transaction()?;
-                
+
                 // Start with reads
                 let _result1 = tx.query("SELECT value FROM test_data WHERE key = 'key1'")?;
-                let _scan_results = tx.query("SELECT * FROM test_data WHERE key >= 'key1' AND key < 'key3'")?;
+                let _scan_results =
+                    tx.query("SELECT * FROM test_data WHERE key >= 'key1' AND key < 'key3'")?;
 
                 // Then do a write - this should make it a write transaction
                 tx.execute("INSERT INTO test_data (key, value) VALUES ('key2', 'value2')")?;

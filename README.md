@@ -59,6 +59,36 @@ TegDB implements a clean layered architecture with four distinct layers:
 - Clean separation of concerns across layers
 - Extensive test coverage including ACID compliance
 
+## Development
+
+### Code Quality Scripts
+
+TegDB provides convenient scripts for maintaining code quality:
+
+```bash
+# Fix code formatting
+./fix_format.sh
+
+# Fix clippy linting issues (auto-fix where possible)
+./fix_lint.sh
+
+# Fix both formatting and linting issues
+./fix_all.sh
+```
+
+### Running Tests
+
+```bash
+# Run all tests (native, WASM, browser)
+./run_all_tests.sh
+
+# Run only native tests
+./run_all_tests.sh --skip-wasm --skip-browser
+
+# Run in CI mode (skips browser tests)
+./run_all_tests.sh --ci
+```
+
 ## Quick Start
 
 Add TegDB to your `Cargo.toml`:

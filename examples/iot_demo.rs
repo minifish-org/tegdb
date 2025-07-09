@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     let db_path = temp_file.path();
 
     #[cfg(not(target_arch = "wasm32"))]
-    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+    let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     println!("=== IOT (Index-Organized Table) Demo ===");
 
@@ -44,20 +44,20 @@ fn main() -> Result<()> {
         println!("Found {} rows:", result.rows().len());
 
         for row in result.rows() {
-        let id = match &row[0] {
-            tegdb::SqlValue::Integer(i) => i,
-            _ => &0,
-        };
-        let name = match &row[1] {
-            tegdb::SqlValue::Text(s) => s,
-            _ => &"Unknown".to_string(),
-        };
-        let age = match &row[2] {
-            tegdb::SqlValue::Integer(i) => i,
-            _ => &0,
-        };
+            let id = match &row[0] {
+                tegdb::SqlValue::Integer(i) => i,
+                _ => &0,
+            };
+            let name = match &row[1] {
+                tegdb::SqlValue::Text(s) => s,
+                _ => &"Unknown".to_string(),
+            };
+            let age = match &row[2] {
+                tegdb::SqlValue::Integer(i) => i,
+                _ => &0,
+            };
 
-        println!("  ID: {id}, Name: {name}, Age: {age}");
+            println!("  ID: {id}, Name: {name}, Age: {age}");
         }
     }
 

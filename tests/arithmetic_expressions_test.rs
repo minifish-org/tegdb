@@ -91,7 +91,8 @@ fn test_arithmetic_expressions_in_update() {
         }
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }
 
 #[test]
@@ -134,5 +135,6 @@ fn test_arithmetic_expression_parsing() {
         }
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }

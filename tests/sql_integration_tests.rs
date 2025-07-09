@@ -119,7 +119,8 @@ fn test_sql_integration_constraints() {
         assert!(result.is_ok());
 
         // Try to insert duplicate primary key - should fail
-        let duplicate_pk_sql = "INSERT INTO users (id, email, age) VALUES (1, 'bob@example.com', 25)";
+        let duplicate_pk_sql =
+            "INSERT INTO users (id, email, age) VALUES (1, 'bob@example.com', 25)";
         let result = db.execute(duplicate_pk_sql);
         assert!(result.is_err()); // Should fail due to primary key constraint
         Ok(())

@@ -4,6 +4,7 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::planner::QueryPlanner;
+use crate::protocol_utils::parse_storage_identifier;
 use crate::{
     catalog::Catalog,
     parser::{parse_sql, SqlValue},
@@ -11,7 +12,6 @@ use crate::{
     storage_engine::StorageEngine,
     Result,
 };
-use crate::protocol_utils::parse_storage_identifier;
 use std::{
     collections::HashMap,
     path::Path,
@@ -32,10 +32,10 @@ pub struct Database {
 
 impl Database {
     /// Create or open database
-    /// 
+    ///
     /// On native platforms: Only accepts absolute paths with the file:// protocol.
     /// On WASM platforms: Supports browser://, localStorage://, and indexeddb:// protocols.
-    /// 
+    ///
     /// Examples:
     /// - ✅ file:///absolute/path/to/db (native only)
     /// - ✅ browser://my-app-db (WASM only)
@@ -46,28 +46,26 @@ impl Database {
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path_str = path.as_ref();
         let (protocol, path_part) = parse_storage_identifier(path_str);
-        
+
         #[cfg(not(target_arch = "wasm32"))]
         {
             // On native platforms, only support file protocol
             if protocol != "file" {
                 return Err(crate::Error::Other(format!(
-                    "Unsupported protocol: {}. Only 'file://' protocol is supported on native platforms.",
-                    protocol
+                    "Unsupported protocol: {protocol}. Only 'file://' protocol is supported on native platforms."
                 )));
             }
-            
+
             // Check if path is absolute
             let path_buf = Path::new(path_part);
             if !path_buf.is_absolute() {
                 return Err(crate::Error::Other(format!(
-                    "Path must be absolute. Got: '{}'. Use absolute path like 'file:///absolute/path/to/db'",
-                    path_str
+                    "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
                 )));
             }
-            
+
             let storage = StorageEngine::new(path_buf.to_path_buf())?;
-            
+
             // Load all table schemas into the catalog at database initialization
             let catalog = Catalog::load_from_storage(&storage)?;
 
@@ -76,7 +74,7 @@ impl Database {
                 catalog: Arc::new(RwLock::new(catalog)),
             })
         }
-        
+
         #[cfg(target_arch = "wasm32")]
         {
             // On WASM platforms, support browser protocols
@@ -84,7 +82,7 @@ impl Database {
                 "browser" | "localstorage" | "indexeddb" => {
                     // For browser backends, we use the full identifier string
                     let storage = StorageEngine::new_with_identifier(path_str.to_string())?;
-                    
+
                     // Load all table schemas into the catalog at database initialization
                     let catalog = Catalog::load_from_storage(&storage)?;
 

@@ -2,8 +2,8 @@ mod test_helpers;
 
 #[cfg(test)]
 mod commit_marker_tests {
-    use tegdb::{Database, Result, SqlValue};
     use crate::test_helpers::run_with_both_backends;
+    use tegdb::{Database, Result, SqlValue};
 
     #[test]
     fn test_commit_marker_and_crash_recovery() -> Result<()> {
@@ -30,7 +30,7 @@ mod commit_marker_tests {
 
             // Drop the first database instance to release the file lock
             drop(db);
-            
+
             // Reopen the database to simulate crash recovery
             let mut db2 = Database::open(db_path)?;
 
@@ -53,36 +53,49 @@ mod commit_marker_tests {
 
     #[test]
     fn test_multiple_transactions_with_commit_markers() -> Result<()> {
-        run_with_both_backends("test_multiple_transactions_with_commit_markers", |db_path| {
-            let mut db = Database::open(db_path)?;
+        run_with_both_backends(
+            "test_multiple_transactions_with_commit_markers",
+            |db_path| {
+                let mut db = Database::open(db_path)?;
 
-            // Create a test table
-            db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+                // Create a test table
+                db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
 
-            // Transaction 1: committed
-            {
-                let mut tx = db.begin_transaction()?;
-                tx.execute("INSERT INTO test_data (key, value) VALUES ('tx1_key', 'tx1_value')")?;
-                tx.commit()?;
-            }
+                // Transaction 1: committed
+                {
+                    let mut tx = db.begin_transaction()?;
+                    tx.execute(
+                        "INSERT INTO test_data (key, value) VALUES ('tx1_key', 'tx1_value')",
+                    )?;
+                    tx.commit()?;
+                }
 
-            // Transaction 2: committed
-            {
-                let mut tx = db.begin_transaction()?;
-                tx.execute("INSERT INTO test_data (key, value) VALUES ('tx2_key', 'tx2_value')")?;
-                tx.commit()?;
-            }
+                // Transaction 2: committed
+                {
+                    let mut tx = db.begin_transaction()?;
+                    tx.execute(
+                        "INSERT INTO test_data (key, value) VALUES ('tx2_key', 'tx2_value')",
+                    )?;
+                    tx.commit()?;
+                }
 
-            // Verify that both transactions were committed by checking their data
-            let result1 = db.query("SELECT value FROM test_data WHERE key = 'tx1_key'")?;
-            assert_eq!(result1.rows().len(), 1);
-            assert_eq!(result1.rows()[0][0], SqlValue::Text("tx1_value".to_string()));
+                // Verify that both transactions were committed by checking their data
+                let result1 = db.query("SELECT value FROM test_data WHERE key = 'tx1_key'")?;
+                assert_eq!(result1.rows().len(), 1);
+                assert_eq!(
+                    result1.rows()[0][0],
+                    SqlValue::Text("tx1_value".to_string())
+                );
 
-            let result2 = db.query("SELECT value FROM test_data WHERE key = 'tx2_key'")?;
-            assert_eq!(result2.rows().len(), 1);
-            assert_eq!(result2.rows()[0][0], SqlValue::Text("tx2_value".to_string()));
+                let result2 = db.query("SELECT value FROM test_data WHERE key = 'tx2_key'")?;
+                assert_eq!(result2.rows().len(), 1);
+                assert_eq!(
+                    result2.rows()[0][0],
+                    SqlValue::Text("tx2_value".to_string())
+                );
 
-            Ok(())
-        })
+                Ok(())
+            },
+        )
     }
 }

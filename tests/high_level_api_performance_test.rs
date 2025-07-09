@@ -116,7 +116,9 @@ fn create_test_db() -> Result<Database> {
         // In WASM, we can't use NamedTempFile directly.
         // For now, we'll just return an error or a placeholder.
         // This test is primarily for non-WASM environments.
-        Err(tegdb::Error::Other("WASM does not support NamedTempFile for testing".to_string()))
+        Err(tegdb::Error::Other(
+            "WASM does not support NamedTempFile for testing".to_string(),
+        ))
     }
 }
 

@@ -55,7 +55,8 @@ fn test_simplified_api() {
         assert_eq!(final_result.rows()[0][0], SqlValue::Real(3.0));
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }
 
 #[test]
@@ -77,5 +78,6 @@ fn test_database_without_config() {
         assert_eq!(result.rows()[0][0], SqlValue::Integer(42));
 
         Ok(())
-    }).expect("Test failed");
+    })
+    .expect("Test failed");
 }

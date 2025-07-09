@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     let db_path = temp_file.path();
 
     // Create/open database, similar to SQLite
-    let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+    let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     // Create table
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
