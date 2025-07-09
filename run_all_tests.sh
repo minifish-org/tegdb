@@ -309,8 +309,13 @@ if [ "$SKIP_WASM" != "true" ] || [ "$SKIP_BROWSER" != "true" ]; then
     build_wasm
 fi
 
-run_wasm_unit_tests
-run_browser_tests
+if [ "$SKIP_WASM" != "true" ]; then
+    run_wasm_unit_tests
+fi
+
+if [ "$SKIP_BROWSER" != "true" ]; then
+    run_browser_tests
+fi
 run_performance_tests
 
 echo ""

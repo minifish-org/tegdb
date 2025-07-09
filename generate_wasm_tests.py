@@ -10,35 +10,65 @@ by reusing the existing test logic.
 import os
 import re
 import glob
+import sys
 
 def extract_test_functions(test_file):
     """Extract test functions that use run_with_both_backends from a test file."""
     with open(test_file, 'r') as f:
         content = f.read()
     
-    # First find all test functions - more flexible pattern
-    test_pattern = r'#\[test\]\s*\nfn\s+(\w+)\s*\([^)]*\)\s*->\s*(Result<\(\)(?:,\s*tegdb::Error)?>)\s*\{([^}]+)\}'
-    test_matches = re.finditer(test_pattern, content, re.DOTALL)
+    # More flexible pattern to find test functions
+    # This handles multi-line function signatures and bodies
+    test_pattern = r'#\[test\]\s*\nfn\s+(\w+)\s*\([^)]*\)\s*->\s*Result<\(\)[^>]*>\s*\{'
+    test_matches = list(re.finditer(test_pattern, content, re.DOTALL))
     
     tests = []
-    for test_match in test_matches:
+    for i, test_match in enumerate(test_matches):
         test_name = test_match.group(1)
-        test_body = test_match.group(2)
+        start_pos = test_match.end()
+        
+        # Find the end of this function by matching braces
+        brace_count = 1
+        end_pos = start_pos
+        for j, char in enumerate(content[start_pos:], start_pos):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_pos = j + 1
+                    break
+        
+        test_body = content[start_pos:end_pos]
         
         # Check if this test uses run_with_both_backends
-        rwb_pattern = r'run_with_both_backends\("([^"]+)",\s*\|([^|]+)\|\s*\{([^}]+)\}\)'
+        rwb_pattern = r'run_with_both_backends\("([^"]+)",\s*\|([^|]+)\|\s*\{'
         rwb_match = re.search(rwb_pattern, test_body, re.DOTALL)
         
         if rwb_match:
             test_display_name = rwb_match.group(1)
-            db_path_param = rwb_match.group(2)
-            inner_body = rwb_match.group(3)
+            db_path_param = rwb_match.group(2).strip()
+            
+            # Find the inner body of run_with_both_backends
+            rwb_start = rwb_match.end()
+            rwb_brace_count = 1
+            rwb_end = rwb_start
+            for j, char in enumerate(test_body[rwb_start:], rwb_start):
+                if char == '{':
+                    rwb_brace_count += 1
+                elif char == '}':
+                    rwb_brace_count -= 1
+                    if rwb_brace_count == 0:
+                        rwb_end = j
+                        break
+            
+            inner_body = test_body[rwb_start:rwb_end].strip()
             
             tests.append({
                 'name': test_name,
                 'display_name': test_display_name,
                 'db_path_param': db_path_param,
-                'body': inner_body.strip()
+                'body': inner_body
             })
     
     return tests
@@ -62,10 +92,12 @@ def generate_wasm_tests_file():
     
     all_tests = []
     for test_file in test_files:
-        if test_file.endswith('test_helpers.rs') or test_file.endswith('wasm_tests.rs'):
+        if test_file.endswith('test_helpers.rs') or test_file.endswith('wasm_tests.rs') or test_file.endswith('wasm_integration_tests.rs'):
             continue  # Skip helper files and existing WASM tests
         
         tests = extract_test_functions(test_file)
+        if tests:
+            print(f"Found {len(tests)} tests in {test_file}")
         all_tests.extend(tests)
     
     # Generate the WASM tests file
@@ -88,7 +120,7 @@ wasm_bindgen_test_configure!(run_in_node);
 #[cfg(target_arch = "wasm32")]
 mod test_helpers;
 #[cfg(target_arch = "wasm32")]
-use test_helpers::run_with_both_backends;
+use crate::test_helpers::run_with_both_backends;
 
 // Generated WASM test functions
 '''
@@ -104,6 +136,10 @@ use test_helpers::run_with_both_backends;
     return len(all_tests)
 
 if __name__ == '__main__':
+    debug_mode = '--debug' in sys.argv
+    if debug_mode:
+        print("Debug mode enabled")
+    
     count = generate_wasm_tests_file()
     print(f"Successfully generated {count} WASM test functions!")
     print("Now you can run: wasm-pack test --node") 

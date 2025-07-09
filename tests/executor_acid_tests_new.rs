@@ -1,7 +1,7 @@
 use tegdb::{Database, Result, SqlValue};
 
 mod test_helpers;
-use test_helpers::run_with_both_backends;
+use crate::test_helpers::run_with_both_backends;
 
 /// Test atomicity - all operations in a transaction succeed or all fail
 #[test]

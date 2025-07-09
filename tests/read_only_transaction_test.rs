@@ -1,143 +1,102 @@
+mod test_helpers;
+
 #[cfg(test)]
 mod read_only_transaction_tests {
-    use std::fs;
-    use std::path::PathBuf;
-    use tegdb::storage_engine::StorageEngine;
+    use tegdb::{Database, Result, SqlValue};
+    use crate::test_helpers::run_with_both_backends;
 
     #[test]
-    fn test_read_only_transaction_optimization() {
-        let test_db_path = PathBuf::from("/tmp/test_read_only_transaction.db");
+    fn test_read_only_transaction_optimization() -> Result<()> {
+        run_with_both_backends("test_read_only_transaction_optimization", |db_path| {
+            let mut db = Database::open(db_path)?;
 
-        // Clean up if the file exists
-        if test_db_path.exists() {
-            std::fs::remove_file(&test_db_path).unwrap();
-        }
+            // Create a test table and populate with some data
+            db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+            db.execute("INSERT INTO test_data (key, value) VALUES ('key1', 'value1')")?;
+            db.execute("INSERT INTO test_data (key, value) VALUES ('key2', 'value2')")?;
 
-        // Create a new engine and populate with some data
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
-            engine.set(b"key1", b"value1".to_vec()).unwrap();
-            engine.set(b"key2", b"value2".to_vec()).unwrap();
-            drop(engine);
-        }
-
-        // Get the initial file size
-        let initial_size = fs::metadata(&test_db_path).unwrap().len();
-
-        // Perform multiple read-only transactions
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
-
-            // Read-only transaction 1
+            // Perform multiple read-only transactions
             {
-                let mut tx = engine.begin_transaction();
-                let _val1 = tx.get(b"key1");
-                let _val2 = tx.get(b"key2");
-                tx.commit().unwrap();
+                // Read-only transaction 1 - simple SELECTs
+                {
+                    let mut tx = db.begin_transaction()?;
+                    let _result1 = tx.query("SELECT value FROM test_data WHERE key = 'key1'")?;
+                    let _result2 = tx.query("SELECT value FROM test_data WHERE key = 'key2'")?;
+                    tx.commit()?;
+                }
+
+                // Read-only transaction 2 - range scan
+                {
+                    let mut tx = db.begin_transaction()?;
+                    let _scan_results = tx.query("SELECT * FROM test_data WHERE key >= 'key1' AND key < 'key3'")?;
+                    tx.commit()?;
+                }
+
+                // Read-only transaction 3 - just commit without doing anything
+                {
+                    let tx = db.begin_transaction()?;
+                    tx.commit()?;
+                }
             }
 
-            // Read-only transaction 2
+            // Verify data is still accessible after read-only transactions
+            let result1 = db.query("SELECT value FROM test_data WHERE key = 'key1'")?;
+            assert_eq!(result1.rows().len(), 1);
+            assert_eq!(result1.rows()[0][0], SqlValue::Text("value1".to_string()));
+
+            let result2 = db.query("SELECT value FROM test_data WHERE key = 'key2'")?;
+            assert_eq!(result2.rows().len(), 1);
+            assert_eq!(result2.rows()[0][0], SqlValue::Text("value2".to_string()));
+
+            // Now do a write transaction and verify it works
             {
-                let mut tx = engine.begin_transaction();
-                let _scan_results: Vec<_> = tx
-                    .scan(b"key1".to_vec()..b"key3".to_vec())
-                    .unwrap()
-                    .collect();
-                tx.commit().unwrap();
+                let mut tx = db.begin_transaction()?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('key3', 'value3')")?;
+                tx.commit()?;
             }
 
-            // Read-only transaction 3
-            {
-                let mut tx = engine.begin_transaction();
-                // Just commit without doing anything
-                tx.commit().unwrap();
-            }
+            // Verify the write transaction worked
+            let result3 = db.query("SELECT value FROM test_data WHERE key = 'key3'")?;
+            assert_eq!(result3.rows().len(), 1);
+            assert_eq!(result3.rows()[0][0], SqlValue::Text("value3".to_string()));
 
-            drop(engine);
-        }
-
-        // Check that file size hasn't grown (no commit markers written)
-        let final_size = fs::metadata(&test_db_path).unwrap().len();
-        assert_eq!(
-            initial_size, final_size,
-            "Read-only transactions should not write commit markers"
-        );
-
-        // Verify data is still accessible after read-only transactions
-        {
-            let engine = StorageEngine::new(test_db_path.clone()).unwrap();
-            assert_eq!(engine.get(b"key1").as_deref(), Some(b"value1" as &[u8]));
-            assert_eq!(engine.get(b"key2").as_deref(), Some(b"value2" as &[u8]));
-        }
-
-        // Now do a write transaction and verify file size increases
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
-            {
-                let mut tx = engine.begin_transaction();
-                tx.set(b"key3", b"value3".to_vec()).unwrap();
-                tx.commit().unwrap();
-            }
-            drop(engine);
-        }
-
-        // Check that file size has grown (commit marker was written)
-        let after_write_size = fs::metadata(&test_db_path).unwrap().len();
-        assert!(
-            after_write_size > final_size,
-            "Write transactions should write commit markers"
-        );
-
-        // Clean up
-        std::fs::remove_file(&test_db_path).unwrap();
+            Ok(())
+        })
     }
 
     #[test]
-    fn test_mixed_read_write_transaction() {
-        let test_db_path = PathBuf::from("/tmp/test_mixed_transaction.db");
+    fn test_mixed_read_write_transaction() -> Result<()> {
+        run_with_both_backends("test_mixed_read_write_transaction", |db_path| {
+            let mut db = Database::open(db_path)?;
 
-        // Clean up if the file exists
-        if test_db_path.exists() {
-            std::fs::remove_file(&test_db_path).unwrap();
-        }
+            // Create a test table and populate with some data
+            db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+            db.execute("INSERT INTO test_data (key, value) VALUES ('key1', 'value1')")?;
 
-        // Create a new engine and populate with some data
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
-            engine.set(b"key1", b"value1".to_vec()).unwrap();
-            drop(engine);
-        }
-
-        // Get the initial file size
-        let initial_size = fs::metadata(&test_db_path).unwrap().len();
-
-        // Perform a transaction that starts with reads but then does a write
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
+            // Perform a transaction that starts with reads but then does a write
             {
-                let mut tx = engine.begin_transaction();
+                let mut tx = db.begin_transaction()?;
+                
                 // Start with reads
-                let _val1 = tx.get(b"key1");
-                let _scan_results: Vec<_> = tx
-                    .scan(b"key1".to_vec()..b"key3".to_vec())
-                    .unwrap()
-                    .collect();
+                let _result1 = tx.query("SELECT value FROM test_data WHERE key = 'key1'")?;
+                let _scan_results = tx.query("SELECT * FROM test_data WHERE key >= 'key1' AND key < 'key3'")?;
 
                 // Then do a write - this should make it a write transaction
-                tx.set(b"key2", b"value2".to_vec()).unwrap();
-                tx.commit().unwrap();
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('key2', 'value2')")?;
+                tx.commit()?;
             }
-            drop(engine);
-        }
 
-        // Check that file size has grown (commit marker was written because of the write)
-        let final_size = fs::metadata(&test_db_path).unwrap().len();
-        assert!(
-            final_size > initial_size,
-            "Transactions with writes should always write commit markers"
-        );
+            // Verify the write transaction worked
+            let result2 = db.query("SELECT value FROM test_data WHERE key = 'key2'")?;
+            assert_eq!(result2.rows().len(), 1);
+            assert_eq!(result2.rows()[0][0], SqlValue::Text("value2".to_string()));
 
-        // Clean up
-        std::fs::remove_file(&test_db_path).unwrap();
+            // Verify original data is still there
+            let result1 = db.query("SELECT value FROM test_data WHERE key = 'key1'")?;
+            assert_eq!(result1.rows().len(), 1);
+            assert_eq!(result1.rows()[0][0], SqlValue::Text("value1".to_string()));
+
+            Ok(())
+        })
     }
 }

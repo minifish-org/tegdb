@@ -2,7 +2,7 @@ use tegdb::Database;
 use tegdb::SqlValue;
 
 mod test_helpers;
-use test_helpers::run_with_both_backends;
+use crate::test_helpers::run_with_both_backends;
 
 #[test]
 fn test_query_iterator_basic_functionality() {

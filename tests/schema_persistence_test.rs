@@ -5,7 +5,7 @@ use std::fs;
 use tegdb::{Database, Result};
 
 mod test_helpers;
-use test_helpers::run_with_both_backends;
+use crate::test_helpers::run_with_both_backends;
 
 #[test]
 fn test_schema_persistence_across_database_reopens() -> Result<()> {

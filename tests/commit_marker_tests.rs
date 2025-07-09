@@ -1,97 +1,88 @@
+mod test_helpers;
+
 #[cfg(test)]
 mod commit_marker_tests {
-    use std::path::PathBuf;
-    use tegdb::storage_engine::StorageEngine;
+    use tegdb::{Database, Result, SqlValue};
+    use crate::test_helpers::run_with_both_backends;
 
     #[test]
-    fn test_commit_marker_and_crash_recovery() {
-        let test_db_path = PathBuf::from("/tmp/test_commit_marker_recovery.db");
+    fn test_commit_marker_and_crash_recovery() -> Result<()> {
+        run_with_both_backends("test_commit_marker_and_crash_recovery", |db_path| {
+            let mut db = Database::open(db_path)?;
 
-        // Clean up if the file exists
-        if test_db_path.exists() {
-            std::fs::remove_file(&test_db_path).unwrap();
-        }
-
-        // Create a new engine and perform transactions
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
+            // Create a test table
+            db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
 
             // Begin a transaction and commit it
             {
-                let mut tx = engine.begin_transaction();
-                tx.set(b"key1", b"value1".to_vec()).unwrap();
-                tx.set(b"key2", b"value2".to_vec()).unwrap();
-                tx.commit().unwrap();
+                let mut tx = db.begin_transaction()?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('key1', 'value1')")?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('key2', 'value2')")?;
+                tx.commit()?;
             }
 
             // Begin another transaction but don't commit (simulate crash)
             {
-                let mut tx = engine.begin_transaction();
-                tx.set(b"key3", b"value3".to_vec()).unwrap();
+                let mut tx = db.begin_transaction()?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('key3', 'value3')")?;
                 // Don't commit - this should be rolled back on recovery
             }
-        }
 
-        // Reopen the database to simulate crash recovery
-        {
-            let engine = StorageEngine::new(test_db_path.clone()).unwrap();
+            // Drop the first database instance to release the file lock
+            drop(db);
+            
+            // Reopen the database to simulate crash recovery
+            let mut db2 = Database::open(db_path)?;
 
             // Check that committed data is still there
-            assert_eq!(engine.get(b"key1").as_deref(), Some(b"value1" as &[u8]));
-            assert_eq!(engine.get(b"key2").as_deref(), Some(b"value2" as &[u8]));
+            let result1 = db2.query("SELECT value FROM test_data WHERE key = 'key1'")?;
+            assert_eq!(result1.rows().len(), 1);
+            assert_eq!(result1.rows()[0][0], SqlValue::Text("value1".to_string()));
+
+            let result2 = db2.query("SELECT value FROM test_data WHERE key = 'key2'")?;
+            assert_eq!(result2.rows().len(), 1);
+            assert_eq!(result2.rows()[0][0], SqlValue::Text("value2".to_string()));
 
             // Check that uncommitted data was rolled back
-            assert_eq!(engine.get(b"key3"), None);
+            let result3 = db2.query("SELECT value FROM test_data WHERE key = 'key3'")?;
+            assert_eq!(result3.rows().len(), 0); // Should be empty
 
-            // Commit markers are no longer accessible as data - they're internal recovery markers
-            // Just verify that the committed data is present and uncommitted data is absent
-        }
-
-        // Clean up
-        std::fs::remove_file(&test_db_path).unwrap();
+            Ok(())
+        })
     }
 
     #[test]
-    fn test_multiple_transactions_with_commit_markers() {
-        let test_db_path = PathBuf::from("/tmp/test_multiple_transactions.db");
+    fn test_multiple_transactions_with_commit_markers() -> Result<()> {
+        run_with_both_backends("test_multiple_transactions_with_commit_markers", |db_path| {
+            let mut db = Database::open(db_path)?;
 
-        // Clean up if the file exists
-        if test_db_path.exists() {
-            std::fs::remove_file(&test_db_path).unwrap();
-        }
-
-        {
-            let mut engine = StorageEngine::new(test_db_path.clone()).unwrap();
+            // Create a test table
+            db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
 
             // Transaction 1: committed
             {
-                let mut tx = engine.begin_transaction();
-                tx.set(b"tx1_key", b"tx1_value".to_vec()).unwrap();
-                tx.commit().unwrap();
+                let mut tx = db.begin_transaction()?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('tx1_key', 'tx1_value')")?;
+                tx.commit()?;
             }
 
             // Transaction 2: committed
             {
-                let mut tx = engine.begin_transaction();
-                tx.set(b"tx2_key", b"tx2_value".to_vec()).unwrap();
-                tx.commit().unwrap();
+                let mut tx = db.begin_transaction()?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('tx2_key', 'tx2_value')")?;
+                tx.commit()?;
             }
 
             // Verify that both transactions were committed by checking their data
-            assert_eq!(
-                engine.get(b"tx1_key").as_deref(),
-                Some(b"tx1_value" as &[u8])
-            );
-            assert_eq!(
-                engine.get(b"tx2_key").as_deref(),
-                Some(b"tx2_value" as &[u8])
-            );
+            let result1 = db.query("SELECT value FROM test_data WHERE key = 'tx1_key'")?;
+            assert_eq!(result1.rows().len(), 1);
+            assert_eq!(result1.rows()[0][0], SqlValue::Text("tx1_value".to_string()));
 
-            // Commit markers are no longer accessible as data - they're internal recovery markers
-            // The presence of both committed values confirms the recovery process worked correctly
-        }
+            let result2 = db.query("SELECT value FROM test_data WHERE key = 'tx2_key'")?;
+            assert_eq!(result2.rows().len(), 1);
+            assert_eq!(result2.rows()[0][0], SqlValue::Text("tx2_value".to_string()));
 
-        // Clean up
-        std::fs::remove_file(&test_db_path).unwrap();
+            Ok(())
+        })
     }
 }
