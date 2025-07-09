@@ -25,10 +25,10 @@ jobs:
         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
     
-    - name: Install Firefox (for headless testing)
+    - name: Install Node.js (for WASM testing)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y firefox-esr
+        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+        sudo apt-get install -y nodejs
     
     - name: Cache dependencies
       uses: actions/cache@v3
@@ -57,37 +57,5 @@ jobs:
           *.log
         retention-days: 7
 
-  # Optional: Add a job for performance testing on schedule
-  performance:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: wasm32-unknown-unknown
-        override: true
-    
-    - name: Install wasm-pack
-      run: |
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-    
-    - name: Run performance tests
-      run: |
-        ./run_all_tests.sh --skip-browser
-        ./run_performance_tests.sh
-    
-    - name: Upload performance results
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: performance-results
-        path: |
-          benches/
-          *.log
-        retention-days: 30 
+  # Note: Performance tests are now manual-only (too heavy for CI)
+  # Run with: ./run_performance_tests.sh 

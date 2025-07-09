@@ -527,7 +527,7 @@ pub fn run_basic_test() -> JsValue {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     #[test]
     #[cfg(target_arch = "wasm32")]
@@ -538,7 +538,9 @@ mod tests {
 
     #[test]
     #[cfg(target_arch = "wasm32")]
-    fn test_wasm_database_creation() -> Result<()> {
+    fn test_wasm_database_creation() -> crate::Result<()> {
+        use crate::Database;
+        
         // Test that we can create a database on WASM
         let mut db = Database::open("localstorage://test_db")?;
         

@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+// use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{window, Storage};
 

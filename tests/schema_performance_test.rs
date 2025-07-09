@@ -1,6 +1,6 @@
 //! Performance test to demonstrate the efficiency improvement of schema loading
 
-use std::{fs, time::Instant};
+use std::time::Instant;
 use tegdb::{Database, Result};
 
 mod test_helpers;

@@ -1,7 +1,4 @@
-use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -10,10 +7,10 @@ use fs2::FileExt;
 use crate::error::{Error, Result};
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::log::LogBackend;
-use crate::storage_engine::StorageEngine;
 use crate::protocol_utils::parse_storage_identifier;
 
 /// Type alias for uncommitted changes list
+#[allow(dead_code)]
 type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
 
 /// File-based storage backend for native platforms

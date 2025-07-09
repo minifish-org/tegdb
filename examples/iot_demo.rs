@@ -39,25 +39,26 @@ fn main() -> Result<()> {
     // Query data (should be efficiently organized by primary key)
     println!("4. Querying data (organized by primary key)...");
     #[cfg(not(target_arch = "wasm32"))]
-    let result = db.query("SELECT * FROM users").unwrap();
-    println!("Found {} rows:", result.rows().len());
+    {
+        let result = db.query("SELECT * FROM users").unwrap();
+        println!("Found {} rows:", result.rows().len());
 
-    #[cfg(not(target_arch = "wasm32"))]
-    for row in result.rows() {
+        for row in result.rows() {
         let id = match &row[0] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
         let name = match &row[1] {
-            tegdb::SqlValue::Text(s) => s.clone(),
-            _ => "Unknown".to_string(),
+            tegdb::SqlValue::Text(s) => s,
+            _ => &"Unknown".to_string(),
         };
         let age = match &row[2] {
-            tegdb::SqlValue::Integer(i) => *i,
-            _ => 0,
+            tegdb::SqlValue::Integer(i) => i,
+            _ => &0,
         };
 
         println!("  ID: {id}, Name: {name}, Age: {age}");
+        }
     }
 
     // Test table without primary key (should fail)

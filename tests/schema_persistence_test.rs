@@ -1,5 +1,6 @@
 //! Test to verify that table schemas are properly persisted and loaded
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use tegdb::{Database, Result};
 

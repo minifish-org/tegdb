@@ -58,16 +58,16 @@ where
 /// This is useful when you want to test only the file backend,
 /// or when the test logic is specific to file-based storage.
 #[allow(dead_code)]
-pub fn run_with_file_backend<F>(test_name: &str, test_fn: F) -> Result<()>
+pub fn run_with_file_backend<F>(_test_name: &str, _test_fn: F) -> Result<()>
 where
     F: Fn(&str) -> Result<()>,
 {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        println!("Running {} with file backend", test_name);
+        println!("Running {} with file backend", _test_name);
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
         let db_path = format!("file://{}", temp_file.path().display());
-        test_fn(&db_path)
+        _test_fn(&db_path)
     }
 
     #[cfg(target_arch = "wasm32")]
