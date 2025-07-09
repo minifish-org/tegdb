@@ -29,10 +29,19 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies]
-criterion = { version = "0.5.1", features = ["html_reports"] }
 sled = "0.34.7" # for performance comparison
 rusqlite = "0.31.0"
-tempfile = "3.10.1"
+
+# Common dev dependencies that work on all platforms
+tempfile = "3.0"
+
+# Criterion only works on native platforms, not WASM
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+# WASM testing support
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [[bench]]
 name = "engine_basic_benchmark"
@@ -152,3 +161,6 @@ required-features = ["dev"]
 name = "drop_table_integration_test"
 path = "tests/drop_table_integration_test.rs"
 required-features = ["dev"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]

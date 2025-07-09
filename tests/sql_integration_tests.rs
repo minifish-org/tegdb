@@ -6,7 +6,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_sql_integration_basic_operations() {
     let _ = run_with_both_backends("test_sql_integration_basic_operations", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Create table
         let create_sql =
@@ -52,7 +52,7 @@ fn test_sql_integration_basic_operations() {
 #[test]
 fn test_sql_parser_edge_cases() {
     let _ = run_with_both_backends("test_sql_parser_edge_cases", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Test case-insensitive keywords
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER)")
@@ -77,7 +77,7 @@ fn test_sql_parser_edge_cases() {
 #[test]
 fn test_sql_integration_transaction_isolation() {
     let _ = run_with_both_backends("test_sql_integration_transaction_isolation", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup initial data
         db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL)")
@@ -106,7 +106,7 @@ fn test_sql_integration_transaction_isolation() {
 #[test]
 fn test_sql_integration_constraints() {
     let _ = run_with_both_backends("test_sql_integration_constraints", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Create table with constraints
         let create_sql =
@@ -129,7 +129,7 @@ fn test_sql_integration_constraints() {
 #[test]
 fn test_sql_integration_complex_queries() {
     let _ = run_with_both_backends("test_sql_integration_complex_queries", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Create table
         let create_sql =
@@ -159,7 +159,7 @@ fn test_sql_integration_complex_queries() {
 #[test]
 fn test_sql_drop_table() {
     let _ = run_with_both_backends("test_sql_drop_table", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Create table
         let create_sql = "CREATE TABLE temp_table (id INTEGER PRIMARY KEY, data TEXT)";

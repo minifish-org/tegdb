@@ -7,7 +7,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_arithmetic_error_handling() {
     run_with_both_backends("arithmetic_error_handling", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Create test table
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER)")
@@ -31,7 +31,7 @@ fn test_arithmetic_error_handling() {
 #[test]
 fn test_operator_precedence() {
     run_with_both_backends("operator_precedence", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Create test table
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER)")
@@ -81,7 +81,7 @@ fn test_operator_precedence() {
 #[test]
 fn test_text_concatenation() {
     run_with_both_backends("text_concatenation", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Create test table
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, text1 TEXT, text2 TEXT)")

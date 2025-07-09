@@ -6,7 +6,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_planner_integration_in_database() -> Result<()> {
     run_with_both_backends("test_planner_integration_in_database", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Create a test table
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
@@ -45,7 +45,7 @@ fn test_planner_integration_in_database() -> Result<()> {
 #[test]
 fn test_crud_operations_with_planner() -> Result<()> {
     run_with_both_backends("test_crud_operations_with_planner", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // CREATE
         db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;

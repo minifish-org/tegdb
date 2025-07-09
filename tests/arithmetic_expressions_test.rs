@@ -7,7 +7,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_arithmetic_expressions_in_update() {
     run_with_both_backends("arithmetic_expressions_in_update", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Create test table
         db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, value INTEGER, score REAL)")
@@ -102,7 +102,7 @@ fn test_arithmetic_expression_parsing() {
     run_with_both_backends("arithmetic_expression_parsing", |db_path| {
         // This requires accessing the parser directly, which needs dev features
         // For now, we'll test through the database API which exercises the parser
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, a INTEGER, b INTEGER)")
             .expect("Failed to create table");

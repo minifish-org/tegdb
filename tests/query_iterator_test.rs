@@ -7,7 +7,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_query_iterator_basic_functionality() {
     let _ = run_with_both_backends("test_query_iterator_basic_functionality", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
         db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")
@@ -60,7 +60,7 @@ fn test_query_iterator_basic_functionality() {
 #[test]
 fn test_query_iterator_streaming() {
     let _ = run_with_both_backends("test_query_iterator_streaming", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
         db.execute("CREATE TABLE streaming_test (id INTEGER PRIMARY KEY, data TEXT)")
@@ -114,7 +114,7 @@ fn test_query_iterator_streaming() {
 #[test]
 fn test_query_iterator_backward_compatibility() {
     let _ = run_with_both_backends("test_query_iterator_backward_compatibility", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
         db.execute("CREATE TABLE compat_test (id INTEGER PRIMARY KEY, name TEXT)")
@@ -148,7 +148,7 @@ fn test_query_iterator_backward_compatibility() {
 #[test]
 fn test_query_iterator_empty_result() {
     let _ = run_with_both_backends("test_query_iterator_empty_result", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
         db.execute("CREATE TABLE empty_test (id INTEGER PRIMARY KEY, name TEXT)")
@@ -170,7 +170,7 @@ fn test_query_iterator_empty_result() {
 #[test]
 fn test_query_iterator_with_where_clause() {
     let _ = run_with_both_backends("test_query_iterator_with_where_clause", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
         db.execute("CREATE TABLE where_test (id INTEGER PRIMARY KEY, value INTEGER)")
@@ -205,7 +205,7 @@ fn test_query_iterator_with_where_clause() {
 #[test]
 fn test_transaction_query_iterator() {
     let _ = run_with_both_backends("test_transaction_query_iterator", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
         db.execute("CREATE TABLE tx_test (id INTEGER PRIMARY KEY, value INTEGER)")

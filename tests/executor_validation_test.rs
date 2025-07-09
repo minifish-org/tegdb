@@ -1,27 +1,17 @@
 use tegdb::{Database, Result};
-use tempfile::TempDir;
 
 mod test_helpers;
 use test_helpers::run_with_both_backends;
 
-fn setup_test_db() -> Result<(Database, TempDir)> {
-    let temp_dir = TempDir::new().unwrap();
-    let path = temp_dir.path().join("test.db");
-
-    let mut db = Database::open(&format!("file://{}", path.display()))?;
-
-    // Create test table
-    db.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
-    )?;
-
-    Ok((db, temp_dir))
-}
-
 #[test]
 fn test_insert_validation() -> Result<()> {
-    run_with_both_backends("test_insert_validation", |_db_path| {
-        let (mut db, _temp_dir) = setup_test_db()?;
+    run_with_both_backends("test_insert_validation", |db_path| {
+        let mut db = Database::open(db_path)?;
+
+        // Create test table
+        db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+        )?;
 
         // Test valid insert
         let result =
@@ -51,8 +41,13 @@ fn test_insert_validation() -> Result<()> {
 
 #[test]
 fn test_update_validation() -> Result<()> {
-    run_with_both_backends("test_update_validation", |_db_path| {
-        let (mut db, _temp_dir) = setup_test_db()?;
+    run_with_both_backends("test_update_validation", |db_path| {
+        let mut db = Database::open(db_path)?;
+
+        // Create test table
+        db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+        )?;
 
         // Insert test data
         db.execute("INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")?;
@@ -79,8 +74,13 @@ fn test_update_validation() -> Result<()> {
 
 #[test]
 fn test_select_memory_optimization() -> Result<()> {
-    run_with_both_backends("test_select_memory_optimization", |_db_path| {
-        let (mut db, _temp_dir) = setup_test_db()?;
+    run_with_both_backends("test_select_memory_optimization", |db_path| {
+        let mut db = Database::open(db_path)?;
+
+        // Create test table
+        db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+        )?;
 
         // Insert test data
         for i in 1..=100 {
@@ -92,18 +92,18 @@ fn test_select_memory_optimization() -> Result<()> {
         // Test LIMIT optimization (should only process limited rows)
         // Now using the proper streaming API
         let result = db.query("SELECT * FROM users LIMIT 5")?;
-        let count = result.len();
+        let count = result.rows().len();
         println!("Limited select result: {count} rows (streaming)");
         assert!(count <= 5);
 
         // Test WHERE optimization (should filter early)
         let result = db.query("SELECT * FROM users WHERE id = 42")?;
-        let count = result.len();
+        let count = result.rows().len();
         println!("Filtered select result: {count} rows (streaming)");
 
         // Test combined LIMIT and WHERE
         let result = db.query("SELECT * FROM users WHERE id > 50 LIMIT 3")?;
-        let count = result.len();
+        let count = result.rows().len();
         println!("Combined optimization result: {count} rows (streaming)");
         assert!(count <= 3);
 

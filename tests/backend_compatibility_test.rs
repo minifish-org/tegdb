@@ -16,7 +16,7 @@
 //!    #[test]
 //!    fn my_test() -> Result<()> {
 //!         run_with_both_backends("my_test_name", |db_path| {
-//!             let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+//!             let mut db = Database::open(db_path)?;
 //!             // Your test logic here...
 //!             Ok(())
 //!         })
@@ -62,7 +62,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_basic_operations_both_backends() -> Result<()> {
     run_with_both_backends("basic_operations", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Test CREATE TABLE
         let affected = db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
@@ -101,7 +101,7 @@ fn test_basic_operations_both_backends() -> Result<()> {
 #[test]
 fn test_transactions_both_backends() -> Result<()> {
     run_with_both_backends("transactions", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test table
         db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER)")?;
@@ -147,7 +147,7 @@ fn test_transactions_both_backends() -> Result<()> {
 #[test]
 fn test_data_types_both_backends() -> Result<()> {
     run_with_both_backends("data_types", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Test all supported data types
         db.execute(
@@ -191,14 +191,14 @@ fn test_schema_persistence_both_backends() -> Result<()> {
     run_with_both_backends("schema_persistence", |db_path| {
         // Create database and table in first session
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
             db.execute("CREATE TABLE persistent_test (id INTEGER PRIMARY KEY, data TEXT)")?;
             db.execute("INSERT INTO persistent_test (id, data) VALUES (1, 'test data')")?;
         }
 
         // Reopen database and verify schema and data are preserved
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
 
             // Should be able to query existing data
             let result = db.query("SELECT * FROM persistent_test").unwrap();
@@ -227,7 +227,7 @@ fn test_schema_persistence_both_backends() -> Result<()> {
 #[test]
 fn test_converted_from_existing_test() -> Result<()> {
     run_with_both_backends("converted_test", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // This is the same logic as test_database_open_and_basic_operations from database_tests.rs
         // but now it runs with both backends automatically!

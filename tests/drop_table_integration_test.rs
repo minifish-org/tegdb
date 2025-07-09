@@ -1,68 +1,43 @@
-use std::collections::HashMap;
-use tegdb::parser::{parse_sql, Statement};
-use tegdb::{
-    query::{QueryProcessor, ResultSet},
-    StorageEngine,
-};
-use tempfile::tempdir;
+use tegdb::{Database, Result};
+
+mod test_helpers;
+use test_helpers::run_with_both_backends;
 
 #[test]
-fn test_drop_table_integration() {
-    let dir = tempdir().unwrap();
-    let db_path = dir.path().join("test_drop_table.db");
-    let mut engine = StorageEngine::new(db_path).unwrap();
+fn test_drop_table_integration() -> Result<()> {
+    run_with_both_backends("test_drop_table_integration", |db_path| {
+        let mut db = Database::open(db_path)?;
 
-    let transaction = engine.begin_transaction();
-    let mut executor = QueryProcessor::new_with_schemas(transaction, HashMap::new());
+        // Create a table first
+        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)")?;
 
-    // Start a transaction
-    let begin_result = executor.begin_transaction().unwrap();
-    assert!(matches!(begin_result, ResultSet::Begin));
-    drop(begin_result); // Release the borrow
+        // Insert some data to verify the table works
+        db.execute("INSERT INTO test_table (id, name) VALUES (1, 'test')")?;
 
-    // Create a table first
-    let create_sql = "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)";
-    let create_statement = match parse_sql(create_sql).unwrap().1 {
-        Statement::CreateTable(create) => create,
-        _ => panic!("Expected CREATE TABLE statement"),
-    };
-    let create_result = executor.execute_create_table(create_statement).unwrap();
-    assert!(matches!(create_result, ResultSet::CreateTable));
-    drop(create_result); // Release the borrow
+        // Verify table exists and has data
+        let result = db.query("SELECT * FROM test_table")?;
+        assert_eq!(result.rows().len(), 1);
 
-    // Drop the table
-    let drop_sql = "DROP TABLE test_table";
-    let drop_statement = match parse_sql(drop_sql).unwrap().1 {
-        Statement::DropTable(drop) => drop,
-        _ => panic!("Expected DROP TABLE statement"),
-    };
-    match executor.execute_drop_table(drop_statement).unwrap() {
-        ResultSet::DropTable => {
-            // Table was successfully dropped
-        }
-        _ => panic!("Expected DropTable result"),
-    }
+        // Drop the table
+        let affected = db.execute("DROP TABLE test_table")?;
+        assert_eq!(affected, 0); // DROP TABLE returns 0 affected rows
 
-    // Try to drop the same table again (should fail)
-    let drop_again_statement = match parse_sql(drop_sql).unwrap().1 {
-        Statement::DropTable(drop) => drop,
-        _ => panic!("Expected DROP TABLE statement"),
-    };
-    assert!(executor.execute_drop_table(drop_again_statement).is_err());
+        // Try to query the dropped table (should fail)
+        let result = db.query("SELECT * FROM test_table");
+        assert!(result.is_err(), "Table should no longer exist");
 
-    // Try to drop with IF EXISTS (should succeed)
-    let drop_if_exists_sql = "DROP TABLE IF EXISTS test_table";
-    let drop_if_exists_statement = match parse_sql(drop_if_exists_sql).unwrap().1 {
-        Statement::DropTable(drop) => drop,
-        _ => panic!("Expected DROP TABLE statement"),
-    };
-    let result = executor
-        .execute_drop_table(drop_if_exists_statement)
-        .unwrap();
-    match result {
-        ResultSet::DropTable => {
-            // Table drop was handled (whether it existed or not)
-        }
-        _ => panic!("Expected DropTable result"),
-    }
+        // Try to drop the same table again (should fail)
+        let result = db.execute("DROP TABLE test_table");
+        assert!(result.is_err(), "Dropping non-existent table should fail");
+
+        // Try to drop with IF EXISTS (should succeed)
+        let affected = db.execute("DROP TABLE IF EXISTS test_table")?;
+        assert_eq!(affected, 0); // Should succeed even if table doesn't exist
+
+        // Try to drop with IF EXISTS on a table that never existed (should also succeed)
+        let affected = db.execute("DROP TABLE IF EXISTS never_existed_table")?;
+        assert_eq!(affected, 0);
+
+        Ok(())
+    })
 }

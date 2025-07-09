@@ -7,7 +7,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_explicit_transaction_basic_workflow() -> Result<(), tegdb::Error> {
     run_with_both_backends("test_explicit_basic_workflow", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Begin transaction
         let mut tx = db.begin_transaction().unwrap();
@@ -37,7 +37,7 @@ fn test_explicit_transaction_basic_workflow() -> Result<(), tegdb::Error> {
 #[test]
 fn test_explicit_transaction_rollback() -> Result<(), tegdb::Error> {
     run_with_both_backends("test_explicit_rollback", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Setup initial data
         db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")
@@ -87,7 +87,7 @@ fn test_explicit_transaction_rollback() -> Result<(), tegdb::Error> {
 #[test]
 fn test_explicit_transaction_error_handling() -> Result<(), tegdb::Error> {
     run_with_both_backends("test_explicit_errors", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Test that operations work with explicit transactions
         let mut tx = db.begin_transaction().unwrap();
@@ -113,7 +113,7 @@ fn test_explicit_transaction_error_handling() -> Result<(), tegdb::Error> {
 #[test]
 fn test_explicit_transaction_complex_operations() -> Result<(), tegdb::Error> {
     run_with_both_backends("test_explicit_complex_operations", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Start transaction
         let mut tx = db.begin_transaction().unwrap();
@@ -166,7 +166,7 @@ fn test_explicit_transaction_complex_operations() -> Result<(), tegdb::Error> {
 #[test]
 fn test_explicit_transaction_nested_behavior() -> Result<(), tegdb::Error> {
     run_with_both_backends("test_explicit_nested_behavior", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+        let mut db = Database::open(db_path).unwrap();
 
         // Start first transaction
         let mut tx1 = db.begin_transaction().unwrap();

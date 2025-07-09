@@ -48,21 +48,31 @@ impl StorageEngine {
         Self::with_config(path, EngineConfig::default())
     }
 
+    /// Creates a new database engine with a string identifier (for browser backends)
+    pub fn new_with_identifier(identifier: String) -> Result<Self> {
+        Self::with_config_and_identifier(identifier, EngineConfig::default())
+    }
+
     /// Creates a new database engine with custom configuration
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
         let path_str = path.to_string_lossy().to_string();
+        Self::with_config_and_identifier(path_str, config)
+    }
+
+    /// Creates a new database engine with custom configuration and string identifier
+    pub fn with_config_and_identifier(identifier: String, config: EngineConfig) -> Result<Self> {
         let log_config = LogConfig {
             max_key_size: config.max_key_size,
             max_value_size: config.max_value_size,
         };
-        let mut log = Log::new(path_str.clone(), &log_config)?;
+        let mut log = Log::new(identifier.clone(), &log_config)?;
         let key_map = log.build_key_map(&log_config)?;
 
         let mut engine = Self {
             log,
             key_map,
             config,
-            identifier: path_str,
+            identifier,
         };
 
         if engine.config.auto_compact {

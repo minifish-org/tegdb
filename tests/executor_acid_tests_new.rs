@@ -7,7 +7,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_transaction_atomicity() -> Result<()> {
     run_with_both_backends("test_transaction_atomicity", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup initial data
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
@@ -55,7 +55,7 @@ fn test_transaction_atomicity() -> Result<()> {
 #[test]
 fn test_transaction_consistency() -> Result<()> {
     run_with_both_backends("test_transaction_consistency", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test schema
         db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER NOT NULL)")?;
@@ -99,7 +99,7 @@ fn test_transaction_consistency() -> Result<()> {
 #[test]
 fn test_transaction_isolation() -> Result<()> {
     run_with_both_backends("test_transaction_isolation", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test data
         db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER)")?;
@@ -136,7 +136,7 @@ fn test_transaction_durability() -> Result<()> {
     run_with_both_backends("test_transaction_durability", |db_path| {
         // Phase 1: Create data and commit
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
             let mut tx = db.begin_transaction()?;
             tx.execute("CREATE TABLE persistent_data (id INTEGER PRIMARY KEY, value TEXT)")?;
 
@@ -150,7 +150,7 @@ fn test_transaction_durability() -> Result<()> {
 
         // Phase 2: Reopen and verify data survived
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
             let result = db.query("SELECT * FROM persistent_data ORDER BY id")?;
             assert_eq!(result.rows().len(), 2);
 
@@ -176,7 +176,7 @@ fn test_transaction_durability() -> Result<()> {
 #[test]
 fn test_transaction_rollback_scenarios() -> Result<()> {
     run_with_both_backends("test_transaction_rollback_scenarios", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test data
         db.execute("CREATE TABLE test_rollback (id INTEGER PRIMARY KEY, name TEXT)")?;
@@ -222,7 +222,7 @@ fn test_transaction_rollback_scenarios() -> Result<()> {
 #[test]
 fn test_concurrent_transaction_patterns() -> Result<()> {
     run_with_both_backends("test_concurrent_transaction_patterns", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup shared counter table
         db.execute("CREATE TABLE shared_counter (id INTEGER PRIMARY KEY, value INTEGER)")?;

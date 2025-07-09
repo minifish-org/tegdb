@@ -8,7 +8,7 @@ use test_helpers::run_with_both_backends;
 fn test_simplified_api() {
     run_with_both_backends("simplified_api", |db_path| {
         // Test that we can create database without configuration
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Test DDL
         db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value REAL)")
@@ -62,7 +62,7 @@ fn test_simplified_api() {
 fn test_database_without_config() {
     run_with_both_backends("database_without_config", |db_path| {
         // This should work without any configuration
-        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Should be able to create and use table immediately
         db.execute("CREATE TABLE simple (id INTEGER PRIMARY KEY)")

@@ -5,6 +5,7 @@
 
 use std::time::{Duration, Instant};
 use tegdb::{Database, Result};
+#[cfg(not(target_arch = "wasm32"))]
 use tempfile::NamedTempFile;
 
 // These are available with the dev feature
@@ -104,9 +105,19 @@ impl SqlExecutionMetrics {
 
 /// Create a temporary database for testing
 fn create_test_db() -> Result<Database> {
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-    Database::open(&format!("file://{}", db_path.display()))
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let db_path = temp_file.path();
+        Database::open(db_path)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // In WASM, we can't use NamedTempFile directly.
+        // For now, we'll just return an error or a placeholder.
+        // This test is primarily for non-WASM environments.
+        Err(tegdb::Error::Other("WASM does not support NamedTempFile for testing".to_string()))
+    }
 }
 
 /// Setup a test table with sample data

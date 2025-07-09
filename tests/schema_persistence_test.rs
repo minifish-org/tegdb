@@ -14,7 +14,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 
         // First session: Create a table
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+            let mut db = Database::open(db_path).unwrap();
 
             // Create a table with specific schema
             db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
@@ -31,7 +31,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 
         // Second session: Reopen database and verify schema is available
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+            let mut db = Database::open(db_path).unwrap();
 
             // The schema should be loaded automatically, so we should be able to:
             // 1. Insert more data
@@ -55,7 +55,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 
         // Third session: Test that we can still create more tables
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+            let mut db = Database::open(db_path).unwrap();
 
             // Create another table
             db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
@@ -98,14 +98,14 @@ fn test_schema_loading_on_executor_creation() -> Result<()> {
 
         // Create database and table
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+            let mut db = Database::open(db_path).unwrap();
             db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, description TEXT)")?;
             db.execute("INSERT INTO items (id, description) VALUES (1, 'Test Item')")?;
         }
 
         // Reopen and immediately try to use the table (this should work if schemas are loaded)
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display())).unwrap();
+            let mut db = Database::open(db_path).unwrap();
 
             // This should work without any issues if the schema was properly loaded
             let result = db.query("SELECT * FROM items").unwrap();

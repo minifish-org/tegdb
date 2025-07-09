@@ -33,41 +33,80 @@ pub struct Database {
 impl Database {
     /// Create or open database
     /// 
-    /// Only accepts absolute paths with the file:// protocol.
+    /// On native platforms: Only accepts absolute paths with the file:// protocol.
+    /// On WASM platforms: Supports browser://, localStorage://, and indexeddb:// protocols.
+    /// 
     /// Examples:
-    /// - ✅ file:///absolute/path/to/db
+    /// - ✅ file:///absolute/path/to/db (native only)
+    /// - ✅ browser://my-app-db (WASM only)
+    /// - ✅ localStorage://user-data (WASM only)
+    /// - ✅ indexeddb://app-cache (WASM only)
     /// - ❌ relative/path (no protocol)
     /// - ❌ file://relative/path (relative path with protocol)
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path_str = path.as_ref();
         let (protocol, path_part) = parse_storage_identifier(path_str);
         
-        // Only support file protocol
-        if protocol != "file" {
-            return Err(crate::Error::Other(format!(
-                "Unsupported protocol: {}. Only 'file://' protocol is supported.",
-                protocol
-            )));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // On native platforms, only support file protocol
+            if protocol != "file" {
+                return Err(crate::Error::Other(format!(
+                    "Unsupported protocol: {}. Only 'file://' protocol is supported on native platforms.",
+                    protocol
+                )));
+            }
+            
+            // Check if path is absolute
+            let path_buf = Path::new(path_part);
+            if !path_buf.is_absolute() {
+                return Err(crate::Error::Other(format!(
+                    "Path must be absolute. Got: '{}'. Use absolute path like 'file:///absolute/path/to/db'",
+                    path_str
+                )));
+            }
+            
+            let storage = StorageEngine::new(path_buf.to_path_buf())?;
+            
+            // Load all table schemas into the catalog at database initialization
+            let catalog = Catalog::load_from_storage(&storage)?;
+
+            Ok(Self {
+                storage,
+                catalog: Arc::new(RwLock::new(catalog)),
+            })
         }
         
-        // Check if path is absolute
-        let path_buf = Path::new(path_part);
-        if !path_buf.is_absolute() {
-            return Err(crate::Error::Other(format!(
-                "Path must be absolute. Got: '{}'. Use absolute path like 'file:///absolute/path/to/db'",
-                path_str
-            )));
+        #[cfg(target_arch = "wasm32")]
+        {
+            // On WASM platforms, support browser protocols
+            match protocol {
+                "browser" | "localstorage" | "indexeddb" => {
+                    // For browser backends, we use the full identifier string
+                    let storage = StorageEngine::new_with_identifier(path_str.to_string())?;
+                    
+                    // Load all table schemas into the catalog at database initialization
+                    let catalog = Catalog::load_from_storage(&storage)?;
+
+                    Ok(Self {
+                        storage,
+                        catalog: Arc::new(RwLock::new(catalog)),
+                    })
+                }
+                "file" => {
+                    // File protocol is not supported on WASM
+                    return Err(crate::Error::Other(format!(
+                        "File protocol is not supported on WASM. Use 'browser://', 'localstorage://', or 'indexeddb://' protocols instead."
+                    )));
+                }
+                _ => {
+                    return Err(crate::Error::Other(format!(
+                        "Unsupported protocol: {}. On WASM, only 'browser://', 'localstorage://', and 'indexeddb://' protocols are supported.",
+                        protocol
+                    )));
+                }
+            }
         }
-        
-        let storage = StorageEngine::new(path_buf.to_path_buf())?;
-
-        // Load all table schemas into the catalog at database initialization
-        let catalog = Catalog::load_from_storage(&storage)?;
-
-        Ok(Self {
-            storage,
-            catalog: Arc::new(RwLock::new(catalog)),
-        })
     }
 
     /// Helper function to create TableSchema from CreateTableStatement

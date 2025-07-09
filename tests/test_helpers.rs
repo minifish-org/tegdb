@@ -1,6 +1,8 @@
 //! Test helpers for running tests with different backends
 
 use tegdb::Result;
+
+#[cfg(not(target_arch = "wasm32"))]
 use tempfile::NamedTempFile;
 
 /// Run a test function with both file and browser backends
@@ -17,29 +19,30 @@ use tempfile::NamedTempFile;
 /// use tests::test_helpers::run_with_both_backends;
 /// 
 /// run_with_both_backends("my_test", |db_path| {
-///     let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+///     let mut db = Database::open(db_path)?;
 ///     // ... test logic ...
 ///     Ok(())
 /// });
 /// ```
 pub fn run_with_both_backends<F>(test_name: &str, test_fn: F) -> Result<()>
 where
-    F: Fn(&std::path::Path) -> Result<()>,
+    F: Fn(&str) -> Result<()>,
 {
     // Test with file backend (native)
-    println!("Running {} with file backend", test_name);
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-    test_fn(db_path)?;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        println!("Running {} with file backend", test_name);
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let db_path = format!("file://{}", temp_file.path().display());
+        test_fn(&db_path)?;
+    }
 
     // Test with browser backend (WASM) - only if we're targeting WASM
     #[cfg(target_arch = "wasm32")]
     {
         println!("Running {} with browser backend", test_name);
-        let browser_path = "browser://test_db";
-        // For browser backend, we need to create a different path format
-        // The test function will need to handle the browser:// protocol
-        test_fn_with_browser_backend(browser_path, &test_fn)?;
+        let browser_path = "localstorage://test_db";
+        test_fn(browser_path)?;
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -50,18 +53,6 @@ where
     Ok(())
 }
 
-/// Run a test function specifically with the browser backend
-#[cfg(target_arch = "wasm32")]
-fn test_fn_with_browser_backend<F>(browser_path: &str, test_fn: &F) -> Result<()>
-where
-    F: Fn(&std::path::Path) -> Result<()>,
-{
-    // For browser backend, we need to create a temporary path that can be converted
-    // to a browser storage identifier
-    let temp_path = std::path::Path::new(browser_path);
-    test_fn(temp_path)
-}
-
 /// Run a test function with file backend only
 /// 
 /// This is useful when you want to test only the file backend,
@@ -69,12 +60,21 @@ where
 #[allow(dead_code)]
 pub fn run_with_file_backend<F>(test_name: &str, test_fn: F) -> Result<()>
 where
-    F: Fn(&std::path::Path) -> Result<()>,
+    F: Fn(&str) -> Result<()>,
 {
-    println!("Running {} with file backend", test_name);
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-    test_fn(db_path)
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        println!("Running {} with file backend", test_name);
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let db_path = format!("file://{}", temp_file.path().display());
+        test_fn(&db_path)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        println!("File backend not available on WASM target");
+        Ok(())
+    }
 }
 
 /// Run a test function with browser backend only
@@ -88,7 +88,7 @@ where
     F: Fn(&str) -> Result<()>,
 {
     println!("Running {} with browser backend", test_name);
-    let browser_path = "browser://test_db";
+    let browser_path = "localstorage://test_db";
     test_fn(browser_path)
 }
 
@@ -97,8 +97,15 @@ where
 pub fn create_test_db_path(backend: &str) -> String {
     match backend {
         "file" => {
-            let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-            format!("file://{}", temp_file.path().display())
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+                format!("file://{}", temp_file.path().display())
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                "localstorage://test_db".to_string()
+            }
         }
         "browser" => "browser://test_db".to_string(),
         "localstorage" => "localstorage://test_db".to_string(),

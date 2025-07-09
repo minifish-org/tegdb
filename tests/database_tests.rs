@@ -9,7 +9,6 @@
 //! - Multiple database instances
 
 use tegdb::{Database, Result, SqlValue};
-use tempfile::NamedTempFile;
 
 mod test_helpers;
 use test_helpers::run_with_both_backends;
@@ -17,7 +16,7 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_database_open_and_basic_operations() -> Result<()> {
     run_with_both_backends("test_database_open_and_basic_operations", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Test CREATE TABLE
         let affected =
@@ -64,7 +63,7 @@ fn test_database_open_and_basic_operations() -> Result<()> {
 #[test]
 fn test_query_result_interface() -> Result<()> {
     run_with_both_backends("test_query_result_interface", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test data
         db.execute(
@@ -111,7 +110,7 @@ fn test_query_result_interface() -> Result<()> {
 #[test]
 fn test_database_transactions() -> Result<()> {
     run_with_both_backends("test_database_transactions", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test table
         db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER)")?;
@@ -198,7 +197,7 @@ fn test_database_transactions() -> Result<()> {
 #[test]
 fn test_database_data_types() -> Result<()> {
     run_with_both_backends("test_database_data_types", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Test all supported data types
         db.execute(
@@ -273,7 +272,7 @@ fn test_database_data_types() -> Result<()> {
 #[test]
 fn test_database_where_clauses() -> Result<()> {
     run_with_both_backends("test_database_where_clauses", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test data
         db.execute(
@@ -315,7 +314,7 @@ fn test_database_where_clauses() -> Result<()> {
 #[test]
 fn test_database_order_by_and_limit() -> Result<()> {
     run_with_both_backends("test_database_order_by_and_limit", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test data
         db.execute("CREATE TABLE scores (id INTEGER PRIMARY KEY, player TEXT, score INTEGER)")?;
@@ -424,7 +423,7 @@ fn test_database_order_by_and_limit() -> Result<()> {
 #[test]
 fn test_database_error_handling() -> Result<()> {
     run_with_both_backends("test_database_error_handling", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Test SQL parse errors
         let result = db.execute("INVALID SQL STATEMENT");
@@ -464,14 +463,14 @@ fn test_database_schema_persistence() -> Result<()> {
     run_with_both_backends("test_database_schema_persistence", |db_path| {
         // Create database and table in first session
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
             db.execute("CREATE TABLE persistent_test (id INTEGER PRIMARY KEY, data TEXT)")?;
             db.execute("INSERT INTO persistent_test (id, data) VALUES (1, 'test data')")?;
         }
 
         // Reopen database and verify schema and data are preserved
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
 
             // Should be able to query existing data
             let result = db.query("SELECT * FROM persistent_test").unwrap();
@@ -513,17 +512,17 @@ fn test_database_concurrent_access() -> Result<()> {
     run_with_both_backends("test_database_concurrent_access", |db_path| {
         // Create database with initial data
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
             db.execute("CREATE TABLE counter (id INTEGER PRIMARY KEY, value INTEGER)")?;
             db.execute("INSERT INTO counter (id, value) VALUES (1, 0)")?;
         }
 
         // Test that multiple Database instances can be created
         // (though they might conflict at the engine level)
-        let mut db1 = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db1 = Database::open(db_path)?;
 
         // This might fail if the engine doesn't support concurrent access
-        let db2_result = Database::open(&format!("file://{}", db_path.display()));
+        let db2_result = Database::open(db_path);
 
         // Document current behavior
         match db2_result {
@@ -548,7 +547,7 @@ fn test_database_concurrent_access() -> Result<()> {
 #[test]
 fn test_database_drop_table() -> Result<()> {
     run_with_both_backends("test_database_drop_table", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Create and populate table
         db.execute("CREATE TABLE temp_table (id INTEGER PRIMARY KEY, name TEXT)")?;
@@ -586,7 +585,7 @@ fn test_database_drop_table() -> Result<()> {
 #[test]
 fn test_database_complex_queries() -> Result<()> {
     run_with_both_backends("test_database_complex_queries", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Create more complex test scenario
         db.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, amount REAL, status TEXT)")?;
@@ -660,7 +659,7 @@ fn test_database_complex_queries() -> Result<()> {
 #[test]
 fn test_database_acid_atomicity() -> Result<()> {
     run_with_both_backends("test_database_acid_atomicity", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test table
         db.execute(
@@ -738,7 +737,7 @@ fn test_database_acid_atomicity() -> Result<()> {
 #[test]
 fn test_database_acid_consistency() -> Result<()> {
     run_with_both_backends("test_database_acid_consistency", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test table with constraints
         db.execute("CREATE TABLE inventory (id INTEGER PRIMARY KEY, product_name TEXT NOT NULL, quantity INTEGER, min_stock INTEGER)")?;
@@ -796,7 +795,7 @@ fn test_database_acid_isolation() -> Result<()> {
         // Test isolation - transactions should not see uncommitted changes from other transactions
         // Note: This test assumes the database supports some level of isolation
 
-        let mut db1 = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db1 = Database::open(db_path)?;
 
         // Setup test data
         db1.execute("CREATE TABLE shared_counter (id INTEGER PRIMARY KEY, value INTEGER)")?;
@@ -823,7 +822,7 @@ fn test_database_acid_isolation() -> Result<()> {
         tx1.commit()?;
 
         // Try to open a second database connection for isolation testing
-        let db2_result = Database::open(&format!("file://{}", db_path.display()));
+        let db2_result = Database::open(db_path);
         match db2_result {
             Ok(mut db2) => {
                 // Second connection available - test that committed changes are visible
@@ -876,7 +875,7 @@ fn test_database_acid_durability() -> Result<()> {
 
         // Phase 1: Create and populate database with committed transaction
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
 
             db.execute(
                 "CREATE TABLE durable_test (id INTEGER PRIMARY KEY, description TEXT, value INTEGER)",
@@ -901,7 +900,7 @@ fn test_database_acid_durability() -> Result<()> {
 
         // Phase 2: Reopen database and verify committed data survived
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
 
             // Data should still be there after restart
             let result = db
@@ -927,7 +926,7 @@ fn test_database_acid_durability() -> Result<()> {
 
         // Phase 3: Final restart to verify new transaction was also durable
         {
-            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+            let mut db = Database::open(db_path)?;
 
             let _result = db.query("SELECT COUNT(*) as count FROM durable_test");
             // COUNT might not be implemented, so let's count manually
@@ -952,7 +951,7 @@ fn test_database_acid_durability() -> Result<()> {
 #[test]
 fn test_database_acid_rollback_scenarios() -> Result<()> {
     run_with_both_backends("test_database_acid_rollback_scenarios", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test data
         db.execute(
@@ -1014,7 +1013,7 @@ fn test_database_acid_rollback_scenarios() -> Result<()> {
 #[test]
 fn test_database_acid_transaction_boundaries() -> Result<()> {
     run_with_both_backends("test_database_acid_transaction_boundaries", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test table
         db.execute("CREATE TABLE boundary_test (id INTEGER PRIMARY KEY, step INTEGER, data TEXT)")?;
@@ -1069,7 +1068,7 @@ fn test_database_acid_transaction_boundaries() -> Result<()> {
 #[test]
 fn test_database_acid_large_transaction() -> Result<()> {
     run_with_both_backends("test_database_acid_large_transaction", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
+        let mut db = Database::open(db_path)?;
 
         // Setup test table
         db.execute(
@@ -1149,9 +1148,17 @@ fn test_absolute_path_requirement() -> Result<()> {
     }
 
     // Test that absolute paths work
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-    let result = Database::open(&format!("file://{}", db_path.display()));
-    assert!(result.is_ok());
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+        let db_path = temp_file.path();
+        let result = Database::open(&format!("file://{}", db_path.display()));
+        assert!(result.is_ok());
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // On WASM, we can't test absolute file paths
+        println!("Skipping absolute path test on WASM target");
+    }
     Ok(())
 }

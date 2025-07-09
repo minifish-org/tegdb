@@ -1,14 +1,16 @@
+use std::collections::BTreeMap;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
+use std::sync::Arc;
+
 #[cfg(not(target_arch = "wasm32"))]
 use fs2::FileExt;
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::log::LogBackend;
-use std::sync::Arc;
+use crate::storage_engine::StorageEngine;
 use crate::protocol_utils::parse_storage_identifier;
 
 /// Type alias for uncommitted changes list
@@ -17,7 +19,7 @@ type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
 /// File-based storage backend for native platforms
 #[cfg(not(target_arch = "wasm32"))]
 pub struct FileLogBackend {
-    path: PathBuf,
+    path: std::path::PathBuf,
     file: std::fs::File,
 }
 
@@ -35,7 +37,7 @@ impl LogBackend for FileLogBackend {
             )));
         }
         
-        let path = PathBuf::from(path_str);
+        let path = std::path::PathBuf::from(path_str);
 
         // Create directory if it doesn't exist
         if let Some(dir) = path.parent() {
@@ -61,7 +63,7 @@ impl LogBackend for FileLogBackend {
         let mut key_map = KeyMap::new();
         let mut uncommitted_changes: UncommittedChanges = Vec::new();
         let file_len = self.file.metadata()?.len();
-        let mut reader = BufReader::new(&mut self.file);
+        let mut reader = std::io::BufReader::new(&mut self.file);
         let mut pos = reader.seek(SeekFrom::Start(0))?;
         let mut len_buf = [0u8; 4];
         let mut committed = false;
@@ -152,7 +154,7 @@ impl LogBackend for FileLogBackend {
         // Write to file
         self.file.seek(SeekFrom::End(0))?;
         {
-            let mut writer = BufWriter::with_capacity(len as usize, &mut self.file);
+            let mut writer = std::io::BufWriter::with_capacity(len as usize, &mut self.file);
             writer.write_all(&buffer)?;
             writer.flush()?;
         }
@@ -169,7 +171,7 @@ impl LogBackend for FileLogBackend {
     }
 
     fn rename_to(&mut self, new_identifier: String) -> Result<()> {
-        let new_path = PathBuf::from(new_identifier);
+        let new_path = std::path::PathBuf::from(new_identifier);
         std::fs::rename(&self.path, &new_path)?;
         self.path = new_path;
         Ok(())
@@ -180,7 +182,7 @@ impl LogBackend for FileLogBackend {
 impl Drop for FileLogBackend {
     fn drop(&mut self) {
         // Ignore errors during drop, but try to unlock
-        let _ = FileExt::unlock(&self.file);
+        let _ = fs2::FileExt::unlock(&self.file);
     }
 }
 
