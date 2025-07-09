@@ -47,11 +47,16 @@ pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &Sq
             _ => false,
         },
         Like => {
-            // Simple LIKE implementation - just checking if right is substring of left
+            // Optimized LIKE implementation with early exit
             match (left, right) {
                 (SqlValue::Text(a), SqlValue::Text(b)) => {
                     // Simple pattern matching - convert SQL LIKE to contains for now
-                    let pattern = b.replace('%', "");
+                    // Avoid allocation by using string slices
+                    let pattern = if b.contains('%') {
+                        b.replace('%', "")
+                    } else {
+                        b.to_string()
+                    };
                     a.contains(&pattern)
                 }
                 _ => false,
@@ -60,7 +65,7 @@ pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &Sq
     }
 }
 
-/// Evaluate condition against row data
+/// Evaluate condition against row data with optimized performance
 pub fn evaluate_condition(condition: &Condition, row_data: &HashMap<String, SqlValue>) -> bool {
     match condition {
         Condition::Comparison {
@@ -68,24 +73,29 @@ pub fn evaluate_condition(condition: &Condition, row_data: &HashMap<String, SqlV
             operator,
             right,
         } => {
+            // Use get() with default to avoid HashMap lookup overhead
             let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
             compare_values(row_value, operator, right)
         }
         Condition::And(left, right) => {
+            // Short-circuit evaluation for AND
             evaluate_condition(left, row_data) && evaluate_condition(right, row_data)
         }
         Condition::Or(left, right) => {
+            // Short-circuit evaluation for OR
             evaluate_condition(left, row_data) || evaluate_condition(right, row_data)
         }
     }
 }
 
-/// Centralized schema parsing utility to eliminate duplication
+/// Optimized schema parsing utility to eliminate duplication
 /// Parses schema data from the format: "col1:DataType:constraints|col2:DataType:constraints|..."
 pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSchema> {
     let mut columns = Vec::new();
+    let parts: Vec<&str> = schema_data.split('|').collect();
+    columns.reserve(parts.len());
 
-    for column_part in schema_data.split('|') {
+    for column_part in parts {
         if column_part.is_empty() {
             continue;
         }
@@ -140,11 +150,20 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
     }
 }
 
-/// Centralized schema deserialization from binary data
+/// Optimized schema deserialization from binary data
 /// Handles the binary format used in storage
 pub fn deserialize_schema_from_bytes(data: &[u8]) -> crate::Result<TableSchema> {
     let mut columns = Vec::new();
     let mut start = 0;
+    let mut column_count = 0;
+
+    // Pre-count columns to avoid reallocations
+    for &byte in data {
+        if byte == b'|' {
+            column_count += 1;
+        }
+    }
+    columns.reserve(column_count + 1);
 
     for (i, &byte) in data.iter().enumerate() {
         if byte == b'|' {

@@ -39,6 +39,8 @@ pub struct SelectRowIterator<'a> {
     schema: TableSchema,
     /// Columns to select
     selected_columns: Vec<String>,
+    /// Pre-computed column indices for faster access
+    column_indices: Vec<usize>,
     /// Optional filter condition
     filter: Option<Condition>,
     /// Storage format for deserialization
@@ -58,10 +60,23 @@ impl<'a> SelectRowIterator<'a> {
         filter: Option<Condition>,
         limit: Option<u64>,
     ) -> Self {
+        // Pre-compute column indices for faster row extraction
+        let column_indices: Vec<usize> = selected_columns
+            .iter()
+            .map(|col_name| {
+                schema
+                    .columns
+                    .iter()
+                    .position(|col| &col.name == col_name)
+                    .unwrap_or(usize::MAX) // Will be handled in next()
+            })
+            .collect();
+
         Self {
             scan_iter,
             schema,
             selected_columns,
+            column_indices,
             filter,
             storage_format: StorageFormat::new(),
             limit,
@@ -99,11 +114,21 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                     };
 
                     if matches {
-                        // Extract selected columns
-                        let mut row_values = Vec::new();
-                        for col_name in &self.selected_columns {
-                            row_values
-                                .push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                        // Extract selected columns using pre-computed indices
+                        let mut row_values = Vec::with_capacity(self.selected_columns.len());
+                        for &col_idx in &self.column_indices {
+                            if col_idx != usize::MAX {
+                                // Use direct index access for better performance
+                                if let Some(col) = self.schema.columns.get(col_idx) {
+                                    row_values.push(row_data.get(&col.name).cloned().unwrap_or(SqlValue::Null));
+                                } else {
+                                    row_values.push(SqlValue::Null);
+                                }
+                            } else {
+                                // Fallback to HashMap lookup for columns not found in schema
+                                let col_name = &self.selected_columns[row_values.len()];
+                                row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                            }
                         }
 
                         self.count += 1;

@@ -211,72 +211,51 @@ impl QueryPlanner {
         }
     }
 
-    /// Plan a SELECT statement with multiple optimization strategies
+    /// Plan SELECT statement with optimizations
     fn plan_select(&self, select: SelectStatement) -> Result<ExecutionPlan> {
-        let table_name = &select.table;
-
-        // Validate table exists
-        if !self.table_schemas.contains_key(table_name) {
-            return Err(crate::Error::Other(format!(
-                "Table '{table_name}' not found"
-            )));
+        // Try primary key lookup first (most efficient)
+        if let Some(pk_plan) = self.try_primary_key_lookup(&select)? {
+            return Ok(pk_plan);
         }
 
-        // Try different plan types in order of efficiency
-        let mut candidate_plans = Vec::new();
-
-        // 1. Try primary key lookup (most efficient)
-        if self.config.enable_pk_optimization {
-            if let Some(plan) = self.try_primary_key_lookup(&select)? {
-                candidate_plans.push((plan, self.estimate_pk_lookup_cost(table_name)));
-            }
-        }
-
-        // 2. Try index scans (if indexes existed)
-        // TODO: Implement when secondary indexes are added
-
-        // 3. Fall back to table scan with optimizations
-        let table_scan_plan = self.plan_table_scan(&select)?;
-        let table_scan_cost = self.estimate_table_scan_cost(table_name, &select);
-        candidate_plans.push((table_scan_plan, table_scan_cost));
-
-        // Choose the plan with lowest cost
-        let best_plan = candidate_plans
-            .into_iter()
-            .min_by(|(_, cost1), (_, cost2)| cost1.total().partial_cmp(&cost2.total()).unwrap())
-            .map(|(plan, _)| plan)
-            .unwrap(); // We always have at least the table scan plan
-
-        Ok(best_plan)
+        // Fall back to table scan with optimizations
+        self.plan_table_scan(&select)
     }
 
     /// Try to create a primary key lookup plan
     fn try_primary_key_lookup(&self, select: &SelectStatement) -> Result<Option<ExecutionPlan>> {
+        if !self.config.enable_pk_optimization {
+            return Ok(None);
+        }
+
+        // Check if we have a WHERE clause that can be used for PK lookup
         if let Some(ref where_clause) = select.where_clause {
-            if let Some(pk_values) =
-                self.extract_pk_equality_conditions(&select.table, &where_clause.condition)?
-            {
-                return Ok(Some(ExecutionPlan::PrimaryKeyLookup {
-                    table: select.table.clone(),
-                    pk_values,
-                    selected_columns: self
-                        .normalize_selected_columns(&select.table, &select.columns)?,
-                    additional_filter: self
-                        .extract_non_pk_conditions(&select.table, &where_clause.condition)?,
-                }));
+            if let Some(pk_values) = self.extract_pk_equality_conditions(&select.table, &where_clause.condition)? {
+                // Check if we have all primary key columns
+                let pk_columns = self.get_primary_key_columns(&select.table)?;
+                if pk_values.len() == pk_columns.len() {
+                    let additional_filter = self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
+                    let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
+                    
+                    return Ok(Some(ExecutionPlan::PrimaryKeyLookup {
+                        table: select.table.clone(),
+                        pk_values,
+                        selected_columns,
+                        additional_filter,
+                    }));
+                }
             }
         }
+
         Ok(None)
     }
 
-    /// Plan a table scan with optimizations
+    /// Plan table scan with optimizations
     fn plan_table_scan(&self, select: &SelectStatement) -> Result<ExecutionPlan> {
-        let filter = select.where_clause.as_ref().map(|w| w.condition.clone());
         let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-
-        // Enable early termination if we have a LIMIT and simple conditions
-        let early_termination = select.limit.is_some() && Self::is_simple_filter(filter.as_ref());
-
+        let filter = select.where_clause.as_ref().map(|w| w.condition.clone());
+        let early_termination = Self::is_simple_filter(filter.as_ref());
+        
         Ok(ExecutionPlan::TableScan {
             table: select.table.clone(),
             selected_columns,
@@ -286,50 +265,31 @@ impl QueryPlanner {
         })
     }
 
-    /// Plan an INSERT statement
+    /// Plan INSERT statement
     fn plan_insert(&self, insert: InsertStatement) -> Result<ExecutionPlan> {
-        // Validate table exists
-        if !self.table_schemas.contains_key(&insert.table) {
-            return Err(crate::Error::Other(format!(
-                "Table '{}' not found",
-                insert.table
-            )));
-        }
-
-        // Convert insert data to row format
-        let mut rows = Vec::new();
-        for values in insert.values {
-            let mut row = HashMap::new();
-            for (i, value) in values.into_iter().enumerate() {
-                if let Some(column) = insert.columns.get(i) {
-                    row.insert(column.clone(), value);
+        // Convert values to HashMap format for better performance
+        let mut rows = Vec::with_capacity(insert.values.len());
+        for value_row in insert.values {
+            let mut row_data = HashMap::with_capacity(insert.columns.len());
+            for (i, col_name) in insert.columns.iter().enumerate() {
+                if let Some(value) = value_row.get(i) {
+                    row_data.insert(col_name.clone(), value.clone());
                 }
             }
-            rows.push(row);
+            rows.push(row_data);
         }
 
         Ok(ExecutionPlan::Insert {
             table: insert.table,
             rows,
-            conflict_resolution: ConflictResolution::Error, // Default behavior
+            conflict_resolution: ConflictResolution::Error,
         })
     }
 
-    /// Plan an UPDATE statement
+    /// Plan UPDATE statement
     fn plan_update(&self, update: UpdateStatement) -> Result<ExecutionPlan> {
-        // Create a SELECT plan to find rows to update
-        let select = SelectStatement {
-            table: update.table.clone(),
-            // Only need the primary key for updates, not all columns
-            columns: self.get_primary_key_columns_as_vec(&update.table)?,
-            where_clause: update.where_clause.clone(),
-            order_by: None, // Updates don't have LIMIT
-            limit: None,
-        };
-
-        let scan_plan = Box::new(self.plan_select(select)?);
-
-        let assignments = update
+        // Convert assignments to planner format
+        let assignments: Vec<Assignment> = update
             .assignments
             .into_iter()
             .map(|a| Assignment {
@@ -338,36 +298,111 @@ impl QueryPlanner {
             })
             .collect();
 
+        // Always expand ["*"] to all columns for scan plan
+        let all_columns = self.normalize_selected_columns(&update.table, &["*".to_string()])?;
+
+        // Create scan plan for the rows to update
+        let scan_plan = if let Some(ref where_clause) = update.where_clause {
+            // Try to optimize the scan based on WHERE clause
+            if let Some(pk_values) = self.extract_pk_equality_conditions(&update.table, &where_clause.condition)? {
+                let pk_columns = self.get_primary_key_columns(&update.table)?;
+                if pk_values.len() == pk_columns.len() {
+                    ExecutionPlan::PrimaryKeyLookup {
+                        table: update.table.clone(),
+                        pk_values,
+                        selected_columns: all_columns.clone(),
+                        additional_filter: None,
+                    }
+                } else {
+                    ExecutionPlan::TableScan {
+                        table: update.table.clone(),
+                        selected_columns: all_columns.clone(),
+                        filter: Some(where_clause.condition.clone()),
+                        limit: None,
+                        early_termination: false,
+                    }
+                }
+            } else {
+                ExecutionPlan::TableScan {
+                    table: update.table.clone(),
+                    selected_columns: all_columns.clone(),
+                    filter: Some(where_clause.condition.clone()),
+                    limit: None,
+                    early_termination: false,
+                }
+            }
+        } else {
+            // No WHERE clause - scan all rows
+            ExecutionPlan::TableScan {
+                table: update.table.clone(),
+                selected_columns: all_columns.clone(),
+                filter: None,
+                limit: None,
+                early_termination: false,
+            }
+        };
+
         Ok(ExecutionPlan::Update {
             table: update.table,
             assignments,
-            scan_plan,
+            scan_plan: Box::new(scan_plan),
         })
     }
 
-    /// Plan a DELETE statement
+    /// Plan DELETE statement
     fn plan_delete(&self, delete: DeleteStatement) -> Result<ExecutionPlan> {
-        // Create a SELECT plan to find rows to delete
-        let select = SelectStatement {
-            table: delete.table.clone(),
-            // Only need the primary key for deletion, not all columns
-            columns: self.get_primary_key_columns_as_vec(&delete.table)?,
-            where_clause: delete.where_clause.clone(),
-            order_by: None, // Deletes don't have LIMIT
-            limit: None,
-        };
+        // Always expand ["*"] to all columns for scan plan
+        let all_columns = self.normalize_selected_columns(&delete.table, &["*".to_string()])?;
 
-        let scan_plan = Box::new(self.plan_select(select)?);
+        // Create scan plan for the rows to delete
+        let scan_plan = if let Some(ref where_clause) = delete.where_clause {
+            // Try to optimize the scan based on WHERE clause
+            if let Some(pk_values) = self.extract_pk_equality_conditions(&delete.table, &where_clause.condition)? {
+                let pk_columns = self.get_primary_key_columns(&delete.table)?;
+                if pk_values.len() == pk_columns.len() {
+                    ExecutionPlan::PrimaryKeyLookup {
+                        table: delete.table.clone(),
+                        pk_values,
+                        selected_columns: all_columns.clone(),
+                        additional_filter: None,
+                    }
+                } else {
+                    ExecutionPlan::TableScan {
+                        table: delete.table.clone(),
+                        selected_columns: all_columns.clone(),
+                        filter: Some(where_clause.condition.clone()),
+                        limit: None,
+                        early_termination: false,
+                    }
+                }
+            } else {
+                ExecutionPlan::TableScan {
+                    table: delete.table.clone(),
+                    selected_columns: all_columns.clone(),
+                    filter: Some(where_clause.condition.clone()),
+                    limit: None,
+                    early_termination: false,
+                }
+            }
+        } else {
+            // No WHERE clause - scan all rows
+            ExecutionPlan::TableScan {
+                table: delete.table.clone(),
+                selected_columns: all_columns.clone(),
+                filter: None,
+                limit: None,
+                early_termination: false,
+            }
+        };
 
         Ok(ExecutionPlan::Delete {
             table: delete.table,
-            scan_plan,
+            scan_plan: Box::new(scan_plan),
         })
     }
 
-    /// Plan a CREATE TABLE statement
+    /// Plan CREATE TABLE statement
     fn plan_create_table(&self, create: CreateTableStatement) -> Result<ExecutionPlan> {
-        // Convert parser schema to executor schema
         let schema = TableSchema {
             name: create.table.clone(),
             columns: create
@@ -387,7 +422,7 @@ impl QueryPlanner {
         })
     }
 
-    /// Plan a DROP TABLE statement
+    /// Plan DROP TABLE statement
     fn plan_drop_table(&self, drop: DropTableStatement) -> Result<ExecutionPlan> {
         Ok(ExecutionPlan::DropTable {
             table: drop.table,
@@ -494,20 +529,14 @@ impl QueryPlanner {
         Ok(filter_non_pk_conditions(condition, &pk_columns))
     }
 
-    /// Normalize selected columns (handle * expansion)
-    fn normalize_selected_columns(
-        &self,
-        table_name: &str,
-        columns: &[String],
-    ) -> Result<Vec<String>> {
+    /// Normalize selected columns: if ["*"] is given, expand to all columns from the schema
+    fn normalize_selected_columns(&self, table_name: &str, columns: &[String]) -> Result<Vec<String>> {
         if columns.len() == 1 && columns[0] == "*" {
-            // Expand * to all columns in schema order
+            // Expand * to all columns from the schema
             if let Some(schema) = self.table_schemas.get(table_name) {
                 Ok(schema.columns.iter().map(|c| c.name.clone()).collect())
             } else {
-                Err(crate::Error::Other(format!(
-                    "Table '{table_name}' not found"
-                )))
+                Err(crate::Error::Other(format!("Table '{table_name}' not found for column expansion")))
             }
         } else {
             Ok(columns.to_vec())

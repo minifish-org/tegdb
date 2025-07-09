@@ -31,6 +31,39 @@ fn intern_string(s: &str) -> String {
     })
 }
 
+// Optimized identifier parsing with string interning
+fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
+    let (input, identifier) = recognize(pair(
+        alt((alpha1, tag("_"))),
+        many0(alt((alphanumeric1, tag("_")))),
+    ))(input)?;
+    
+    // Use string interning for better performance
+    Ok((input, intern_string(identifier)))
+}
+
+// Optimized column list parsing
+fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
+    let (input, _) = multispace0(input)?;
+    // Handle the special case of "*" (all columns)
+    if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<&str>>("*")(input) {
+        return Ok((input, vec!["*".to_string()]));
+    }
+    // Try to parse a single identifier (column name)
+    let (input, first_col) = parse_identifier_optimized(input)?;
+    // Only consume whitespace before a comma, not after the last column
+    let (input, rest_cols) = many0(
+        preceded(
+            tuple((multispace0, char(','), multispace0)),
+            parse_identifier_optimized,
+        )
+    )(input)?;
+    let mut columns = Vec::with_capacity(1 + rest_cols.len());
+    columns.push(first_col);
+    columns.extend(rest_cols);
+    Ok((input, columns))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Select(SelectStatement),
@@ -289,11 +322,11 @@ pub fn parse_sql(input: &str) -> IResult<&str, Statement> {
 fn parse_select(input: &str) -> IResult<&str, SelectStatement> {
     let (input, _) = tag_no_case("SELECT")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, columns) = parse_column_list(input)?;
+    let (input, columns) = parse_column_list_optimized(input)?;
     let (input, _) = multispace1(input)?;
     let (input, _) = tag_no_case("FROM")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, table) = parse_identifier(input)?;
+    let (input, table) = parse_identifier_optimized(input)?;
     let (input, where_clause) = opt(preceded(multispace1, parse_where_clause))(input)?;
     let (input, order_by) = opt(preceded(multispace1, parse_order_by))(input)?;
     let (input, limit) = opt(preceded(multispace1, parse_limit))(input)?;
@@ -316,7 +349,7 @@ fn parse_insert(input: &str) -> IResult<&str, InsertStatement> {
     let (input, _) = multispace1(input)?;
     let (input, _) = tag_no_case("INTO")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, table) = parse_identifier(input)?;
+    let (input, table) = parse_identifier_optimized(input)?;
     let (input, _) = multispace0(input)?;
     let (input, columns) = delimited(
         char('('),
@@ -324,7 +357,7 @@ fn parse_insert(input: &str) -> IResult<&str, InsertStatement> {
             multispace0,
             separated_list1(
                 delimited(multispace0, char(','), multispace0),
-                parse_identifier,
+                parse_identifier_optimized,
             ),
             multispace0,
         ),
@@ -363,7 +396,7 @@ fn parse_insert(input: &str) -> IResult<&str, InsertStatement> {
 fn parse_update(input: &str) -> IResult<&str, UpdateStatement> {
     let (input, _) = tag_no_case("UPDATE")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, table) = parse_identifier(input)?;
+    let (input, table) = parse_identifier_optimized(input)?;
     let (input, _) = multispace1(input)?;
     let (input, _) = tag_no_case("SET")(input)?;
     let (input, _) = multispace1(input)?;
@@ -389,7 +422,7 @@ fn parse_delete(input: &str) -> IResult<&str, DeleteStatement> {
     let (input, _) = multispace1(input)?;
     let (input, _) = tag_no_case("FROM")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, table) = parse_identifier(input)?;
+    let (input, table) = parse_identifier_optimized(input)?;
     let (input, where_clause) = opt(preceded(multispace1, parse_where_clause))(input)?;
 
     Ok((
@@ -407,7 +440,7 @@ fn parse_create_table(input: &str) -> IResult<&str, CreateTableStatement> {
     let (input, _) = multispace1(input)?;
     let (input, _) = tag_no_case("TABLE")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, table) = parse_identifier(input)?;
+    let (input, table) = parse_identifier_optimized(input)?;
     let (input, _) = multispace0(input)?;
     let (input, columns) = delimited(
         char('('),
@@ -467,7 +500,7 @@ fn parse_drop_table_identifier(input: &str) -> IResult<&str, String> {
         )));
     }
 
-    parse_identifier(input)
+    parse_identifier_optimized(input)
 }
 
 // Parse BEGIN statement

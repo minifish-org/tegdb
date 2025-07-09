@@ -13,8 +13,11 @@ use std::collections::HashMap;
 ///
 /// The catalog maintains metadata about tables, columns, indexes, and other
 /// database objects, similar to the system catalog in traditional RDBMS.
+/// Optimized for single-threaded usage without locks.
 pub struct Catalog {
     schemas: HashMap<String, TableSchema>,
+    // Cache for column name lookups to avoid repeated HashMap access
+    column_cache: HashMap<String, Vec<String>>,
 }
 
 impl Catalog {
@@ -22,6 +25,7 @@ impl Catalog {
     pub fn new() -> Self {
         Self {
             schemas: HashMap::new(),
+            column_cache: HashMap::new(),
         }
     }
 
@@ -35,7 +39,14 @@ impl Catalog {
     /// Reload all schemas from storage
     pub fn reload_from_storage(&mut self, storage: &StorageEngine) -> Result<()> {
         self.schemas.clear();
+        self.column_cache.clear();
         Self::load_schemas_from_storage(storage, &mut self.schemas)?;
+        
+        // Pre-build column cache for faster lookups
+        for (table_name, schema) in &self.schemas {
+            let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
+            self.column_cache.insert(table_name.clone(), column_names);
+        }
         Ok(())
     }
 
@@ -44,18 +55,26 @@ impl Catalog {
         self.schemas.get(table_name)
     }
 
-    /// Get all table schemas
+    /// Get all table schemas (returns reference to avoid cloning)
     pub fn get_all_schemas(&self) -> &HashMap<String, TableSchema> {
         &self.schemas
     }
 
+    /// Get column names for a table (cached for performance)
+    pub fn get_column_names(&self, table_name: &str) -> Option<&[String]> {
+        self.column_cache.get(table_name).map(|v| v.as_slice())
+    }
+
     /// Add or update a table schema in the catalog
     pub fn add_table_schema(&mut self, schema: TableSchema) {
+        let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
+        self.column_cache.insert(schema.name.clone(), column_names);
         self.schemas.insert(schema.name.clone(), schema);
     }
 
     /// Remove a table schema from the catalog
     pub fn remove_table_schema(&mut self, table_name: &str) -> Option<TableSchema> {
+        self.column_cache.remove(table_name);
         self.schemas.remove(table_name)
     }
 
