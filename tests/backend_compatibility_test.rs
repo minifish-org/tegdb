@@ -35,7 +35,6 @@
 //! Example conversion:
 //! ```rust
 //! // Before:
-//! #[test]
 //! fn test_something() -> Result<()> {
 //!     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 //!     let db_path = temp_file.path();
@@ -45,7 +44,6 @@
 //! }
 //!
 //! // After:
-//! #[test]
 //! fn test_something() -> Result<()> {
 //!     run_with_both_backends("test_something", |db_path| {
 //!         let mut db = Database::open(&format!("file://{}", db_path.display()))?;
