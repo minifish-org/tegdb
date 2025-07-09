@@ -134,10 +134,9 @@ fn test_transaction_isolation() -> Result<()> {
 #[test]
 fn test_transaction_durability() -> Result<()> {
     run_with_both_backends("test_transaction_durability", |db_path| {
-        let mut db = Database::open(&format!("file://{}", db_path.display()))?;
-
         // Phase 1: Create data and commit
         {
+            let mut db = Database::open(&format!("file://{}", db_path.display()))?;
             let mut tx = db.begin_transaction()?;
             tx.execute("CREATE TABLE persistent_data (id INTEGER PRIMARY KEY, value TEXT)")?;
 
@@ -145,6 +144,9 @@ fn test_transaction_durability() -> Result<()> {
             tx.execute("INSERT INTO persistent_data (id, value) VALUES (2, 'data')")?;
             tx.commit()?;
         } // Database closed
+
+        // Add a small delay to ensure file handles are released
+        std::thread::sleep(std::time::Duration::from_millis(10));
 
         // Phase 2: Reopen and verify data survived
         {

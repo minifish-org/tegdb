@@ -20,7 +20,7 @@ fn setup_test_db() -> Result<(Database, TempDir)> {
 
 #[test]
 fn test_insert_validation() -> Result<()> {
-    run_with_both_backends("test_insert_validation", |db_path| {
+    run_with_both_backends("test_insert_validation", |_db_path| {
         let (mut db, _temp_dir) = setup_test_db()?;
 
         // Test valid insert
@@ -51,7 +51,7 @@ fn test_insert_validation() -> Result<()> {
 
 #[test]
 fn test_update_validation() -> Result<()> {
-    run_with_both_backends("test_update_validation", |db_path| {
+    run_with_both_backends("test_update_validation", |_db_path| {
         let (mut db, _temp_dir) = setup_test_db()?;
 
         // Insert test data
@@ -79,7 +79,7 @@ fn test_update_validation() -> Result<()> {
 
 #[test]
 fn test_select_memory_optimization() -> Result<()> {
-    run_with_both_backends("test_select_memory_optimization", |db_path| {
+    run_with_both_backends("test_select_memory_optimization", |_db_path| {
         let (mut db, _temp_dir) = setup_test_db()?;
 
         // Insert test data
