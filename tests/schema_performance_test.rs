@@ -6,11 +6,22 @@ use tegdb::{Database, Result};
 mod test_helpers;
 use test_helpers::run_with_both_backends;
 
+#[cfg(not(target_arch = "wasm32"))]
+fn remove_file_if_file_backend(db_path: &str) {
+    if db_path.starts_with("file://") {
+        let path_str = db_path.strip_prefix("file://").unwrap();
+        let _ = std::fs::remove_file(path_str);
+    }
+}
+
 #[test]
 fn test_schema_loading_performance() -> Result<()> {
     run_with_both_backends("test_schema_loading_performance", |db_path| {
         // Clean up any existing database
-        let _ = fs::remove_file(db_path.display().to_string());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            remove_file_if_file_backend(db_path);
+        }
 
         // Create database with multiple tables
         {
@@ -58,7 +69,10 @@ fn test_schema_loading_performance() -> Result<()> {
         }
 
         // Clean up
-        let _ = fs::remove_file(db_path.display().to_string());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            remove_file_if_file_backend(db_path);
+        }
 
         Ok(())
     })
@@ -68,7 +82,10 @@ fn test_schema_loading_performance() -> Result<()> {
 fn test_schema_sharing_across_operations() -> Result<()> {
     run_with_both_backends("test_schema_sharing_across_operations", |db_path| {
         // Clean up any existing database
-        let _ = fs::remove_file(db_path.display().to_string());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            remove_file_if_file_backend(db_path);
+        }
 
         // Test that schemas are properly shared and updated
         {
@@ -108,7 +125,10 @@ fn test_schema_sharing_across_operations() -> Result<()> {
         }
 
         // Clean up
-        let _ = fs::remove_file(db_path.display().to_string());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            remove_file_if_file_backend(db_path);
+        }
 
         Ok(())
     })

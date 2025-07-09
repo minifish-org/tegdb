@@ -108,8 +108,8 @@ fn create_test_db() -> Result<Database> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        let db_path = temp_file.path();
-        Database::open(db_path)
+        let db_path = format!("file://{}", temp_file.path().display());
+        Database::open(&db_path)
     }
     #[cfg(target_arch = "wasm32")]
     {

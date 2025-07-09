@@ -9,8 +9,14 @@ use test_helpers::run_with_both_backends;
 #[test]
 fn test_schema_persistence_across_database_reopens() -> Result<()> {
     run_with_both_backends("test_schema_persistence_across_database_reopens", |db_path| {
-        // Clean up any existing database
-        let _ = fs::remove_file(db_path.display().to_string());
+        // Clean up any existing database - only for file backend
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if db_path.starts_with("file://") {
+                let path_str = db_path.strip_prefix("file://").unwrap();
+                let _ = fs::remove_file(path_str);
+            }
+        }
 
         // First session: Create a table
         {
@@ -83,8 +89,14 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
             assert_eq!(products_columns.len(), 3);
         }
 
-        // Clean up
-        let _ = fs::remove_file(db_path.display().to_string());
+        // Clean up - only for file backend
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if db_path.starts_with("file://") {
+                let path_str = db_path.strip_prefix("file://").unwrap();
+                let _ = fs::remove_file(path_str);
+            }
+        }
 
         Ok(())
     })
@@ -93,8 +105,14 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 #[test]
 fn test_schema_loading_on_executor_creation() -> Result<()> {
     run_with_both_backends("test_schema_loading_on_executor_creation", |db_path| {
-        // Clean up any existing database
-        let _ = fs::remove_file(db_path.display().to_string());
+        // Clean up any existing database - only for file backend
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if db_path.starts_with("file://") {
+                let path_str = db_path.strip_prefix("file://").unwrap();
+                let _ = fs::remove_file(path_str);
+            }
+        }
 
         // Create database and table
         {
@@ -118,8 +136,14 @@ fn test_schema_loading_on_executor_creation() -> Result<()> {
             assert_eq!(columns.len(), 2);
         }
 
-        // Clean up
-        let _ = fs::remove_file(db_path.display().to_string());
+        // Clean up - only for file backend
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if db_path.starts_with("file://") {
+                let path_str = db_path.strip_prefix("file://").unwrap();
+                let _ = fs::remove_file(path_str);
+            }
+        }
 
         Ok(())
     })
