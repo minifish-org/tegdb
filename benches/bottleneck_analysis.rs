@@ -94,48 +94,8 @@ fn bottleneck_analysis(c: &mut Criterion) {
     };
 
     // Benchmark native row format serialization
-    c.bench_function("native serialization", |b| {
-        b.iter(|| {
-            let serialized = tegdb::native_row_format::NativeRowFormat::serialize(
-                black_box(&test_row_data),
-                black_box(&test_schema),
-            )
-            .unwrap();
-            black_box(serialized);
-        })
-    });
-
-    // Benchmark native row format deserialization
-    let serialized_data =
-        tegdb::native_row_format::NativeRowFormat::serialize(&test_row_data, &test_schema).unwrap();
-    c.bench_function("native deserialization", |b| {
-        b.iter(|| {
-            let deserialized = tegdb::native_row_format::NativeRowFormat::deserialize_full(
-                black_box(&serialized_data),
-                black_box(&test_schema),
-            )
-            .unwrap();
-            black_box(deserialized);
-        })
-    });
-
-    // Benchmark partial column deserialization (LIMIT optimization)
-    let columns_to_select = vec!["id".to_string()];
-    c.bench_function("partial deserialization", |b| {
-        b.iter(|| {
-            let values = tegdb::native_row_format::NativeRowFormat::deserialize_columns(
-                black_box(&serialized_data),
-                black_box(&test_schema),
-                black_box(&columns_to_select),
-            )
-            .unwrap();
-            black_box(values);
-        })
-    });
-
-    // Benchmark storage format interface
     let storage_format = tegdb::storage_format::StorageFormat::new();
-    c.bench_function("storage format serialize", |b| {
+    c.bench_function("native serialization", |b| {
         b.iter(|| {
             let serialized = storage_format
                 .serialize_row(black_box(&test_row_data), black_box(&test_schema))
@@ -144,7 +104,11 @@ fn bottleneck_analysis(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("storage format deserialize", |b| {
+    // Benchmark native row format deserialization
+    let serialized_data = storage_format
+        .serialize_row(&test_row_data, &test_schema)
+        .unwrap();
+    c.bench_function("native deserialization", |b| {
         b.iter(|| {
             let deserialized = storage_format
                 .deserialize_row(black_box(&serialized_data), black_box(&test_schema))
@@ -152,6 +116,23 @@ fn bottleneck_analysis(c: &mut Criterion) {
             black_box(deserialized);
         })
     });
+
+    // Benchmark partial column deserialization (LIMIT optimization)
+    let columns_to_select = vec!["id".to_string()];
+    c.bench_function("partial deserialization", |b| {
+        b.iter(|| {
+            let values = storage_format
+                .deserialize_columns(
+                    black_box(&serialized_data),
+                    black_box(&test_schema),
+                    black_box(&columns_to_select),
+                )
+                .unwrap();
+            black_box(values);
+        })
+    });
+
+
 
     // Benchmark complete query execution pipeline
     c.bench_function("complete query pipeline", |b| {
