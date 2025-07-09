@@ -37,18 +37,22 @@ jobs:
     - name: Check documentation
       run: cargo doc --no-deps --document-private-items
 
-  # Build and test matrix
+  # Comprehensive test suite using the new test script
   test:
-    name: Test Suite
+    name: Comprehensive Test Suite
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        rust: [stable, nightly]
-        exclude:
-          # Reduce CI load by skipping some combinations
+        rust: [stable]
+        include:
+          # Add WASM testing for Ubuntu
+          - os: ubuntu-latest
+            rust: stable
+            test_wasm: true
           - os: macos-latest
-            rust: nightly
+            rust: stable
+            test_wasm: false
     
     steps:
     - uses: actions/checkout@v4.1.1
@@ -57,8 +61,21 @@ jobs:
       uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: ${{ matrix.rust }}
+        target: wasm32-unknown-unknown
         override: true
         profile: minimal
+    
+    - name: Install wasm-pack (for WASM testing)
+      if: matrix.test_wasm
+      run: |
+        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+    
+    - name: Install Node.js (for WASM testing)
+      if: matrix.test_wasm
+      run: |
+        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+        sudo apt-get install -y nodejs
     
     - name: Cache cargo registry
       uses: actions/cache@v4
@@ -77,74 +94,30 @@ jobs:
     - name: Build with all features
       run: cargo build --all-features --verbose
     
-    - name: Run unit tests
+    - name: Run comprehensive test suite
+      run: ./run_all_tests.sh --ci --verbose
+      env:
+        CI_MODE: true
+        VERBOSE: true
+        # Skip WASM tests on macOS (browser automation issues)
+        SKIP_WASM: ${{ matrix.test_wasm == false }}
+        SKIP_BROWSER: true  # Always skip browser tests in CI
+    
+    - name: Run additional unit tests
       run: cargo test --lib --verbose
-    
-    - name: Run integration tests
-      run: cargo test --tests --verbose
-    
-    - name: Run tests with dev features
-      run: cargo test --features dev --verbose
     
     - name: Run doc tests
       run: cargo test --doc --verbose
-
-  # Performance and benchmark testing
-  performance:
-    name: Performance Tests & Benchmarks
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[bench]')
     
-    steps:
-    - uses: actions/checkout@v4.1.1
-    
-    - name: Setup Rust nightly
-      uses: actions-rs/toolchain@v1.0.6
-      with:
-        toolchain: nightly
-        override: true
-        profile: minimal
-    
-    - name: Cache cargo
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ubuntu-nightly-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-    
-    - name: Run benchmarks
-      run: |
-        echo "# TegDB Performance Benchmarks" > benchmarks.md
-        echo "Generated on: $(date)" >> benchmarks.md
-        echo "" >> benchmarks.md
-        echo "## Database vs SQLite Comparison" >> benchmarks.md
-        echo '```' >> benchmarks.md
-        cargo bench --bench database_vs_sqlite_benchmark --features="dev" | tee -a benchmarks.md
-        echo '```' >> benchmarks.md
-        echo "" >> benchmarks.md
-        echo "## Engine Performance" >> benchmarks.md
-        echo '```' >> benchmarks.md
-        cargo bench --bench engine_basic_benchmark | tee -a benchmarks.md
-        echo '```' >> benchmarks.md
-        echo "" >> benchmarks.md
-        echo "## Query Planner Performance" >> benchmarks.md
-        echo '```' >> benchmarks.md
-        cargo bench --bench planner_optimization_benchmark --features="dev" | tee -a benchmarks.md
-        echo '```' >> benchmarks.md
-    
-    - name: Run high-level API performance tests
-      run: cargo test --test high_level_api_performance_test --features dev -- --nocapture > api_performance.txt
-    
-    - name: Upload benchmark results
+    - name: Upload test results (if any)
       uses: actions/upload-artifact@v4.3.1
+      if: always()
       with:
-        name: benchmark-results-${{ github.sha }}
+        name: test-results-${{ matrix.os }}-${{ matrix.rust }}
         path: |
-          benchmarks.md
-          api_performance.txt
-        retention-days: 30
+          target/
+          *.log
+        retention-days: 7
 
   # Examples and demos
   examples:
@@ -241,8 +214,8 @@ jobs:
         VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
         echo "Current version: $VERSION"
         
-        # Verify all tests pass
-        cargo test --all-features
+        # Run comprehensive test suite
+        ./run_all_tests.sh --ci --verbose
         
         # Check documentation builds
         cargo doc --no-deps
@@ -276,3 +249,60 @@ jobs:
       with:
         file: lcov.info
         fail_ci_if_error: false
+
+  # Performance tests (manual trigger only)
+  performance:
+    name: Performance Tests & Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[bench]') || github.event.inputs.run_performance == 'true'
+    
+    steps:
+    - uses: actions/checkout@v4.1.1
+    
+    - name: Setup Rust nightly
+      uses: actions-rs/toolchain@v1.0.6
+      with:
+        toolchain: nightly
+        override: true
+        profile: minimal
+    
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ubuntu-nightly-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Run performance tests
+      run: ./run_performance_tests.sh --ci
+    
+    - name: Run benchmarks
+      run: |
+        echo "# TegDB Performance Benchmarks" > benchmarks.md
+        echo "Generated on: $(date)" >> benchmarks.md
+        echo "" >> benchmarks.md
+        echo "## Database vs SQLite Comparison" >> benchmarks.md
+        echo '```' >> benchmarks.md
+        cargo bench --bench database_vs_sqlite_benchmark --features="dev" | tee -a benchmarks.md
+        echo '```' >> benchmarks.md
+        echo "" >> benchmarks.md
+        echo "## Engine Performance" >> benchmarks.md
+        echo '```' >> benchmarks.md
+        cargo bench --bench engine_basic_benchmark | tee -a benchmarks.md
+        echo '```' >> benchmarks.md
+        echo "" >> benchmarks.md
+        echo "## Query Planner Performance" >> benchmarks.md
+        echo '```' >> benchmarks.md
+        cargo bench --bench planner_optimization_benchmark --features="dev" | tee -a benchmarks.md
+        echo '```' >> benchmarks.md
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: benchmark-results-${{ github.sha }}
+        path: |
+          benchmarks.md
+          performance-results/
+        retention-days: 30
