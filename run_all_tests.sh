@@ -223,8 +223,8 @@ run_browser_tests() {
 
 # Function to run performance tests (removed - too heavy for automatic execution)
 run_performance_tests() {
-    print_status "Performance tests skipped - run manually with ./run_performance_tests.sh"
-    print_status "Available commands: ./run_performance_tests.sh --help"
+    print_status "Performance tests skipped - run manually with cargo bench --features dev"
+    print_status "Available commands: cargo bench --help"
 }
 
 # Function to show usage
@@ -247,7 +247,7 @@ show_usage() {
     echo "  VERBOSE           Set to 'true' for verbose output"
     echo ""
     echo "Note: Performance tests are not run automatically (too heavy)"
-    echo "      Run manually with: ./run_performance_tests.sh"
+    echo "      Run manually with: cargo bench --features dev"
 }
 
 # Parse command line arguments
@@ -325,6 +325,6 @@ if [ "$CI_MODE" != "true" ]; then
     echo ""
     echo "Next steps:"
     echo "1. Open wasm_test_runner.html in your browser for comprehensive WASM testing"
-    echo "2. Run ./run_performance_tests.sh for detailed performance analysis (manual)"
+    echo "2. Run cargo bench --features dev for detailed performance analysis (manual)"
     echo "3. Check the browser console for any test output"
 fi 
