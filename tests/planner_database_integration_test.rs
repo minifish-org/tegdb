@@ -1,12 +1,11 @@
 use tegdb::{Database, Result};
-use tempfile::NamedTempFile;
+
+mod test_helpers;
+use test_helpers::run_with_both_backends;
 
 #[test]
 fn test_planner_integration_in_database() -> Result<()> {
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-
-    {
+    run_with_both_backends("test_planner_integration_in_database", |db_path| {
         let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         // Create a test table
@@ -39,17 +38,13 @@ fn test_planner_integration_in_database() -> Result<()> {
         assert_eq!(result.rows().len(), 2);
 
         println!("✓ Planner integration test passed - queries executed successfully through planner pipeline");
-    }
-
-    Ok(())
+        Ok(())
+    })
 }
 
 #[test]
 fn test_crud_operations_with_planner() -> Result<()> {
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-
-    {
+    run_with_both_backends("test_crud_operations_with_planner", |db_path| {
         let mut db = Database::open(&format!("file://{}", db_path.display()))?;
 
         // CREATE
@@ -85,7 +80,6 @@ fn test_crud_operations_with_planner() -> Result<()> {
         assert_eq!(result.rows().len(), 1);
 
         println!("✓ CRUD operations through planner pipeline work correctly");
-    }
-
-    Ok(())
+        Ok(())
+    })
 }

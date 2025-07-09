@@ -1,95 +1,97 @@
 //! Test arithmetic expressions in UPDATE statements
 
 use tegdb::Database;
-use tempfile::NamedTempFile;
+mod test_helpers;
+use test_helpers::run_with_both_backends;
 
 #[test]
 fn test_arithmetic_expressions_in_update() {
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
+    run_with_both_backends("arithmetic_expressions_in_update", |db_path| {
+        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
-    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        // Create test table
+        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, value INTEGER, score REAL)")
+            .expect("Failed to create table");
 
-    // Create test table
-    db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, value INTEGER, score REAL)")
-        .expect("Failed to create table");
+        // Insert test data
+        db.execute("INSERT INTO test_table (id, value, score) VALUES (1, 10, 5.5)")
+            .expect("Failed to insert data");
 
-    // Insert test data
-    db.execute("INSERT INTO test_table (id, value, score) VALUES (1, 10, 5.5)")
-        .expect("Failed to insert data");
+        db.execute("INSERT INTO test_table (id, value, score) VALUES (2, 20, 7.2)")
+            .expect("Failed to insert data");
 
-    db.execute("INSERT INTO test_table (id, value, score) VALUES (2, 20, 7.2)")
-        .expect("Failed to insert data");
+        // Test simple arithmetic: value + 5
+        db.execute("UPDATE test_table SET value = value + 5 WHERE id = 1")
+            .expect("Failed to update with addition");
 
-    // Test simple arithmetic: value + 5
-    db.execute("UPDATE test_table SET value = value + 5 WHERE id = 1")
-        .expect("Failed to update with addition");
+        let result = db
+            .query("SELECT value FROM test_table WHERE id = 1")
+            .expect("Failed to query");
 
-    let result = db
-        .query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query");
-
-    if let Some(row) = result.rows().first() {
-        if let Some(value) = row.first() {
-            assert_eq!(*value, tegdb::SqlValue::Integer(15)); // 10 + 5 = 15
+        if let Some(row) = result.rows().first() {
+            if let Some(value) = row.first() {
+                assert_eq!(*value, tegdb::SqlValue::Integer(15)); // 10 + 5 = 15
+            }
         }
-    }
 
-    // Test subtraction: value - 3
-    db.execute("UPDATE test_table SET value = value - 3 WHERE id = 2")
-        .expect("Failed to update with subtraction");
+        // Test subtraction: value - 3
+        db.execute("UPDATE test_table SET value = value - 3 WHERE id = 2")
+            .expect("Failed to update with subtraction");
 
-    let result = db
-        .query("SELECT value FROM test_table WHERE id = 2")
-        .expect("Failed to query");
+        let result = db
+            .query("SELECT value FROM test_table WHERE id = 2")
+            .expect("Failed to query");
 
-    if let Some(row) = result.rows().first() {
-        if let Some(value) = row.first() {
-            assert_eq!(*value, tegdb::SqlValue::Integer(17)); // 20 - 3 = 17
+        if let Some(row) = result.rows().first() {
+            if let Some(value) = row.first() {
+                assert_eq!(*value, tegdb::SqlValue::Integer(17)); // 20 - 3 = 17
+            }
         }
-    }
 
-    // Test multiplication: score * 2
-    db.execute("UPDATE test_table SET score = score * 2 WHERE id = 1")
-        .expect("Failed to update with multiplication");
+        // Test multiplication: score * 2
+        db.execute("UPDATE test_table SET score = score * 2 WHERE id = 1")
+            .expect("Failed to update with multiplication");
 
-    let result = db
-        .query("SELECT score FROM test_table WHERE id = 1")
-        .expect("Failed to query");
+        let result = db
+            .query("SELECT score FROM test_table WHERE id = 1")
+            .expect("Failed to query");
 
-    if let Some(row) = result.rows().first() {
-        if let Some(value) = row.first() {
-            assert_eq!(*value, tegdb::SqlValue::Real(11.0)); // 5.5 * 2 = 11.0
+        if let Some(row) = result.rows().first() {
+            if let Some(value) = row.first() {
+                assert_eq!(*value, tegdb::SqlValue::Real(11.0)); // 5.5 * 2 = 11.0
+            }
         }
-    }
 
-    // Test division: score / 2
-    db.execute("UPDATE test_table SET score = score / 2 WHERE id = 2")
-        .expect("Failed to update with division");
+        // Test division: score / 2
+        db.execute("UPDATE test_table SET score = score / 2 WHERE id = 2")
+            .expect("Failed to update with division");
 
-    let result = db
-        .query("SELECT score FROM test_table WHERE id = 2")
-        .expect("Failed to query");
+        let result = db
+            .query("SELECT score FROM test_table WHERE id = 2")
+            .expect("Failed to query");
 
-    if let Some(row) = result.rows().first() {
-        if let Some(value) = row.first() {
-            assert_eq!(*value, tegdb::SqlValue::Real(3.6)); // 7.2 / 2 = 3.6
+        if let Some(row) = result.rows().first() {
+            if let Some(value) = row.first() {
+                assert_eq!(*value, tegdb::SqlValue::Real(3.6)); // 7.2 / 2 = 3.6
+            }
         }
-    }
 
-    // Test complex expression: value + 10 * 2
-    db.execute("UPDATE test_table SET value = value + 10 * 2 WHERE id = 1")
-        .expect("Failed to update with complex expression");
+        // Test complex expression: value + 10 * 2
+        db.execute("UPDATE test_table SET value = value + 10 * 2 WHERE id = 1")
+            .expect("Failed to update with complex expression");
 
-    let result = db
-        .query("SELECT value FROM test_table WHERE id = 1")
-        .expect("Failed to query");
+        let result = db
+            .query("SELECT value FROM test_table WHERE id = 1")
+            .expect("Failed to query");
 
-    if let Some(row) = result.rows().first() {
-        if let Some(value) = row.first() {
-            assert_eq!(*value, tegdb::SqlValue::Integer(35)); // 15 + (10 * 2) = 35
+        if let Some(row) = result.rows().first() {
+            if let Some(value) = row.first() {
+                assert_eq!(*value, tegdb::SqlValue::Integer(35)); // 15 + (10 * 2) = 35
+            }
         }
-    }
+
+        Ok(())
+    }).expect("Test failed");
 }
 
 #[test]
@@ -97,39 +99,40 @@ fn test_arithmetic_expression_parsing() {
     // Test that the parser can handle the expressions
     use tegdb::SqlValue;
 
-    // This requires accessing the parser directly, which needs dev features
-    // For now, we'll test through the database API which exercises the parser
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
+    run_with_both_backends("arithmetic_expression_parsing", |db_path| {
+        // This requires accessing the parser directly, which needs dev features
+        // For now, we'll test through the database API which exercises the parser
+        let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
 
-    let mut db = Database::open(&format!("file://{}", db_path.display())).expect("Failed to open database");
+        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, a INTEGER, b INTEGER)")
+            .expect("Failed to create table");
 
-    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, a INTEGER, b INTEGER)")
-        .expect("Failed to create table");
+        db.execute("INSERT INTO test (id, a, b) VALUES (1, 100, 25)")
+            .expect("Failed to insert");
 
-    db.execute("INSERT INTO test (id, a, b) VALUES (1, 100, 25)")
-        .expect("Failed to insert");
+        // Test that complex expressions are parsed and evaluated correctly
+        let tests = vec![
+            ("UPDATE test SET a = a + b WHERE id = 1", 125), // 100 + 25
+            ("UPDATE test SET a = a - b WHERE id = 1", 100), // 125 - 25
+            ("UPDATE test SET a = a * 2 WHERE id = 1", 200), // 100 * 2
+            ("UPDATE test SET a = a / 4 WHERE id = 1", 50),  // 200 / 4
+        ];
 
-    // Test that complex expressions are parsed and evaluated correctly
-    let tests = vec![
-        ("UPDATE test SET a = a + b WHERE id = 1", 125), // 100 + 25
-        ("UPDATE test SET a = a - b WHERE id = 1", 100), // 125 - 25
-        ("UPDATE test SET a = a * 2 WHERE id = 1", 200), // 100 * 2
-        ("UPDATE test SET a = a / 4 WHERE id = 1", 50),  // 200 / 4
-    ];
+        for (sql, expected) in tests {
+            db.execute(sql)
+                .unwrap_or_else(|_| panic!("Failed to execute: {sql}"));
 
-    for (sql, expected) in tests {
-        db.execute(sql)
-            .unwrap_or_else(|_| panic!("Failed to execute: {sql}"));
+            let result = db
+                .query("SELECT a FROM test WHERE id = 1")
+                .expect("Failed to query");
 
-        let result = db
-            .query("SELECT a FROM test WHERE id = 1")
-            .expect("Failed to query");
-
-        if let Some(row) = result.rows().first() {
-            if let Some(value) = row.first() {
-                assert_eq!(*value, SqlValue::Integer(expected), "Failed for SQL: {sql}");
+            if let Some(row) = result.rows().first() {
+                if let Some(value) = row.first() {
+                    assert_eq!(*value, SqlValue::Integer(expected), "Failed for SQL: {sql}");
+                }
             }
         }
-    }
+
+        Ok(())
+    }).expect("Test failed");
 }
