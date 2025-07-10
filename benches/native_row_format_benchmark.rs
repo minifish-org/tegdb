@@ -9,8 +9,6 @@
 
 use std::time::Instant;
 use tegdb::Database;
-use criterion::{criterion_group, criterion_main, Criterion};
-use std::hint::black_box;
 
 fn main() -> tegdb::Result<()> {
     println!("=== TegDB Native Binary Row Format Performance Benchmark ===\n");
