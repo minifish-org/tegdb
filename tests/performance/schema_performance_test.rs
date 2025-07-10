@@ -1,10 +1,11 @@
 //! Performance test to demonstrate the efficiency improvement of schema loading
 
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 use std::time::Instant;
 use tegdb::{Database, Result};
 
-mod test_helpers;
-use crate::test_helpers::run_with_both_backends;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn remove_file_if_file_backend(db_path: &str) {

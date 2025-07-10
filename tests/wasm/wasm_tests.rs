@@ -3,6 +3,9 @@
 //! This module contains tests that can run in WASM environment.
 //! Use `wasm-bindgen-test-runner` to execute these tests.
 
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 

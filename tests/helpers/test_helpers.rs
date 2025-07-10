@@ -16,7 +16,6 @@ use tempfile::NamedTempFile;
 ///
 /// # Example
 /// ```
-/// use tests::test_helpers::run_with_both_backends;
 ///
 /// run_with_both_backends("my_test", |db_path| {
 ///     let mut db = Database::open(db_path)?;

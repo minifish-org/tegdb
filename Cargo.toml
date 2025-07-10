@@ -129,52 +129,114 @@ features = ["dev"]
 # Test configurations with dev feature requirement
 [[test]]
 name = "engine_tests"
-path = "tests/engine_tests.rs"
+path = "tests/integration/engine_tests.rs"
 required-features = ["dev"]
 
 [[test]]
 name = "explicit_transaction_integration_tests"
-path = "tests/explicit_transaction_integration_tests.rs"
+path = "tests/integration/explicit_transaction_integration_tests.rs"
 required-features = ["dev"]
 
 [[test]]
 name = "sql_integration_tests"
-path = "tests/sql_integration_tests.rs"
+path = "tests/integration/sql_integration_tests.rs"
 required-features = ["dev"]
 
 [[test]]
 name = "sql_parser_tests"
-path = "tests/sql_parser_tests.rs"
+path = "tests/integration/sql_parser_tests.rs"
 required-features = ["dev"]
 
 [[test]]
 name = "transaction_parsing_tests"
-path = "tests/transaction_parsing_tests.rs"
+path = "tests/integration/transaction_parsing_tests.rs"
 required-features = ["dev"]
 
 [[test]]
 name = "transaction_tests"
-path = "tests/transaction_tests.rs"
+path = "tests/integration/transaction_tests.rs"
 required-features = ["dev"]
 
 [[test]]
 name = "drop_table_integration_test"
-path = "tests/drop_table_integration_test.rs"
+path = "tests/integration/drop_table_integration_test.rs"
+required-features = ["dev"]
+
+
+
+[[test]]
+name = "database_tests"
+path = "tests/integration/database_tests.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "catalog_tests"
-path = "tests/catalog_tests.rs"
+name = "executor_acid_tests_new"
+path = "tests/integration/executor_acid_tests_new.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "planner_tests"
-path = "tests/planner_tests.rs"
+name = "query_iterator_test"
+path = "tests/integration/query_iterator_test.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "storage_format_tests"
-path = "tests/storage_format_tests.rs"
+name = "read_only_transaction_test"
+path = "tests/integration/read_only_transaction_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "schema_persistence_test"
+path = "tests/integration/schema_persistence_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "simplified_api_test"
+path = "tests/integration/simplified_api_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "backend_compatibility_test"
+path = "tests/integration/backend_compatibility_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "commit_marker_tests"
+path = "tests/integration/commit_marker_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "executor_validation_test"
+path = "tests/integration/executor_validation_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "planner_database_integration_test"
+path = "tests/integration/planner_database_integration_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "high_level_api_performance_test"
+path = "tests/performance/high_level_api_performance_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "schema_performance_test"
+path = "tests/performance/schema_performance_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "arithmetic_expressions_test"
+path = "tests/arithmetic/arithmetic_expressions_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "arithmetic_edge_cases_test"
+path = "tests/arithmetic/arithmetic_edge_cases_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "arithmetic_parser_tests"
+path = "tests/arithmetic/arithmetic_parser_tests.rs"
 required-features = ["dev"]
 
 [lib]

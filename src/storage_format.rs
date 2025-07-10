@@ -440,4 +440,75 @@ pub fn evaluate_condition_on_row(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{DataType, SqlValue};
+    use crate::query::{ColumnInfo, TableSchema};
+    use std::collections::HashMap;
+
+    fn create_test_schema() -> TableSchema {
+        TableSchema {
+            name: "test_table".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: DataType::Integer,
+                    constraints: vec![],
+                },
+                ColumnInfo {
+                    name: "name".to_string(),
+                    data_type: DataType::Text,
+                    constraints: vec![],
+                },
+                ColumnInfo {
+                    name: "score".to_string(),
+                    data_type: DataType::Real,
+                    constraints: vec![],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_round_trip() {
+        let schema = create_test_schema();
+        let storage = StorageFormat::new();
+        let mut row_data = HashMap::new();
+        row_data.insert("id".to_string(), SqlValue::Integer(123));
+        row_data.insert("name".to_string(), SqlValue::Text("Alice".to_string()));
+        row_data.insert("score".to_string(), SqlValue::Real(95.5));
+
+        let serialized = storage.serialize_row(&row_data, &schema).unwrap();
+        let deserialized = storage.deserialize_row(&serialized, &schema).unwrap();
+
+        assert_eq!(deserialized.get("id"), Some(&SqlValue::Integer(123)));
+        assert_eq!(
+            deserialized.get("name"),
+            Some(&SqlValue::Text("Alice".to_string()))
+        );
+        assert_eq!(deserialized.get("score"), Some(&SqlValue::Real(95.5)));
+    }
+
+    #[test]
+    fn test_partial_column_deserialization() {
+        let schema = create_test_schema();
+        let storage = StorageFormat::new();
+        let mut row_data = HashMap::new();
+        row_data.insert("id".to_string(), SqlValue::Integer(456));
+        row_data.insert("name".to_string(), SqlValue::Text("Bob".to_string()));
+        row_data.insert("score".to_string(), SqlValue::Real(87.2));
+
+        let serialized = storage.serialize_row(&row_data, &schema).unwrap();
+
+        // Only deserialize name and score
+        let columns = vec!["name".to_string(), "score".to_string()];
+        let values = storage.deserialize_columns(&serialized, &schema, &columns).unwrap();
+
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0], SqlValue::Text("Bob".to_string()));
+        assert_eq!(values[1], SqlValue::Real(87.2));
+    }
+}
+
 

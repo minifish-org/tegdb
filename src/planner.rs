@@ -726,4 +726,111 @@ impl ExecutionPlan {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{DataType, SqlValue, Statement, ColumnConstraint};
+    use crate::query::{ColumnInfo, TableSchema};
+    use std::collections::HashMap;
+
+    fn create_test_schema() -> HashMap<String, TableSchema> {
+        let mut schemas = HashMap::new();
+
+        // Users table with single primary key
+        schemas.insert(
+            "users".to_string(),
+            TableSchema {
+                name: "users".to_string(),
+                columns: vec![
+                    ColumnInfo {
+                        name: "id".to_string(),
+                        data_type: DataType::Integer,
+                        constraints: vec![ColumnConstraint::PrimaryKey],
+                    },
+                    ColumnInfo {
+                        name: "name".to_string(),
+                        data_type: DataType::Text,
+                        constraints: vec![],
+                    },
+                    ColumnInfo {
+                        name: "email".to_string(),
+                        data_type: DataType::Text,
+                        constraints: vec![],
+                    },
+                ],
+            },
+        );
+
+        schemas
+    }
+
+    #[test]
+    fn test_primary_key_optimization() {
+        let schemas = create_test_schema();
+        let planner = QueryPlanner::new(schemas);
+
+        let select = SelectStatement {
+            table: "users".to_string(),
+            columns: vec!["name".to_string(), "email".to_string()],
+            where_clause: Some(WhereClause {
+                condition: Condition::Comparison {
+                    left: "id".to_string(),
+                    operator: ComparisonOperator::Equal,
+                    right: SqlValue::Integer(123),
+                },
+            }),
+            order_by: None,
+            limit: None,
+        };
+
+        let plan = planner.plan(Statement::Select(select)).unwrap();
+
+        match plan {
+            ExecutionPlan::PrimaryKeyLookup {
+                table, pk_values, ..
+            } => {
+                assert_eq!(table, "users");
+                assert_eq!(pk_values.get("id"), Some(&SqlValue::Integer(123)));
+            }
+            _ => panic!("Expected PrimaryKeyLookup plan"),
+        }
+    }
+
+    #[test]
+    fn test_table_scan_fallback() {
+        let schemas = create_test_schema();
+        let planner = QueryPlanner::new(schemas);
+
+        let select = SelectStatement {
+            table: "users".to_string(),
+            columns: vec!["*".to_string()],
+            where_clause: Some(WhereClause {
+                condition: Condition::Comparison {
+                    left: "name".to_string(),
+                    operator: ComparisonOperator::Equal,
+                    right: SqlValue::Text("John".to_string()),
+                },
+            }),
+            order_by: None,
+            limit: Some(10),
+        };
+
+        let plan = planner.plan(Statement::Select(select)).unwrap();
+
+        match plan {
+            ExecutionPlan::TableScan {
+                table,
+                limit,
+                early_termination,
+                ..
+            } => {
+                assert_eq!(table, "users");
+                assert_eq!(limit, Some(10));
+                assert!(early_termination);
+            }
+            _ => panic!("Expected TableScan plan"),
+        }
+    }
+}
+
 

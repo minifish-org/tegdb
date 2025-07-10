@@ -57,4 +57,58 @@ pub fn extract_path(identifier: &str) -> &str {
     parse_storage_identifier(identifier).1
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_file_protocol() {
+        let (protocol, path) = parse_storage_identifier("file:///path/to/db");
+        assert_eq!(protocol, "file");
+        assert_eq!(path, "/path/to/db");
+    }
+
+    #[test]
+    fn test_parse_browser_protocol() {
+        let (protocol, path) = parse_storage_identifier("browser://my-app-db");
+        assert_eq!(protocol, "browser");
+        assert_eq!(path, "my-app-db");
+    }
+
+    #[test]
+    fn test_parse_localstorage_protocol() {
+        let (protocol, path) = parse_storage_identifier("localstorage://my-app-db");
+        assert_eq!(protocol, "localstorage");
+        assert_eq!(path, "my-app-db");
+    }
+
+    #[test]
+    fn test_parse_indexeddb_protocol() {
+        let (protocol, path) = parse_storage_identifier("indexeddb://my-app-db");
+        assert_eq!(protocol, "indexeddb");
+        assert_eq!(path, "my-app-db");
+    }
+
+    #[test]
+    fn test_parse_no_protocol() {
+        let (protocol, path) = parse_storage_identifier("my_database.db");
+        assert_eq!(protocol, "file");
+        assert_eq!(path, "my_database.db");
+    }
+
+    #[test]
+    fn test_has_protocol() {
+        assert!(has_protocol("file:///path/to/db", "file"));
+        assert!(has_protocol("browser://my-app-db", "browser"));
+        assert!(!has_protocol("my_database.db", "file"));
+    }
+
+    #[test]
+    fn test_extract_path() {
+        assert_eq!(extract_path("file:///path/to/db"), "/path/to/db");
+        assert_eq!(extract_path("localstorage://my-app-db"), "my-app-db");
+        assert_eq!(extract_path("my_database.db"), "my_database.db");
+    }
+}
+
 

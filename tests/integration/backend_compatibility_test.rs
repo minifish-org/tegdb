@@ -7,8 +7,6 @@
 //!
 //! 1. Import the test helpers:
 //!    ```rust
-//!    mod test_helpers;
-//!    use crate::test_helpers::run_with_both_backends;
 //!    ```
 //!
 //! 2. Wrap your test logic in a closure:
@@ -53,9 +51,10 @@
 //! }
 //! ```
 
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 use tegdb::{Database, Result, SqlValue};
-mod test_helpers;
-use crate::test_helpers::run_with_both_backends;
 
 #[test]
 fn test_basic_operations_both_backends() -> Result<()> {

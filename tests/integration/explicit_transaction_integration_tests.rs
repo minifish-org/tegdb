@@ -1,7 +1,8 @@
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 use tegdb::Database;
 
-mod test_helpers;
-use crate::test_helpers::run_with_both_backends;
 
 /// Test basic explicit transaction workflow
 #[test]

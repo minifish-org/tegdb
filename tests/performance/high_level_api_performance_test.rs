@@ -3,6 +3,9 @@
 //! This module provides comprehensive performance tests for the Database interface,
 //! focusing on real-world usage patterns and identifying performance bottlenecks.
 
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 use std::time::{Duration, Instant};
 use tegdb::{Database, Result};
 #[cfg(not(target_arch = "wasm32"))]

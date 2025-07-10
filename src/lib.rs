@@ -754,3 +754,34 @@ fn test_wasm_query_iterator_tests() -> crate::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_wasm_compilation() {
+        // This test just verifies that the code compiles and runs on WASM
+        assert_eq!(2 + 2, 4);
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_wasm_database_creation() -> Result<()> {
+        // Test that we can create a database on WASM
+        let mut db = Database::open("localstorage://test_db")?;
+
+        // Clean up any existing data
+        let _ = db.execute("DROP TABLE IF EXISTS test_creation");
+
+        // Test basic operations
+        db.execute("CREATE TABLE test_creation (id INTEGER PRIMARY KEY, name TEXT)")?;
+        db.execute("INSERT INTO test_creation (id, name) VALUES (1, 'test')")?;
+
+        let result = db.query("SELECT * FROM test_creation")?;
+        assert_eq!(result.rows().len(), 1);
+
+        Ok(())
+    }
+}

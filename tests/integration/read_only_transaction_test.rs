@@ -1,12 +1,11 @@
-mod test_helpers;
 
-#[cfg(test)]
-mod read_only_transaction_tests {
-    use crate::test_helpers::run_with_both_backends;
-    use tegdb::{Database, Result, SqlValue};
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
 
-    #[test]
-    fn test_read_only_transaction_optimization() -> Result<()> {
+use tegdb::{Database, Result, SqlValue};
+
+#[test]
+fn test_read_only_transaction_optimization() -> Result<()> {
         run_with_both_backends("test_read_only_transaction_optimization", |db_path| {
             let mut db = Database::open(db_path)?;
 
@@ -101,4 +100,3 @@ mod read_only_transaction_tests {
             Ok(())
         })
     }
-}

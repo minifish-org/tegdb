@@ -1,7 +1,8 @@
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 use tegdb::{Database, Result};
 
-mod test_helpers;
-use crate::test_helpers::run_with_both_backends;
 
 #[test]
 fn test_insert_validation() -> Result<()> {

@@ -1,8 +1,9 @@
 //! Test edge cases and error handling for arithmetic expressions
 
+#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+use test_helpers::run_with_both_backends;
+
 use tegdb::Database;
-mod test_helpers;
-use crate::test_helpers::run_with_both_backends;
 
 #[test]
 fn test_arithmetic_error_handling() {

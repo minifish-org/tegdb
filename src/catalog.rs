@@ -138,4 +138,49 @@ impl Default for Catalog {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::{ColumnConstraint, DataType};
+    use crate::query::{ColumnInfo, TableSchema};
+
+    #[test]
+    fn test_catalog_basic_operations() {
+        let mut catalog = Catalog::new();
+        assert_eq!(catalog.table_count(), 0);
+        assert!(!catalog.table_exists("users"));
+
+        // Create a test schema
+        let schema = TableSchema {
+            name: "users".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: DataType::Integer,
+                    constraints: vec![ColumnConstraint::PrimaryKey],
+                },
+                ColumnInfo {
+                    name: "name".to_string(),
+                    data_type: DataType::Text,
+                    constraints: vec![],
+                },
+            ],
+        };
+
+        catalog.add_table_schema(schema);
+        assert_eq!(catalog.table_count(), 1);
+        assert!(catalog.table_exists("users"));
+
+        let retrieved = catalog.get_table_schema("users").unwrap();
+        assert_eq!(retrieved.name, "users");
+        assert_eq!(retrieved.columns.len(), 2);
+
+        // Remove schema
+        let removed = catalog.remove_table_schema("users");
+        assert!(removed.is_some());
+        assert_eq!(catalog.table_count(), 0);
+        assert!(!catalog.table_exists("users"));
+    }
+}
+
 
