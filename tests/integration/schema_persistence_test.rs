@@ -1,12 +1,12 @@
 //! Test to verify that table schemas are properly persisted and loaded
 
-#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+#[path = "../helpers/test_helpers.rs"]
+mod test_helpers;
 use test_helpers::run_with_both_backends;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use tegdb::{Database, Result};
-
 
 #[test]
 fn test_schema_persistence_across_database_reopens() -> Result<()> {

@@ -213,10 +213,7 @@ impl StorageFormat {
     }
 
     /// Deserialize a single column at a specific offset
-    fn deserialize_column_at_offset(
-        data: &[u8],
-        column_info: &ColumnInfo,
-    ) -> Result<SqlValue> {
+    fn deserialize_column_at_offset(data: &[u8], column_info: &ColumnInfo) -> Result<SqlValue> {
         let start = column_info.offset;
         let end = start + column_info.size;
 
@@ -503,12 +500,12 @@ mod tests {
 
         // Only deserialize name and score
         let columns = vec!["name".to_string(), "score".to_string()];
-        let values = storage.deserialize_columns(&serialized, &schema, &columns).unwrap();
+        let values = storage
+            .deserialize_columns(&serialized, &schema, &columns)
+            .unwrap();
 
         assert_eq!(values.len(), 2);
         assert_eq!(values[0], SqlValue::Text("Bob".to_string()));
         assert_eq!(values[1], SqlValue::Real(87.2));
     }
 }
-
-

@@ -1,9 +1,9 @@
-#[path = "../helpers/test_helpers.rs"] mod test_helpers;
+#[path = "../helpers/test_helpers.rs"]
+mod test_helpers;
 use test_helpers::run_with_both_backends;
 
 use tegdb::Database;
 use tegdb::SqlValue;
-
 
 #[test]
 fn test_query_iterator_basic_functionality() {

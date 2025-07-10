@@ -562,8 +562,6 @@ pub fn run_basic_test() -> JsValue {
     }
 }
 
-
-
 #[cfg(target_arch = "wasm32")]
 fn test_wasm_advanced_database_tests() -> crate::Result<()> {
     // Test advanced database features
@@ -757,7 +755,6 @@ fn test_wasm_query_iterator_tests() -> crate::Result<()> {
 
 #[cfg(test)]
 mod tests {
-
 
     #[test]
     #[cfg(target_arch = "wasm32")]

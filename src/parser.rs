@@ -37,7 +37,7 @@ fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
         alt((alpha1, tag("_"))),
         many0(alt((alphanumeric1, tag("_")))),
     ))(input)?;
-    
+
     // Use string interning for better performance
     Ok((input, intern_string(identifier)))
 }
@@ -52,12 +52,10 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
     // Try to parse a single identifier (column name)
     let (input, first_col) = parse_identifier_optimized(input)?;
     // Only consume whitespace before a comma, not after the last column
-    let (input, rest_cols) = many0(
-        preceded(
-            tuple((multispace0, char(','), multispace0)),
-            parse_identifier_optimized,
-        )
-    )(input)?;
+    let (input, rest_cols) = many0(preceded(
+        tuple((multispace0, char(','), multispace0)),
+        parse_identifier_optimized,
+    ))(input)?;
     let mut columns = Vec::with_capacity(1 + rest_cols.len());
     columns.push(first_col);
     columns.extend(rest_cols);
@@ -530,8 +528,6 @@ fn parse_rollback(input: &str) -> IResult<&str, ()> {
     let (input, _) = tag_no_case("ROLLBACK")(input)?;
     Ok((input, ()))
 }
-
-
 
 // Parse WHERE clause
 fn parse_where_clause(input: &str) -> IResult<&str, WhereClause> {

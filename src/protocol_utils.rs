@@ -110,5 +110,3 @@ mod tests {
         assert_eq!(extract_path("my_database.db"), "my_database.db");
     }
 }
-
-

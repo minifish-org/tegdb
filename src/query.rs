@@ -120,14 +120,18 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                             if col_idx != usize::MAX {
                                 // Use direct index access for better performance
                                 if let Some(col) = self.schema.columns.get(col_idx) {
-                                    row_values.push(row_data.get(&col.name).cloned().unwrap_or(SqlValue::Null));
+                                    row_values.push(
+                                        row_data.get(&col.name).cloned().unwrap_or(SqlValue::Null),
+                                    );
                                 } else {
                                     row_values.push(SqlValue::Null);
                                 }
                             } else {
                                 // Fallback to HashMap lookup for columns not found in schema
                                 let col_name = &self.selected_columns[row_values.len()];
-                                row_values.push(row_data.get(col_name).cloned().unwrap_or(SqlValue::Null));
+                                row_values.push(
+                                    row_data.get(col_name).cloned().unwrap_or(SqlValue::Null),
+                                );
                             }
                         }
 

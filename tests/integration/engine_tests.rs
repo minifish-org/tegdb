@@ -3,8 +3,8 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use tegdb::Result;
 use tegdb::storage_engine::{EngineConfig, StorageEngine};
+use tegdb::Result;
 
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;

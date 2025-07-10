@@ -41,7 +41,7 @@ impl Catalog {
         self.schemas.clear();
         self.column_cache.clear();
         Self::load_schemas_from_storage(storage, &mut self.schemas)?;
-        
+
         // Pre-build column cache for faster lookups
         for (table_name, schema) in &self.schemas {
             let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
@@ -182,5 +182,3 @@ mod tests {
         assert!(!catalog.table_exists("users"));
     }
 }
-
-

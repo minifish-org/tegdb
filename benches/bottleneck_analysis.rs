@@ -132,8 +132,6 @@ fn bottleneck_analysis(c: &mut Criterion) {
         })
     });
 
-
-
     // Benchmark complete query execution pipeline
     c.bench_function("complete query pipeline", |b| {
         b.iter(|| {

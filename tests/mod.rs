@@ -121,9 +121,9 @@
 //! ```
 
 // Re-export test modules for easy access
-pub mod unit;
+pub mod arithmetic;
+pub mod helpers;
 pub mod integration;
 pub mod performance;
+pub mod unit;
 pub mod wasm;
-pub mod arithmetic;
-pub mod helpers; 

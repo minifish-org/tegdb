@@ -1,4 +1,3 @@
-
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 use test_helpers::run_with_both_backends;
@@ -64,18 +63,14 @@ fn test_multiple_transactions_with_commit_markers() -> Result<()> {
             // Transaction 1: committed
             {
                 let mut tx = db.begin_transaction()?;
-                tx.execute(
-                    "INSERT INTO test_data (key, value) VALUES ('tx1_key', 'tx1_value')",
-                )?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('tx1_key', 'tx1_value')")?;
                 tx.commit()?;
             }
 
             // Transaction 2: committed
             {
                 let mut tx = db.begin_transaction()?;
-                tx.execute(
-                    "INSERT INTO test_data (key, value) VALUES ('tx2_key', 'tx2_value')",
-                )?;
+                tx.execute("INSERT INTO test_data (key, value) VALUES ('tx2_key', 'tx2_value')")?;
                 tx.commit()?;
             }
 

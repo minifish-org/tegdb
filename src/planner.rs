@@ -230,13 +230,17 @@ impl QueryPlanner {
 
         // Check if we have a WHERE clause that can be used for PK lookup
         if let Some(ref where_clause) = select.where_clause {
-            if let Some(pk_values) = self.extract_pk_equality_conditions(&select.table, &where_clause.condition)? {
+            if let Some(pk_values) =
+                self.extract_pk_equality_conditions(&select.table, &where_clause.condition)?
+            {
                 // Check if we have all primary key columns
                 let pk_columns = self.get_primary_key_columns(&select.table)?;
                 if pk_values.len() == pk_columns.len() {
-                    let additional_filter = self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
-                    let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-                    
+                    let additional_filter =
+                        self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
+                    let selected_columns =
+                        self.normalize_selected_columns(&select.table, &select.columns)?;
+
                     return Ok(Some(ExecutionPlan::PrimaryKeyLookup {
                         table: select.table.clone(),
                         pk_values,
@@ -255,7 +259,7 @@ impl QueryPlanner {
         let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
         let filter = select.where_clause.as_ref().map(|w| w.condition.clone());
         let early_termination = Self::is_simple_filter(filter.as_ref());
-        
+
         Ok(ExecutionPlan::TableScan {
             table: select.table.clone(),
             selected_columns,
@@ -304,7 +308,9 @@ impl QueryPlanner {
         // Create scan plan for the rows to update
         let scan_plan = if let Some(ref where_clause) = update.where_clause {
             // Try to optimize the scan based on WHERE clause
-            if let Some(pk_values) = self.extract_pk_equality_conditions(&update.table, &where_clause.condition)? {
+            if let Some(pk_values) =
+                self.extract_pk_equality_conditions(&update.table, &where_clause.condition)?
+            {
                 let pk_columns = self.get_primary_key_columns(&update.table)?;
                 if pk_values.len() == pk_columns.len() {
                     ExecutionPlan::PrimaryKeyLookup {
@@ -357,7 +363,9 @@ impl QueryPlanner {
         // Create scan plan for the rows to delete
         let scan_plan = if let Some(ref where_clause) = delete.where_clause {
             // Try to optimize the scan based on WHERE clause
-            if let Some(pk_values) = self.extract_pk_equality_conditions(&delete.table, &where_clause.condition)? {
+            if let Some(pk_values) =
+                self.extract_pk_equality_conditions(&delete.table, &where_clause.condition)?
+            {
                 let pk_columns = self.get_primary_key_columns(&delete.table)?;
                 if pk_values.len() == pk_columns.len() {
                     ExecutionPlan::PrimaryKeyLookup {
@@ -530,13 +538,19 @@ impl QueryPlanner {
     }
 
     /// Normalize selected columns: if ["*"] is given, expand to all columns from the schema
-    fn normalize_selected_columns(&self, table_name: &str, columns: &[String]) -> Result<Vec<String>> {
+    fn normalize_selected_columns(
+        &self,
+        table_name: &str,
+        columns: &[String],
+    ) -> Result<Vec<String>> {
         if columns.len() == 1 && columns[0] == "*" {
             // Expand * to all columns from the schema
             if let Some(schema) = self.table_schemas.get(table_name) {
                 Ok(schema.columns.iter().map(|c| c.name.clone()).collect())
             } else {
-                Err(crate::Error::Other(format!("Table '{table_name}' not found for column expansion")))
+                Err(crate::Error::Other(format!(
+                    "Table '{table_name}' not found for column expansion"
+                )))
             }
         } else {
             Ok(columns.to_vec())
@@ -574,8 +588,6 @@ impl QueryPlanner {
             )))
         }
     }
-
-
 
     /// Update table schemas (called when DDL operations occur)
     pub fn update_table_schema(&mut self, table_name: String, schema: TableSchema) {
@@ -682,7 +694,7 @@ impl ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{DataType, SqlValue, Statement, ColumnConstraint};
+    use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement};
     use crate::query::{ColumnInfo, TableSchema};
     use std::collections::HashMap;
 
@@ -785,5 +797,3 @@ mod tests {
         }
     }
 }
-
-

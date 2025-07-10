@@ -66,10 +66,7 @@ impl Database {
             // Load all table schemas into the catalog at database initialization
             let catalog = Catalog::load_from_storage(&storage)?;
 
-            Ok(Self {
-                storage,
-                catalog,
-            })
+            Ok(Self { storage, catalog })
         }
 
         #[cfg(target_arch = "wasm32")]
@@ -83,10 +80,7 @@ impl Database {
                     // Load all table schemas into the catalog at database initialization
                     let catalog = Catalog::load_from_storage(&storage)?;
 
-                    Ok(Self {
-                        storage,
-                        catalog,
-                    })
+                    Ok(Self { storage, catalog })
                 }
                 "file" => {
                     // File protocol is not supported on WASM
@@ -112,10 +106,7 @@ impl Database {
 
     /// Helper function to update schema catalog for DDL operations
     /// Centralizes schema catalog update logic to avoid duplication
-    fn update_schema_catalog_for_ddl(
-        catalog: &mut Catalog,
-        statement: &crate::parser::Statement,
-    ) {
+    fn update_schema_catalog_for_ddl(catalog: &mut Catalog, statement: &crate::parser::Statement) {
         match statement {
             crate::parser::Statement::CreateTable(create_table) => {
                 let schema = Self::create_table_schema(create_table);
@@ -201,10 +192,8 @@ impl Database {
 
         // Use the new planner pipeline with executor
         let planner = QueryPlanner::new(self.catalog.get_all_schemas().clone());
-        let mut processor = QueryProcessor::new_with_schemas(
-            transaction,
-            self.catalog.get_all_schemas().clone(),
-        );
+        let mut processor =
+            QueryProcessor::new_with_schemas(transaction, self.catalog.get_all_schemas().clone());
 
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
@@ -249,10 +238,7 @@ impl Database {
         let transaction = self.storage.begin_transaction();
 
         // Create executor with schemas
-        let processor = QueryProcessor::new_with_schemas(
-            transaction,
-            schemas.clone(),
-        );
+        let processor = QueryProcessor::new_with_schemas(transaction, schemas.clone());
 
         // Use centralized query execution helper
         let result = Self::execute_query_with_processor(processor, sql, schemas)?;

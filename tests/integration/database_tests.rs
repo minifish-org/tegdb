@@ -14,7 +14,6 @@ use test_helpers::run_with_both_backends;
 
 use tegdb::{Database, Result, SqlValue};
 
-
 #[test]
 fn test_database_open_and_basic_operations() -> Result<()> {
     run_with_both_backends("test_database_open_and_basic_operations", |db_path| {
