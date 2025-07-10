@@ -162,5 +162,20 @@ name = "drop_table_integration_test"
 path = "tests/drop_table_integration_test.rs"
 required-features = ["dev"]
 
+[[test]]
+name = "catalog_tests"
+path = "tests/catalog_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "planner_tests"
+path = "tests/planner_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "storage_format_tests"
+path = "tests/storage_format_tests.rs"
+required-features = ["dev"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
