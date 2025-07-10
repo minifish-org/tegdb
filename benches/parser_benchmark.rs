@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use tegdb::parser::*;
 use std::hint::black_box;
+use tegdb::parser::*;
 
 fn simple_sql_statements() -> Vec<(&'static str, &'static str)> {
     vec![

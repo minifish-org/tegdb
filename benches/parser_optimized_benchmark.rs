@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use tegdb::parser::*;
+use std::hint::black_box;
 
 fn optimized_scenarios() -> Vec<(&'static str, &'static str)> {
     vec![
