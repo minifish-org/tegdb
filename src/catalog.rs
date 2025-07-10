@@ -98,12 +98,12 @@ impl Catalog {
 
         let schema_entries = storage.scan(schema_prefix..schema_end)?;
 
-        for (key, value_arc) in schema_entries {
+        for (key, value_rc) in schema_entries {
             // Extract table name from key
             let key_str = String::from_utf8_lossy(&key);
             if let Some(table_name) = key_str.strip_prefix(SCHEMA_KEY_PREFIX) {
                 // Deserialize schema using centralized utility
-                if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value_arc) {
+                if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value_rc) {
                     schema.name = table_name.to_string(); // Set the actual table name
                     schemas.insert(table_name.to_string(), schema);
                 }

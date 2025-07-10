@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::backends::DefaultLogBackend;
 use crate::error::Result;
 
 /// KeyMap maps keys to shared buffers instead of owned Vecs
-pub type KeyMap = BTreeMap<Vec<u8>, Arc<[u8]>>;
+pub type KeyMap = BTreeMap<Vec<u8>, Rc<[u8]>>;
 
 /// Transaction commit marker - special marker that won't be part of keymap
 pub const TX_COMMIT_MARKER: &[u8] = b"__TX_COMMIT__";

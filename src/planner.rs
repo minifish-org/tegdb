@@ -6,7 +6,7 @@
 
 use crate::parser::{
     SqlValue, Condition, Statement, SelectStatement, InsertStatement, UpdateStatement,
-    DeleteStatement, CreateTableStatement, DropTableStatement, ComparisonOperator, WhereClause,
+    DeleteStatement, CreateTableStatement, DropTableStatement, ComparisonOperator,
 };
 use crate::executor::{ColumnInfo, TableSchema};
 use crate::Result;
@@ -693,7 +693,7 @@ impl ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement};
+    use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement, WhereClause};
     use crate::executor::{ColumnInfo, TableSchema};
     use std::collections::HashMap;
     use std::rc::Rc;

@@ -1,10 +1,12 @@
 // filepath: /home/runner/work/tegdb/tegdb/src/storage.rs
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::Arc;
+
 
 use crate::error::{Error, Result};
 use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
+
+use std::rc::Rc;
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -39,8 +41,8 @@ pub struct StorageEngine {
     identifier: String, // Store the database identifier
 }
 
-// Type alias for scan result (returns keys and shared buffer Arcs for values)
-type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Arc<[u8]>)> + 'a>;
+// Type alias for scan result (returns keys and shared buffer Rcs for values)
+type ScanResult<'a> = Box<dyn Iterator<Item = (Vec<u8>, Rc<[u8]>)> + 'a>;
 
 impl StorageEngine {
     /// Creates a new database engine with default configuration
@@ -92,8 +94,8 @@ impl StorageEngine {
         }
     }
 
-    /// Retrieves a value by key (zero-copy refcounted Arc)
-    pub fn get(&self, key: &[u8]) -> Option<Arc<[u8]>> {
+    /// Retrieves a value by key (zero-copy refcounted Rc)
+    pub fn get(&self, key: &[u8]) -> Option<Rc<[u8]>> {
         self.key_map.get(key).cloned()
     }
 
@@ -121,7 +123,7 @@ impl StorageEngine {
         // write to log, then store shared buffer
         self.log.write_entry(key, &value)?;
         // store as shared buffer for cheap cloning on get
-        let shared = Arc::from(value.into_boxed_slice());
+        let shared = Rc::from(value.into_boxed_slice());
         self.key_map.insert(key.to_vec(), shared);
 
         Ok(())
@@ -144,8 +146,8 @@ impl StorageEngine {
         let iter = self
             .key_map
             .range(range)
-            // clone key Vec (small) and clone Arc (cheap refcount increment)
-            .map(|(key, value)| (key.clone(), Arc::clone(value)));
+                    // clone key Vec (small) and clone Rc (cheap refcount increment)
+        .map(|(key, value)| (key.clone(), Rc::clone(value)));
         Ok(Box::new(iter))
     }
 
@@ -213,7 +215,7 @@ impl Drop for StorageEngine {
 /// Undo log entry for rollback
 struct UndoEntry {
     key: Vec<u8>,
-    old_value: Option<Arc<[u8]>>, // None means key didn't exist
+            old_value: Option<Rc<[u8]>>, // None means key didn't exist
 }
 
 /// Write-through transactional context for ACID operations
@@ -225,7 +227,7 @@ pub struct Transaction<'a> {
 
 impl Transaction<'_> {
     /// Records the current state for potential rollback and returns the old value
-    fn record_undo(&mut self, key: &[u8]) -> Option<Arc<[u8]>> {
+    fn record_undo(&mut self, key: &[u8]) -> Option<Rc<[u8]>> {
         let old_value = self.engine.key_map.get(key).cloned();
 
         // Lazy initialization of undo_log
@@ -288,7 +290,7 @@ impl Transaction<'_> {
     }
 
     /// Retrieves a value directly from the engine (no transaction-local state)
-    pub fn get(&self, key: &[u8]) -> Option<Arc<[u8]>> {
+    pub fn get(&self, key: &[u8]) -> Option<Rc<[u8]>> {
         self.engine.get(key)
     }
 

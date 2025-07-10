@@ -14,7 +14,7 @@ use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 #[cfg(target_arch = "wasm32")]
 use crate::protocol_utils::parse_storage_identifier;
 #[cfg(target_arch = "wasm32")]
-use std::sync::Arc;
+use std::rc::Rc;
 
 /// Browser-based storage backend for WASM platforms
 #[cfg(target_arch = "wasm32")]
@@ -85,7 +85,7 @@ impl LogBackend for BrowserLogBackend {
                     let old_value = if entry.value.is_empty() {
                         key_map.remove(&entry.key)
                     } else {
-                        key_map.insert(entry.key.clone(), Arc::from(entry.value.into_boxed_slice()))
+                        key_map.insert(entry.key.clone(), Rc::from(entry.value.into_boxed_slice()))
                     };
                     uncommitted_changes.push((entry.key, old_value));
                 }

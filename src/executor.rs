@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Type alias for scan iterator to reduce complexity
-type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>;
+type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)> + 'a>;
 
 /// Column information for table schema
 #[derive(Debug, Clone)]
@@ -201,29 +201,7 @@ pub struct QueryProcessor<'a> {
 }
 
 impl<'a> QueryProcessor<'a> {
-    /// Create a new query processor with transaction and schemas
-    pub fn new_with_schemas(
-        transaction: Transaction<'a>,
-        table_schemas: HashMap<String, TableSchema>,
-    ) -> Self {
-        // Convert TableSchema to Rc<TableSchema> for shared ownership
-        let rc_schemas: HashMap<String, Rc<TableSchema>> = table_schemas
-            .into_iter()
-            .map(|(k, v)| (k, Rc::new(v)))
-            .collect();
 
-        let mut processor = Self {
-            transaction,
-            table_schemas: rc_schemas,
-            storage_format: StorageFormat::new(), // Always use native format
-            transaction_active: false,
-        };
-
-        // Load additional schemas from storage and merge
-        let _ = processor.load_schemas_from_storage();
-
-        processor
-    }
 
     /// Create a new query processor with transaction and Rc schemas (more efficient)
     pub fn new_with_rc_schemas(
@@ -456,11 +434,11 @@ impl<'a> QueryProcessor<'a> {
                     // Create a single-item iterator if the key exists
                     let single_result = vec![(key_bytes, value)];
                     Box::new(single_result.into_iter())
-                        as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
+                        as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
                 } else {
                     // Create an empty iterator if the key doesn't exist
                     Box::new(std::iter::empty())
-                        as Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)>>
+                        as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
                 };
 
                 let row_iter = SelectRowIterator::new(
@@ -715,7 +693,7 @@ impl<'a> QueryProcessor<'a> {
 
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
 
-                for (key, value_arc) in scan_iter {
+                for (key, value_rc) in scan_iter {
                     if let Some(limit) = limit {
                         if count >= *limit {
                             break;
@@ -724,7 +702,7 @@ impl<'a> QueryProcessor<'a> {
 
                     let matches = if let Some(filter_cond) = filter {
                         self.storage_format
-                            .matches_condition(&value_arc, schema, filter_cond)
+                            .matches_condition(&value_rc, schema, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -755,13 +733,13 @@ impl<'a> QueryProcessor<'a> {
 
         let scan_results: Vec<_> = self.transaction.scan(schema_prefix..schema_end)?.collect();
 
-        for (key, value_arc) in scan_results {
+                    for (key, value_rc) in scan_results {
             let key_str = String::from_utf8_lossy(&key);
             if let Some(table_name) = key_str.strip_prefix("S:") {
                 // Only load from storage if we don't already have this schema
                 if !self.table_schemas.contains_key(table_name) {
                     // Parse the schema using centralized utility
-                    if let Ok(schema_data) = String::from_utf8(value_arc.to_vec()) {
+                    if let Ok(schema_data) = String::from_utf8(value_rc.to_vec()) {
                         if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
                         {
                             self.table_schemas.insert(table_name.to_string(), Rc::new(schema));
@@ -945,7 +923,7 @@ impl<'a> QueryProcessor<'a> {
 
         let scan_iter = self.transaction.scan(start_key..end_key)?;
 
-        for (key, value_bytes_arc) in scan_iter {
+                    for (key, value_bytes_rc) in scan_iter {
             let key_str = String::from_utf8_lossy(&key);
 
             // If we have a key to exclude, check if this is the same key
@@ -958,7 +936,7 @@ impl<'a> QueryProcessor<'a> {
             // Deserialize the row and check the column value
             if let Ok(row_data) = self
                 .storage_format
-                .deserialize_row(&value_bytes_arc, schema)
+                .deserialize_row(&value_bytes_rc, schema)
             {
                 if let Some(existing_value) = row_data.get(column_name) {
                     if existing_value == value && existing_value != &SqlValue::Null {

@@ -1,5 +1,5 @@
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::sync::Arc;
+use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use fs2::FileExt;
@@ -11,7 +11,7 @@ use crate::protocol_utils::parse_storage_identifier;
 
 /// Type alias for uncommitted changes list
 #[allow(dead_code)]
-type UncommittedChanges = Vec<(Vec<u8>, Option<Arc<[u8]>>)>;
+type UncommittedChanges = Vec<(Vec<u8>, Option<Rc<[u8]>>)>;
 
 /// File-based storage backend for native platforms
 #[cfg(not(target_arch = "wasm32"))]
@@ -104,7 +104,7 @@ impl LogBackend for FileLogBackend {
                 let old_value = if value.is_empty() {
                     key_map.remove(&key)
                 } else {
-                    key_map.insert(key.clone(), Arc::from(value.into_boxed_slice()))
+                    key_map.insert(key.clone(), Rc::from(value.into_boxed_slice()))
                 };
                 uncommitted_changes.push((key, old_value));
             }
