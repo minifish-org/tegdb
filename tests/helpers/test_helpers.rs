@@ -23,9 +23,10 @@ use tempfile::NamedTempFile;
 ///     Ok(())
 /// });
 /// ```
+#[allow(dead_code)]
 pub fn run_with_both_backends<F>(test_name: &str, test_fn: F) -> Result<()>
 where
-    F: Fn(&str) -> Result<()>,
+    F: Fn(&str) -> Result<()> + Copy,
 {
     // Test with file backend (native)
     #[cfg(not(target_arch = "wasm32"))]

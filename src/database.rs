@@ -12,10 +12,7 @@ use crate::{
     storage_engine::StorageEngine,
     Result,
 };
-use std::{
-    collections::HashMap,
-    path::Path,
-};
+use std::{collections::HashMap, path::Path};
 
 /// Database connection, similar to sqlite::Connection
 ///

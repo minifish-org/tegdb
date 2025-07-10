@@ -8,7 +8,6 @@ use tegdb::storage_engine::{EngineConfig, StorageEngine};
 
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
-use test_helpers::run_with_both_backends;
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {

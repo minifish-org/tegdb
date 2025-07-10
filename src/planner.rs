@@ -575,54 +575,7 @@ impl QueryPlanner {
         }
     }
 
-    /// Helper to get primary key columns as a Vec<String> for selection
-    fn get_primary_key_columns_as_vec(&self, table_name: &str) -> Result<Vec<String>> {
-        let pks = self.get_primary_key_columns(table_name)?;
-        if pks.is_empty() {
-            // If no explicit PK, we need all columns to uniquely identify rows for deletion
-            // This is a fallback and assumes row identity is based on all columns
-            self.normalize_selected_columns(table_name, &["*".to_string()])
-        } else {
-            Ok(pks)
-        }
-    }
 
-    /// Estimate cost for a primary key lookup
-    fn estimate_pk_lookup_cost(&self, table_name: &str) -> Cost {
-        let default_stats = TableStatistics {
-            row_count: 1,
-            avg_row_size: 100,
-            column_stats: HashMap::new(),
-        };
-        let stats = self.table_stats.get(table_name).unwrap_or(&default_stats);
-
-        Cost::new(
-            self.config.pk_lookup_cost,       // Very low I/O
-            self.config.cpu_tuple_cost * 1.0, // Minimal CPU
-            (stats.avg_row_size as f64 / 4096.0) * self.config.memory_page_cost, // Memory for one row
-        )
-    }
-
-    /// Estimate cost for a table scan
-    fn estimate_table_scan_cost(&self, table_name: &str, select: &SelectStatement) -> Cost {
-        let row_count = self
-            .table_stats
-            .get(table_name)
-            .map(|stats| stats.row_count)
-            .unwrap_or(1000); // Default estimate
-
-        let effective_rows = if let Some(limit) = select.limit {
-            std::cmp::min(row_count, limit)
-        } else {
-            row_count
-        };
-
-        Cost::new(
-            self.config.seq_scan_cost * effective_rows as f64,
-            self.config.cpu_tuple_cost * effective_rows as f64,
-            self.config.memory_page_cost * (effective_rows as f64 / 100.0), // Rough memory estimate
-        )
-    }
 
     /// Update table schemas (called when DDL operations occur)
     pub fn update_table_schema(&mut self, table_name: String, schema: TableSchema) {

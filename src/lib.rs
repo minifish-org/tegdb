@@ -757,7 +757,7 @@ fn test_wasm_query_iterator_tests() -> crate::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
 
     #[test]
     #[cfg(target_arch = "wasm32")]

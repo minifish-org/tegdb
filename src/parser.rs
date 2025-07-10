@@ -531,19 +531,7 @@ fn parse_rollback(input: &str) -> IResult<&str, ()> {
     Ok((input, ()))
 }
 
-// Parse column list (for SELECT) - optimized version
-fn parse_column_list(input: &str) -> IResult<&str, Vec<String>> {
-    alt((
-        map(char('*'), |_| vec!["*".to_string()]),
-        map(
-            separated_list1(
-                delimited(multispace0, char(','), multispace0),
-                parse_identifier,
-            ),
-            |columns| columns,
-        ),
-    ))(input)
-}
+
 
 // Parse WHERE clause
 fn parse_where_clause(input: &str) -> IResult<&str, WhereClause> {
