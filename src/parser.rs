@@ -20,6 +20,7 @@ thread_local! {
 }
 
 fn intern_string(s: &str) -> String {
+    ensure_cache_initialized();
     STRING_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(interned) = cache.get(s) {
@@ -29,6 +30,29 @@ fn intern_string(s: &str) -> String {
         cache.insert(owned.clone(), owned.clone());
         owned
     })
+}
+
+// Pre-populate cache with common SQL keywords for better performance
+fn initialize_string_cache() {
+    STRING_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let common_keywords = [
+            "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "TABLE",
+            "INTO", "VALUES", "SET", "AND", "OR", "ORDER", "BY", "LIMIT", "BEGIN", "COMMIT", "ROLLBACK",
+            "PRIMARY", "KEY", "NOT", "NULL", "UNIQUE", "INTEGER", "TEXT", "REAL", "BLOB", "IF", "EXISTS",
+            "ASC", "DESC", "START", "TRANSACTION"
+        ];
+        for keyword in &common_keywords {
+            let owned = keyword.to_string();
+            cache.insert(owned.clone(), owned);
+        }
+    });
+}
+
+// Initialize cache on first use
+fn ensure_cache_initialized() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(initialize_string_cache);
 }
 
 // Optimized identifier parsing with string interning
@@ -60,6 +84,16 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
     columns.push(first_col);
     columns.extend(rest_cols);
     Ok((input, columns))
+}
+
+// Safe integer parsing with error handling
+fn parse_u64_safe(s: &str) -> Result<u64, String> {
+    s.parse::<u64>().map_err(|e| format!("Invalid integer: {}", e))
+}
+
+// Safe float parsing with error handling
+fn parse_f64_safe(s: &str) -> Result<f64, String> {
+    s.parse::<f64>().map_err(|e| format!("Invalid float: {}", e))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -314,6 +348,22 @@ pub fn parse_sql(input: &str) -> IResult<&str, Statement> {
         )),
         multispace0,
     )(input)
+}
+
+// Convenience function for parsing SQL with better error messages
+pub fn parse_sql_with_error(input: &str) -> Result<Statement, String> {
+    match parse_sql(input) {
+        Ok((remaining, statement)) => {
+            if !remaining.trim().is_empty() {
+                Err(format!("Unexpected input after SQL statement: '{}'", remaining))
+            } else {
+                Ok(statement)
+            }
+        }
+        Err(nom::Err::Error(e)) => Err(format!("Parse error at position {}: {:?}", e.input, e.code)),
+        Err(nom::Err::Failure(e)) => Err(format!("Parse failure at position {}: {:?}", e.input, e.code)),
+        Err(nom::Err::Incomplete(_)) => Err("Incomplete SQL statement".to_string()),
+    }
 }
 
 // Parse SELECT statement
@@ -643,7 +693,9 @@ fn parse_order_by_column(input: &str) -> IResult<&str, OrderByClause> {
 fn parse_limit(input: &str) -> IResult<&str, u64> {
     let (input, _) = tag_no_case("LIMIT")(input)?;
     let (input, _) = multispace1(input)?;
-    let (input, limit) = map(digit1, |s: &str| s.parse::<u64>().unwrap())(input)?;
+    let (input, limit_str) = digit1(input)?;
+    let limit = parse_u64_safe(limit_str)
+        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
 
     Ok((input, limit))
 }
@@ -735,51 +787,52 @@ fn parse_string_literal(input: &str) -> IResult<&str, String> {
     )(input)
 }
 
-// Parse integer - optimized version
+// Parse integer - optimized version with error handling
 fn parse_integer(input: &str) -> IResult<&str, i64> {
-    map(recognize(pair(opt(char('-')), digit1)), |s: &str| {
-        // Fast path for small positive integers
-        if s.len() <= 3 && !s.starts_with('-') {
-            let mut result = 0i64;
-            for byte in s.bytes() {
-                result = result * 10 + (byte - b'0') as i64;
-            }
-            result
-        } else {
-            s.parse().unwrap()
+    let (input, int_str) = recognize(pair(opt(char('-')), digit1))(input)?;
+    
+    // Fast path for small positive integers
+    if int_str.len() <= 3 && !int_str.starts_with('-') {
+        let mut result = 0i64;
+        for byte in int_str.bytes() {
+            result = result * 10 + (byte - b'0') as i64;
         }
-    })(input)
+        Ok((input, result))
+    } else {
+        let value = int_str.parse::<i64>()
+            .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+        Ok((input, value))
+    }
 }
 
-// Parse real number
+// Parse real number with error handling
 fn parse_real(input: &str) -> IResult<&str, f64> {
-    map(
-        recognize(tuple((opt(char('-')), digit1, char('.'), digit1))),
-        |s: &str| s.parse().unwrap(),
-    )(input)
+    let (input, real_str) = recognize(tuple((opt(char('-')), digit1, char('.'), digit1)))(input)?;
+    let value = parse_f64_safe(real_str)
+        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+    Ok((input, value))
 }
 
-// Parse identifier - optimized version with selective interning
+// Parse identifier - consolidated version with selective interning
 fn parse_identifier(input: &str) -> IResult<&str, String> {
-    map(
-        recognize(pair(
-            alt((alpha1, tag("_"))),
-            many0(alt((alphanumeric1, tag("_")))),
-        )),
-        |s: &str| {
-            // Only intern very common, short identifiers to avoid overhead
-            if s.len() <= 8 && s.is_ascii() {
-                match s {
-                    "id" | "name" | "age" | "email" | "user" | "users" | "data" | "table" => {
-                        intern_string(s)
-                    }
-                    _ => s.to_string(),
-                }
-            } else {
-                s.to_string()
+    let (input, identifier) = recognize(pair(
+        alt((alpha1, tag("_"))),
+        many0(alt((alphanumeric1, tag("_")))),
+    ))(input)?;
+
+    // Only intern very common, short identifiers to avoid overhead
+    let result = if identifier.len() <= 8 && identifier.is_ascii() {
+        match identifier {
+            "id" | "name" | "age" | "email" | "user" | "users" | "data" | "table" => {
+                intern_string(identifier)
             }
-        },
-    )(input)
+            _ => identifier.to_string(),
+        }
+    } else {
+        identifier.to_string()
+    };
+
+    Ok((input, result))
 }
 
 // Parse expression (supports arithmetic operations)
