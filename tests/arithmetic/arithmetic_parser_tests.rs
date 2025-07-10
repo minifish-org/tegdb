@@ -1,5 +1,6 @@
 //! Test parsing of arithmetic expressions in UPDATE statements
 
+#[allow(clippy::duplicate_mod)]
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 

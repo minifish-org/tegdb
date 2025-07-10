@@ -167,7 +167,7 @@ pub enum ResultSet<'a> {
     /// SELECT query result with streaming support
     Select {
         columns: Vec<String>,
-        rows: SelectRowIterator<'a>,
+        rows: Box<SelectRowIterator<'a>>,
     },
     /// INSERT query result
     Insert { rows_affected: usize },
@@ -448,7 +448,7 @@ impl<'a> QueryProcessor<'a> {
 
                 Ok(ResultSet::Select {
                     columns: selected_columns,
-                    rows: row_iter,
+                    rows: Box::new(row_iter),
                 })
             }
             ExecutionPlan::TableScan {
@@ -475,7 +475,7 @@ impl<'a> QueryProcessor<'a> {
 
                 Ok(ResultSet::Select {
                     columns: selected_columns,
-                    rows: row_iter,
+                    rows: Box::new(row_iter),
                 })
             }
             _ => Err(Error::Other("Expected SELECT execution plan".to_string())),
