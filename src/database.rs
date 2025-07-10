@@ -190,10 +190,12 @@ impl Database {
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
 
+        // Get schemas once to avoid multiple clones
+        let schemas = self.catalog.get_all_schemas().clone();
+
         // Use the new planner pipeline with executor
-        let planner = QueryPlanner::new(self.catalog.get_all_schemas().clone());
-        let mut processor =
-            QueryProcessor::new_with_schemas(transaction, self.catalog.get_all_schemas().clone());
+        let planner = QueryPlanner::new(schemas.clone());
+        let mut processor = QueryProcessor::new_with_schemas(transaction, schemas);
 
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
@@ -231,8 +233,8 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        // Get schemas reference (no cloning needed)
-        let schemas = self.catalog.get_all_schemas();
+        // Get schemas once to avoid multiple clones
+        let schemas = self.catalog.get_all_schemas().clone();
 
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
@@ -241,7 +243,7 @@ impl Database {
         let processor = QueryProcessor::new_with_schemas(transaction, schemas.clone());
 
         // Use centralized query execution helper
-        let result = Self::execute_query_with_processor(processor, sql, schemas)?;
+        let result = Self::execute_query_with_processor(processor, sql, &schemas)?;
 
         Ok(result)
     }
@@ -260,8 +262,15 @@ impl Database {
 
 
 
+    /// Get a reference to all cached table schemas (no cloning)
+    /// Use this when you only need to read schema information
+    pub fn get_table_schemas_ref(&self) -> &HashMap<String, TableSchema> {
+        self.catalog.get_all_schemas()
+    }
+
     /// Get a copy of all cached table schemas
     /// Useful for debugging or introspection
+    /// Note: This clones the entire schema HashMap - use sparingly
     pub fn get_table_schemas(&self) -> HashMap<String, TableSchema> {
         self.catalog.get_all_schemas().clone()
     }
@@ -326,7 +335,7 @@ impl DatabaseTransaction<'_> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Get schemas from shared catalog
+        // Get schemas from shared catalog (reuse existing schemas in processor)
         let schemas = self.catalog.get_all_schemas().clone();
 
         // Use the planner pipeline
@@ -349,7 +358,7 @@ impl DatabaseTransaction<'_> {
     /// Execute SQL query within transaction, return all results materialized in memory
     /// Following the parse -> plan -> execute_plan pipeline
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        // Get schemas from shared cache
+        // Get schemas from shared cache (reuse existing schemas in processor)
         let schemas = self.catalog.get_all_schemas().clone();
 
         // Use centralized query execution helper
