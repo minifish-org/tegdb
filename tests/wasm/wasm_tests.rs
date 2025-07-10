@@ -3,6 +3,7 @@
 //! This module contains tests that can run in WASM environment.
 //! Use `wasm-bindgen-test-runner` to execute these tests.
 
+#[allow(clippy::duplicate_mod)]
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 

@@ -5,6 +5,7 @@
 //!
 //! Total tests: 43
 
+#[allow(clippy::duplicate_mod)]
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 

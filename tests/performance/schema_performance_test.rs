@@ -1,5 +1,6 @@
 //! Performance test to demonstrate the efficiency improvement of schema loading
 
+#[allow(clippy::duplicate_mod)]
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 use test_helpers::run_with_both_backends;
