@@ -113,7 +113,7 @@ fn main() -> Result<()> {
     // Example 4: LIMIT optimization
     println!("--- Example 4: LIMIT optimization (early termination) ---");
     let start = Instant::now();
-    let qr4 = db.query("SELECT * FROM measurements ORDER BY id LIMIT 10")?;
+    let qr4 = db.query("SELECT * FROM measurements LIMIT 10")?;
     let rows = qr4.rows().to_vec();
     let limit_time = start.elapsed();
     println!(

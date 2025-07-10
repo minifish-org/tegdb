@@ -34,7 +34,7 @@ fn test_file_log_backend() -> Result<()> {
         db.execute("INSERT INTO test (id, name, value) VALUES (2, 'test2', 20.5)")?;
 
         // Read
-        let results = db.query("SELECT * FROM test ORDER BY id")?;
+        let results = db.query("SELECT * FROM test")?;
         let rows: Vec<_> = results.into_iter().collect::<Result<Vec<_>>>()?;
         assert_eq!(rows.len(), 2);
 
@@ -99,7 +99,7 @@ fn test_file_log_backend() -> Result<()> {
         db.execute("INSERT INTO orders (id, user_id, amount) VALUES (3, 2, 79.99)")?;
 
         // Simple query instead of complex join for now
-        let results = db.query("SELECT name FROM users ORDER BY id")?;
+        let results = db.query("SELECT name FROM users")?;
         let _rows: Vec<_> = results.into_iter().collect::<Result<Vec<_>>>()?;
         println!("   ✓ Multiple tables work");
     }

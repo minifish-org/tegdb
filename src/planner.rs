@@ -744,7 +744,6 @@ mod tests {
                     right: SqlValue::Integer(123),
                 },
             }),
-            order_by: None,
             limit: None,
         };
 
@@ -776,7 +775,6 @@ mod tests {
                     right: SqlValue::Text("John".to_string()),
                 },
             }),
-            order_by: None,
             limit: Some(10),
         };
 

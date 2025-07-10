@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Test 1: Full Table Scan (Streaming) ---");
     let start = Instant::now();
     let result = db
-        .query("SELECT id, name, category, value FROM large_dataset ORDER BY id")
+        .query("SELECT id, name, category, value FROM large_dataset")
         .unwrap();
     let duration = start.elapsed();
 
@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Test 2: Filtered Query (Streaming Benefits) ---");
     let start = Instant::now();
     let result = db
-        .query("SELECT id, name, value FROM large_dataset WHERE category = 'premium' ORDER BY id")
+        .query("SELECT id, name, value FROM large_dataset WHERE category = 'premium'")
         .unwrap();
     let duration = start.elapsed();
 
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Test 3: Limited Query (Early Termination) ---");
     let start = Instant::now();
     let result = db
-        .query("SELECT id, name, category FROM large_dataset ORDER BY id LIMIT 10")
+        .query("SELECT id, name, category FROM large_dataset LIMIT 10")
         .unwrap();
     let duration = start.elapsed();
 
@@ -100,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- Test 4: Complex Query (Streaming Processing) ---");
     let start = Instant::now();
     let result = db
-        .query("SELECT id, name, category FROM large_dataset WHERE value > 1000.0 ORDER BY id")
+        .query("SELECT id, name, category FROM large_dataset WHERE value > 1000.0")
         .unwrap();
     let duration = start.elapsed();
 

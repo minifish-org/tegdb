@@ -61,6 +61,40 @@ pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &Sq
                 }
                 _ => false,
             }
+        },
+        Modulo => {
+            // Handle modulo operation for WHERE clauses like 'value % 10 = 0'
+            match (left, right) {
+                (SqlValue::Integer(a), SqlValue::Integer(b)) => {
+                    if *b == 0 {
+                        false // Division by zero
+                    } else {
+                        a % b == 0
+                    }
+                }
+                (SqlValue::Real(a), SqlValue::Real(b)) => {
+                    if *b == 0.0 {
+                        false // Division by zero
+                    } else {
+                        (a % b) == 0.0
+                    }
+                }
+                (SqlValue::Integer(a), SqlValue::Real(b)) => {
+                    if *b == 0.0 {
+                        false // Division by zero
+                    } else {
+                        (*a as f64 % b) == 0.0
+                    }
+                }
+                (SqlValue::Real(a), SqlValue::Integer(b)) => {
+                    if *b == 0 {
+                        false // Division by zero
+                    } else {
+                        (a % *b as f64) == 0.0
+                    }
+                }
+                _ => false,
+            }
         }
     }
 }

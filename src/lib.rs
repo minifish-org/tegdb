@@ -81,7 +81,7 @@ pub use catalog::Catalog;
 pub use parser::{
     parse_sql, Assignment, ColumnConstraint, ColumnDefinition, ComparisonOperator, Condition,
     CreateTableStatement, DataType, DeleteStatement, DropTableStatement, InsertStatement,
-    OrderByClause, OrderDirection, SelectStatement, Statement, UpdateStatement, WhereClause,
+    SelectStatement, Statement, UpdateStatement, WhereClause,
 };
 #[cfg(feature = "dev")]
 pub use planner::{
@@ -316,7 +316,7 @@ fn test_wasm_transactions() -> crate::Result<()> {
     }
 
     // Verify changes persisted
-    let result = db.query("SELECT balance FROM accounts_tx ORDER BY id")?;
+    let result = db.query("SELECT balance FROM accounts_tx")?;
     assert_eq!(result.rows().len(), 2);
 
     // Test rollback
@@ -347,7 +347,7 @@ fn test_wasm_data_types() -> crate::Result<()> {
     db.execute("INSERT INTO test_types_dt (id, text_col, int_col, real_col, null_col) VALUES (1, 'hello', 42, 3.14159, NULL)")?;
     db.execute("INSERT INTO test_types_dt (id, text_col, int_col, real_col, null_col) VALUES (2, 'world', -100, -2.5, 'not null')")?;
 
-    let result = db.query("SELECT * FROM test_types_dt ORDER BY id")?;
+    let result = db.query("SELECT * FROM test_types_dt")?;
     assert_eq!(result.rows().len(), 2);
 
     // Verify data types
@@ -437,7 +437,7 @@ fn test_wasm_transaction_patterns() -> crate::Result<()> {
     }
 
     // Verify changes persisted
-    let result = db.query("SELECT balance FROM accounts_tx ORDER BY id")?;
+    let result = db.query("SELECT balance FROM accounts_tx")?;
     assert_eq!(result.rows().len(), 2);
 
     // Test rollback
@@ -504,12 +504,12 @@ fn test_wasm_query_operations() -> crate::Result<()> {
     let result = db.query("SELECT name FROM query_test WHERE age > 30")?;
     assert_eq!(result.rows().len(), 1);
 
-    // Test ORDER BY
-    let result = db.query("SELECT name FROM query_test ORDER BY age")?;
+    // Test basic query
+    let result = db.query("SELECT name FROM query_test")?;
     assert_eq!(result.rows().len(), 3);
 
     // Test LIMIT
-    let result = db.query("SELECT name FROM query_test ORDER BY age LIMIT 2")?;
+    let result = db.query("SELECT name FROM query_test LIMIT 2")?;
     assert_eq!(result.rows().len(), 2);
 
     // Clean up
@@ -583,12 +583,12 @@ fn test_wasm_advanced_database_tests() -> crate::Result<()> {
     let result = db.query("SELECT name, age FROM advanced_test WHERE active = 1 AND age > 25")?;
     assert_eq!(result.rows().len(), 1); // Only Alice should match
 
-    // Test ORDER BY
-    let result = db.query("SELECT name FROM advanced_test ORDER BY age DESC")?;
+    // Test basic query
+    let result = db.query("SELECT name FROM advanced_test")?;
     assert_eq!(result.rows().len(), 3);
 
     // Test LIMIT
-    let result = db.query("SELECT name FROM advanced_test ORDER BY age DESC LIMIT 2")?;
+    let result = db.query("SELECT name FROM advanced_test LIMIT 2")?;
     assert_eq!(result.rows().len(), 2);
 
     // Clean up
@@ -658,7 +658,7 @@ fn test_wasm_transaction_integration_tests() -> crate::Result<()> {
     }
 
     // Verify transaction committed
-    let result = db.query("SELECT * FROM tx_integration_test ORDER BY id")?;
+    let result = db.query("SELECT * FROM tx_integration_test")?;
     assert_eq!(result.rows().len(), 2);
 
     // Clean up
@@ -692,7 +692,7 @@ fn test_wasm_schema_persistence_tests() -> crate::Result<()> {
     // Third session: Verify all data persisted
     {
         let mut db = Database::open(db_path)?;
-        let result = db.query("SELECT * FROM schema_persistence_test ORDER BY id")?;
+        let result = db.query("SELECT * FROM schema_persistence_test")?;
         assert_eq!(result.rows().len(), 2);
     }
 
@@ -721,7 +721,7 @@ fn test_wasm_query_iterator_tests() -> crate::Result<()> {
     db.execute("INSERT INTO iterator_test (id, value) VALUES (3, 'third')")?;
 
     // Test basic query
-    let result = db.query("SELECT * FROM iterator_test ORDER BY id")?;
+    let result = db.query("SELECT * FROM iterator_test")?;
     assert_eq!(result.rows().len(), 3);
 
     // Test WHERE clause
@@ -737,14 +737,14 @@ fn test_wasm_query_iterator_tests() -> crate::Result<()> {
         let mut tx = db.begin_transaction()?;
         tx.execute("INSERT INTO iterator_test (id, value) VALUES (4, 'fourth')")?;
 
-        let result = tx.query("SELECT * FROM iterator_test ORDER BY id")?;
+        let result = tx.query("SELECT * FROM iterator_test")?;
         assert_eq!(result.rows().len(), 4);
 
         tx.commit()?;
     }
 
     // Verify transaction changes
-    let result = db.query("SELECT * FROM iterator_test ORDER BY id")?;
+    let result = db.query("SELECT * FROM iterator_test")?;
     assert_eq!(result.rows().len(), 4);
 
     // Clean up

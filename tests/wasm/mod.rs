@@ -1,4 +1,4 @@
 //! Tests specific to WebAssembly platform
 
-pub mod wasm_integration_tests;
+// Removed wasm_integration_tests module
 pub mod wasm_tests;

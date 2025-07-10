@@ -91,7 +91,7 @@ fn test_basic_operations_both_backends() -> Result<()> {
 
         // Verify final state
         let result = db
-            .query("SELECT name, age FROM users ORDER BY name")
+            .query("SELECT name, age FROM users")
             .unwrap();
         assert_eq!(result.rows().len(), 1); // Alice remaining
         assert_eq!(result.rows()[0][0], SqlValue::Text("Alice".to_string()));
@@ -124,7 +124,7 @@ fn test_transactions_both_backends() -> Result<()> {
 
             // Verify changes within transaction
             let result = tx
-                .query("SELECT id, balance FROM accounts ORDER BY id")
+                .query("SELECT id, balance FROM accounts")
                 .unwrap();
             assert_eq!(result.rows().len(), 2);
 
@@ -140,7 +140,7 @@ fn test_transactions_both_backends() -> Result<()> {
 
         // Verify changes persisted after transaction commit
         let result = db
-            .query("SELECT id, balance FROM accounts ORDER BY id")
+            .query("SELECT id, balance FROM accounts")
             .unwrap();
         let row1 = &result.rows()[0];
         let row2 = &result.rows()[1];
@@ -172,7 +172,7 @@ fn test_data_types_both_backends() -> Result<()> {
         db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (2, 'test', -100, -2.5, NULL)")?;
         db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (3, 'world', 0, 0.0, 'not null')")?;
 
-        let result = db.query("SELECT * FROM test_types ORDER BY id").unwrap();
+        let result = db.query("SELECT * FROM test_types").unwrap();
         assert_eq!(result.rows().len(), 3);
 
         // Test first row
@@ -301,7 +301,7 @@ fn test_converted_from_existing_test() -> Result<()> {
 
         // Verify final state
         let result = db
-            .query("SELECT name, age FROM users ORDER BY name")
+            .query("SELECT name, age FROM users")
             .unwrap();
         assert_eq!(result.rows().len(), 2); // Alice and Carol remaining
 

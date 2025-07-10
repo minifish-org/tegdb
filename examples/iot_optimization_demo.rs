@@ -49,7 +49,7 @@ fn main() -> Result<()> {
     // Query the data to verify IOT works correctly
     println!("\n3. Querying data (IOT reconstruction in action):");
     let result = db
-        .query("SELECT * FROM orders ORDER BY customer_id, order_id")
+        .query("SELECT * FROM orders")
         .unwrap();
 
     println!("   Columns: {:?}", result.columns());

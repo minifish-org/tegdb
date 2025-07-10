@@ -77,7 +77,7 @@ fn test_wasm_data_types() -> Result<()> {
     db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (2, 'empty_test', -100, -2.5, NULL)")?;
     db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (3, 'world', 0, 0.0, 'not null')")?;
 
-    let result = db.query("SELECT * FROM test_types ORDER BY id").unwrap();
+    let result = db.query("SELECT * FROM test_types").unwrap();
     assert_eq!(result.rows().len(), 3);
 
     // Test first row
@@ -137,7 +137,7 @@ fn test_wasm_transactions() -> Result<()> {
 
         // Verify changes within transaction
         let result = tx
-            .query("SELECT id, balance FROM accounts ORDER BY id")
+            .query("SELECT id, balance FROM accounts")
             .unwrap();
         assert_eq!(result.rows().len(), 2);
 
@@ -147,7 +147,7 @@ fn test_wasm_transactions() -> Result<()> {
 
     // Verify changes persisted after transaction commit
     let result = db
-        .query("SELECT id, balance FROM accounts ORDER BY id")
+        .query("SELECT id, balance FROM accounts")
         .unwrap();
     let row1 = &result.rows()[0];
     let row2 = &result.rows()[1];

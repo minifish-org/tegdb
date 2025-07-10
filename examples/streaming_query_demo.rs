@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // If you need all results at once, you can use rows()
     let qr_all = db
-        .query("SELECT name, age FROM users ORDER BY age")
+        .query("SELECT name, age FROM users")
         .unwrap();
     let all_rows = qr_all.rows().to_vec();
 

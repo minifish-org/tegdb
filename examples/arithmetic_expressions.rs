@@ -88,7 +88,7 @@ fn main() -> tegdb::Result<()> {
 
 fn print_products(db: &mut Database) -> tegdb::Result<()> {
     let result = db
-        .query("SELECT name, price, quantity, discount FROM products ORDER BY id")
+        .query("SELECT name, price, quantity, discount FROM products")
         .unwrap();
 
     println!("   Products:");

@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     println!("Update affected: {affected}");
 
     // Check count and content
-    let result = db.query("SELECT * FROM test ORDER BY id").unwrap();
+    let result = db.query("SELECT * FROM test").unwrap();
     println!("After update - Rows found: {}", result.rows().len());
     for (i, row) in result.rows().iter().enumerate() {
         println!("  Row {i}: {row:?}");

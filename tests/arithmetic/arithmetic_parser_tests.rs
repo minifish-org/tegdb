@@ -14,7 +14,7 @@ fn test_parse_arithmetic_expressions() {
     let sql = "UPDATE users SET age = age + 5";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     match statement {
         Statement::Update(update) => {
             assert_eq!(update.table, "users");
@@ -52,7 +52,7 @@ fn test_parse_all_arithmetic_operators() {
     for (sql, expected_op) in test_cases {
         let result = parse_sql(sql);
         assert!(result.is_ok(), "Failed to parse: {sql}");
-        let (_, statement) = result.unwrap();
+        let statement = result.unwrap();
 
         match statement {
             Statement::Update(update) => match &update.assignments[0].value {
@@ -73,7 +73,7 @@ fn test_parse_complex_arithmetic_expressions() {
     let sql = "UPDATE users SET total = price + quantity * rate";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
 
     match statement {
         Statement::Update(update) => {
@@ -115,7 +115,7 @@ fn test_parse_parenthesized_expressions() {
     let sql = "UPDATE users SET total = (price + quantity) * rate";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
 
     match statement {
         Statement::Update(update) => {
@@ -157,7 +157,7 @@ fn test_parse_mixed_types_arithmetic() {
     let sql = "UPDATE products SET price = base_price + 10.5";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
 
     match statement {
         Statement::Update(update) => match &update.assignments[0].value {
@@ -183,7 +183,7 @@ fn test_parse_multiple_assignments_with_expressions() {
         "UPDATE products SET price = price * 1.1, discount = price - 10, total = quantity * price";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
 
     match statement {
         Statement::Update(update) => {
@@ -242,7 +242,7 @@ fn test_parse_literal_values_still_work() {
     let sql = "UPDATE users SET name = 'John', age = 25, score = 95.5";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
 
     match statement {
         Statement::Update(update) => {

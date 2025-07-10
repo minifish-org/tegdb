@@ -191,10 +191,9 @@ UPDATE products SET price = 24.99 WHERE name = 'Widget';
 -- Delete with conditions
 DELETE FROM products WHERE price < 20.00;
 
--- Query with filtering, ordering, and limits
+-- Query with filtering and limits
 SELECT name, price FROM products 
 WHERE category = 'Electronics' 
-ORDER BY price DESC 
 LIMIT 10;
 ```
 

@@ -156,8 +156,7 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Only SELECT statements make sense for queries
         match &statement {
@@ -194,8 +193,7 @@ impl Database {
 
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
@@ -342,8 +340,7 @@ pub struct DatabaseTransaction<'a> {
 impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let (_, statement) =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Get schemas from shared catalog and convert to Rc
         let schemas = Database::get_schemas_rc(self.catalog.get_all_schemas());

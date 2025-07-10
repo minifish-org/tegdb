@@ -21,7 +21,7 @@ fn test_query_iterator_basic_functionality() {
             .unwrap();
 
         // Test iterator functionality
-        let query_result = db.query("SELECT * FROM test_table ORDER BY id").unwrap();
+        let query_result = db.query("SELECT * FROM test_table").unwrap();
 
         // Check columns
         assert_eq!(query_result.columns(), &["id", "name", "value"]);
@@ -75,7 +75,7 @@ fn test_query_iterator_streaming() {
 
         // Test streaming iteration
         let query = db
-            .query("SELECT * FROM streaming_test ORDER BY id")
+            .query("SELECT * FROM streaming_test")
             .unwrap();
 
         let mut count = 0;
@@ -126,7 +126,7 @@ fn test_query_iterator_backward_compatibility() {
             .unwrap();
 
         // Test conversion to old QueryResult format
-        let query_result = db.query("SELECT * FROM compat_test ORDER BY id").unwrap();
+        let query_result = db.query("SELECT * FROM compat_test").unwrap();
 
         // Verify compatibility with old API
         assert_eq!(query_result.columns(), &["id", "name"]);
@@ -192,7 +192,7 @@ fn test_query_iterator_with_where_clause() {
         let rows = query_result.rows();
         assert_eq!(rows.len(), 5); // ids 6-10 have values > 50
 
-        // Since we can't guarantee order without ORDER BY, just verify we have the right data
+        // Since we can't guarantee order, just verify we have the right data
         // Check that all values are > 50
         for row in rows {
             if let SqlValue::Integer(value) = &row[1] {
@@ -219,7 +219,7 @@ fn test_transaction_query_iterator() {
         // Test query iterator within transaction
         let mut tx = db.begin_transaction().unwrap();
 
-        let query_result = tx.query("SELECT * FROM tx_test ORDER BY id").unwrap();
+        let query_result = tx.query("SELECT * FROM tx_test").unwrap();
         let rows = query_result.rows();
         assert_eq!(rows.len(), 2);
 
@@ -228,7 +228,7 @@ fn test_transaction_query_iterator() {
             .unwrap();
 
         // Query again to see new data
-        let query_result = tx.query("SELECT * FROM tx_test ORDER BY id").unwrap();
+        let query_result = tx.query("SELECT * FROM tx_test").unwrap();
         let rows = query_result.rows();
         assert_eq!(rows.len(), 3);
 
@@ -236,7 +236,7 @@ fn test_transaction_query_iterator() {
         tx.commit().unwrap();
 
         // Verify data is persisted
-        let query_result = db.query("SELECT * FROM tx_test ORDER BY id").unwrap();
+        let query_result = db.query("SELECT * FROM tx_test").unwrap();
         let rows = query_result.rows();
         assert_eq!(rows.len(), 3);
         Ok(())

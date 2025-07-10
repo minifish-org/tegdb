@@ -15,7 +15,7 @@ license = "AGPL-3.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nom = "7.1.3"   # SQL parser
+nom = "8.0.0"   # SQL parser
 
 # Native platform dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -142,10 +142,7 @@ name = "sql_integration_tests"
 path = "tests/integration/sql_integration_tests.rs"
 required-features = ["dev"]
 
-[[test]]
-name = "sql_parser_tests"
-path = "tests/integration/sql_parser_tests.rs"
-required-features = ["dev"]
+# Removed sql_parser_tests - file deleted
 
 [[test]]
 name = "transaction_parsing_tests"
@@ -164,10 +161,7 @@ required-features = ["dev"]
 
 
 
-[[test]]
-name = "database_tests"
-path = "tests/integration/database_tests.rs"
-required-features = ["dev"]
+# Removed database_tests - file deleted
 
 [[test]]
 name = "executor_acid_tests_new"

@@ -610,7 +610,7 @@ fn measure_sql_execution(
 ) -> Result<SqlExecutionMetrics> {
     // Parse timing
     let parse_start = Instant::now();
-    let (_, statement) =
+    let statement =
         parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {e:?}")))?;
     let parse_duration = parse_start.elapsed();
 
@@ -698,7 +698,7 @@ fn measure_transaction_sql_execution(
 ) -> Result<SqlExecutionMetrics> {
     // Parse timing
     let parse_start = Instant::now();
-    let (_, statement) =
+    let statement =
         parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {e:?}")))?;
     let parse_duration = parse_start.elapsed();
 

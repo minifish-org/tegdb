@@ -7,21 +7,21 @@ fn test_parse_begin() {
     let sql = "BEGIN";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 
     // Test case insensitive
     let sql = "begin";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 
     // Test with extra spaces
     let sql = "  BEGIN  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 }
 
@@ -32,28 +32,28 @@ fn test_parse_start_transaction() {
     let sql = "START TRANSACTION";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 
     // Test case insensitive
     let sql = "start transaction";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 
     // Test mixed case
     let sql = "Start Transaction";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 
     // Test with extra spaces
     let sql = "  START    TRANSACTION  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Begin));
 }
 
@@ -64,21 +64,21 @@ fn test_parse_commit() {
     let sql = "COMMIT";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Commit));
 
     // Test case insensitive
     let sql = "commit";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Commit));
 
     // Test with extra spaces
     let sql = "  COMMIT  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Commit));
 }
 
@@ -89,21 +89,21 @@ fn test_parse_rollback() {
     let sql = "ROLLBACK";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Rollback));
 
     // Test case insensitive
     let sql = "rollback";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Rollback));
 
     // Test with extra spaces
     let sql = "  ROLLBACK  ";
     let result = parse_sql(sql);
     assert!(result.is_ok());
-    let (_, statement) = result.unwrap();
+    let statement = result.unwrap();
     assert!(matches!(statement, Statement::Rollback));
 }
 
@@ -118,7 +118,7 @@ fn test_transaction_statement_priority() {
     for sql in statements {
         let result = parse_sql(sql);
         assert!(result.is_ok(), "Failed to parse: {sql}");
-        let (_, statement) = result.unwrap();
+        let statement = result.unwrap();
 
         match sql {
             "BEGIN" | "START TRANSACTION" => assert!(matches!(statement, Statement::Begin)),
@@ -145,12 +145,9 @@ fn test_invalid_transaction_statements() {
     for sql in invalid_statements {
         let result = parse_sql(sql);
         // These should either fail to parse or parse as something else
-        if let Ok((remaining, _)) = result {
-            // If it parses, there should be remaining input indicating partial parse
-            assert!(
-                !remaining.trim().is_empty(),
-                "Unexpected successful parse for: {sql}"
-            );
+        if let Ok(_) = result {
+            // If it parses, that's unexpected for invalid statements
+            panic!("Unexpected successful parse for: {sql}");
         }
         // Otherwise it failed to parse, which is expected
     }

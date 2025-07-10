@@ -51,7 +51,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 
                 // 2. Query the data (including old and new data)
                 let result = db
-                    .query("SELECT name, age FROM users ORDER BY age")
+                    .query("SELECT name, age FROM users")
                     .unwrap();
                 assert_eq!(result.rows().len(), 3);
 

@@ -132,7 +132,7 @@ fn sqlite_benchmark(c: &mut Criterion) {
     c.bench_function("sqlite scan", |b| {
         b.iter(|| {
             let mut stmt = conn
-                .prepare("SELECT key, value FROM test WHERE key >= ? AND key <= ? ORDER BY key")
+                .prepare("SELECT key, value FROM test WHERE key >= ? AND key <= ?")
                 .unwrap();
             let rows = stmt
                 .query_map(

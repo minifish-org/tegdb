@@ -25,7 +25,7 @@ fn complex_sql_statements() -> Vec<(&'static str, &'static str)> {
     vec![
         (
             "complex_select",
-            "SELECT u.id, u.name, p.title FROM users u WHERE u.age > 25 AND u.status = 'active' ORDER BY u.name ASC LIMIT 100"
+            "SELECT u.id, u.name, p.title FROM users u WHERE u.age > 25 AND u.status = 'active' LIMIT 100"
         ),
         (
             "multi_insert",
@@ -69,9 +69,8 @@ fn large_sql_statements() -> Vec<(&'static str, String)> {
         (
             "select_many_columns",
             format!(
-                "SELECT {} FROM large_table WHERE id > 1000 ORDER BY {} LIMIT 1000",
-                (1..=30).map(|i| format!("col{i}")).collect::<Vec<_>>().join(", "),
-                (1..=5).map(|i| format!("col{i} ASC")).collect::<Vec<_>>().join(", ")
+                "SELECT {} FROM large_table WHERE id > 1000 LIMIT 1000",
+                (1..=30).map(|i| format!("col{i}")).collect::<Vec<_>>().join(", ")
             )
         ),
         (
