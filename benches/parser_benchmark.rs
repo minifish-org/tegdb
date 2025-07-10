@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use tegdb::parser::*;
+use std::hint::black_box;
 
 fn simple_sql_statements() -> Vec<(&'static str, &'static str)> {
     vec![
@@ -231,7 +232,7 @@ fn bench_memory_usage(c: &mut Criterion) {
             b.iter(|| {
                 let result = parse_sql(black_box(sql));
                 // Ensure the parsed result is fully materialized
-                if let Ok((_, statement)) = result {
+                if let Ok(statement) = result {
                     black_box(statement);
                 }
             })

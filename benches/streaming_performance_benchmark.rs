@@ -1,6 +1,7 @@
 //! Benchmark comparing streaming vs non-streaming approaches
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use tegdb::SqlValue;
 
 // Simulate the performance difference between streaming and non-streaming approaches

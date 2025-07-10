@@ -1,8 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::hint::black_box;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -25,7 +26,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     // Benchmark just the parsing
     c.bench_function("just parsing", |b| {
         b.iter(|| {
-            let (_remaining, _statement) =
+            let _statement =
                 tegdb::parser::parse_sql(black_box("SELECT * FROM test WHERE id = 1")).unwrap();
         })
     });
