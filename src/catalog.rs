@@ -3,7 +3,7 @@
 //! This module provides the schema catalog that manages table metadata,
 //! similar to the system catalog in traditional RDBMS systems.
 
-use crate::query::{ColumnInfo, TableSchema};
+use crate::executor::{ColumnInfo, TableSchema};
 use crate::sql_utils;
 use crate::storage_engine::StorageEngine;
 use crate::Result;
@@ -142,7 +142,7 @@ impl Default for Catalog {
 mod tests {
     use super::*;
     use crate::parser::{ColumnConstraint, DataType};
-    use crate::query::{ColumnInfo, TableSchema};
+    use crate::executor::{ColumnInfo, TableSchema};
 
     #[test]
     fn test_catalog_basic_operations() {

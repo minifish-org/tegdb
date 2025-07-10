@@ -63,9 +63,9 @@ pub mod parser;
 mod parser;
 
 #[cfg(any(feature = "dev", test))]
-pub mod query;
+pub mod executor;
 #[cfg(not(any(feature = "dev", test)))]
-mod query;
+mod executor;
 
 // Planner modules are now always available since they're the main execution path
 pub mod planner;
@@ -88,7 +88,7 @@ pub use planner::{
     ColumnStatistics, Cost, ExecutionPlan, PlannerConfig, QueryPlanner, TableStatistics,
 };
 #[cfg(feature = "dev")]
-pub use query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+pub use executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
 #[cfg(feature = "dev")]
 pub use storage_engine::{EngineConfig, StorageEngine, Transaction};
 #[cfg(feature = "dev")]
@@ -103,7 +103,7 @@ pub mod low_level {
     pub use crate::catalog::Catalog;
     pub use crate::parser::{parse_sql, SqlValue, Statement};
     pub use crate::planner::{ExecutionPlan, PlannerConfig, QueryPlanner};
-    pub use crate::query::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+    pub use crate::executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
     pub use crate::storage_engine::{
         EngineConfig, StorageEngine, Transaction as EngineTransaction,
     };

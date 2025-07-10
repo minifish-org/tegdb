@@ -10,7 +10,7 @@ use crate::parser::{
     ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
     InsertStatement, SelectStatement, SqlValue, Statement, UpdateStatement,
 };
-use crate::query::{ColumnInfo, TableSchema};
+use crate::executor::{ColumnInfo, TableSchema};
 use crate::Result;
 use std::collections::HashMap;
 
@@ -695,7 +695,7 @@ impl ExecutionPlan {
 mod tests {
     use super::*;
     use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement};
-    use crate::query::{ColumnInfo, TableSchema};
+    use crate::executor::{ColumnInfo, TableSchema};
     use std::collections::HashMap;
 
     fn create_test_schema() -> HashMap<String, TableSchema> {

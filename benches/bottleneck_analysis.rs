@@ -35,15 +35,15 @@ fn bottleneck_analysis(c: &mut Criterion) {
         let mut dummy_schemas = HashMap::new();
         dummy_schemas.insert(
             "test".to_string(),
-            tegdb::query::TableSchema {
+            tegdb::executor::TableSchema {
                 name: "test".to_string(),
                 columns: vec![
-                    tegdb::query::ColumnInfo {
+                    tegdb::executor::ColumnInfo {
                         name: "id".to_string(),
                         data_type: tegdb::parser::DataType::Integer,
                         constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
                     },
-                    tegdb::query::ColumnInfo {
+                    tegdb::executor::ColumnInfo {
                         name: "value".to_string(),
                         data_type: tegdb::parser::DataType::Integer,
                         constraints: vec![],
@@ -77,15 +77,15 @@ fn bottleneck_analysis(c: &mut Criterion) {
         row
     };
 
-    let test_schema = tegdb::query::TableSchema {
+    let test_schema = tegdb::executor::TableSchema {
         name: "test".to_string(),
         columns: vec![
-            tegdb::query::ColumnInfo {
+            tegdb::executor::ColumnInfo {
                 name: "id".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
             },
-            tegdb::query::ColumnInfo {
+            tegdb::executor::ColumnInfo {
                 name: "value".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![],

@@ -8,7 +8,7 @@ use crate::protocol_utils::parse_storage_identifier;
 use crate::{
     catalog::Catalog,
     parser::{parse_sql, SqlValue},
-    query::{QueryProcessor, TableSchema},
+    executor::{QueryProcessor, TableSchema},
     storage_engine::StorageEngine,
     Result,
 };
@@ -159,7 +159,7 @@ impl Database {
                 // Execute and immediately collect results
                 let result = processor.execute_plan(plan)?;
                 match result {
-                    crate::query::ResultSet::Select { columns, rows } => {
+                    crate::executor::ResultSet::Select { columns, rows } => {
                         // Collect all rows from the iterator
                         let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
                         let final_rows = collected_rows?;
@@ -201,15 +201,15 @@ impl Database {
 
         // Process the result immediately to avoid lifetime conflicts
         let final_result = match result {
-            crate::query::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::query::ResultSet::Update { rows_affected } => rows_affected,
-            crate::query::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::query::ResultSet::CreateTable => 0,
-            crate::query::ResultSet::DropTable => 0,
-            crate::query::ResultSet::Begin => 0,
-            crate::query::ResultSet::Commit => 0,
-            crate::query::ResultSet::Rollback => 0,
-            crate::query::ResultSet::Select { .. } => {
+            crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
+            crate::executor::ResultSet::Update { rows_affected } => rows_affected,
+            crate::executor::ResultSet::Delete { rows_affected } => rows_affected,
+            crate::executor::ResultSet::CreateTable => 0,
+            crate::executor::ResultSet::DropTable => 0,
+            crate::executor::ResultSet::Begin => 0,
+            crate::executor::ResultSet::Commit => 0,
+            crate::executor::ResultSet::Rollback => 0,
+            crate::executor::ResultSet::Select { .. } => {
                 return Err(crate::Error::Other(
                     "execute() should not be used for SELECT statements. Use query() instead."
                         .to_string(),
@@ -343,10 +343,10 @@ impl DatabaseTransaction<'_> {
         Database::update_schema_catalog_for_ddl(self.catalog, &statement);
 
         match result {
-            crate::query::ResultSet::Insert { rows_affected } => Ok(rows_affected),
-            crate::query::ResultSet::Update { rows_affected } => Ok(rows_affected),
-            crate::query::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::query::ResultSet::CreateTable => Ok(0),
+            crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
+            crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
+            crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
+            crate::executor::ResultSet::CreateTable => Ok(0),
             _ => Ok(0),
         }
     }

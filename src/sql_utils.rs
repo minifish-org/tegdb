@@ -4,7 +4,7 @@
 //! comparison, condition evaluation, and other SQL-related operations.
 
 use crate::parser::{ColumnConstraint, ComparisonOperator, Condition, DataType, SqlValue};
-use crate::query::{ColumnInfo, TableSchema};
+use crate::executor::{ColumnInfo, TableSchema};
 use std::collections::HashMap;
 
 /// Compare two SqlValues using the given operator
