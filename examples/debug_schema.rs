@@ -19,8 +19,8 @@ fn main() -> Result<()> {
     use tegdb::storage_engine::StorageEngine;
     let engine = StorageEngine::new(db_path)?;
 
-    let schema_prefix = "__schema__:".as_bytes().to_vec();
-    let schema_end = "__schema__~".as_bytes().to_vec();
+    let schema_prefix = "S:".as_bytes().to_vec();
+    let schema_end = "S~".as_bytes().to_vec();
 
     let scan_results: Vec<_> = engine.scan(schema_prefix..schema_end)?.collect();
 

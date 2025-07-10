@@ -263,7 +263,7 @@ impl<'a> QueryProcessor<'a> {
         };
 
         // Store schema metadata (use simple string serialization for now)
-        let schema_key = format!("__schema__:{}", create.table);
+        let schema_key = format!("S:{}", create.table);
 
         // Optimized schema serialization to reduce allocations
         let mut schema_data = Vec::new();
@@ -313,7 +313,7 @@ impl<'a> QueryProcessor<'a> {
 
         if table_existed {
             // Delete schema metadata
-            let schema_key = format!("__schema__:{}", drop.table);
+            let schema_key = format!("S:{}", drop.table);
             self.transaction.delete(schema_key.as_bytes())?;
 
             // Delete all table data
@@ -725,14 +725,14 @@ impl<'a> QueryProcessor<'a> {
     /// Load table schemas from storage
     fn load_schemas_from_storage(&mut self) -> Result<()> {
         // Scan for all schema keys
-        let schema_prefix = "__schema__:".as_bytes().to_vec();
-        let schema_end = "__schema__~".as_bytes().to_vec();
+        let schema_prefix = "S:".as_bytes().to_vec();
+        let schema_end = "S~".as_bytes().to_vec();
 
         let scan_results: Vec<_> = self.transaction.scan(schema_prefix..schema_end)?.collect();
 
         for (key, value_arc) in scan_results {
             let key_str = String::from_utf8_lossy(&key);
-            if let Some(table_name) = key_str.strip_prefix("__schema__:") {
+            if let Some(table_name) = key_str.strip_prefix("S:") {
                 // Only load from storage if we don't already have this schema
                 if !self.table_schemas.contains_key(table_name) {
                     // Parse the schema using centralized utility

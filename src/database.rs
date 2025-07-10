@@ -258,12 +258,7 @@ impl Database {
         })
     }
 
-    /// Reload table schemas from storage
-    /// This can be useful if the database was modified externally
-    pub fn refresh_schema_cache(&mut self) -> Result<()> {
-        self.catalog.reload_from_storage(&self.storage)?;
-        Ok(())
-    }
+
 
     /// Get a copy of all cached table schemas
     /// Useful for debugging or introspection

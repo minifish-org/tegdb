@@ -9,6 +9,13 @@ use crate::storage_engine::StorageEngine;
 use crate::Result;
 use std::collections::HashMap;
 
+/// Storage key prefix for schema entries
+pub const SCHEMA_KEY_PREFIX: &str = "S:";
+/// Storage key end marker for schema entries (comes after ':' in lexicographic order)
+pub const SCHEMA_KEY_END: &str = "S~";
+/// Default table name for unknown schemas during deserialization
+pub const UNKNOWN_TABLE_NAME: &str = "unknown";
+
 /// Schema catalog manager for TegDB
 ///
 /// The catalog maintains metadata about tables, columns, indexes, and other
@@ -16,8 +23,6 @@ use std::collections::HashMap;
 /// Optimized for single-threaded usage without locks.
 pub struct Catalog {
     schemas: HashMap<String, TableSchema>,
-    // Cache for column name lookups to avoid repeated HashMap access
-    column_cache: HashMap<String, Vec<String>>,
 }
 
 impl Catalog {
@@ -25,29 +30,14 @@ impl Catalog {
     pub fn new() -> Self {
         Self {
             schemas: HashMap::new(),
-            column_cache: HashMap::new(),
         }
     }
 
     /// Create a catalog and load all schemas from storage
     pub fn load_from_storage(storage: &StorageEngine) -> Result<Self> {
         let mut catalog = Self::new();
-        catalog.reload_from_storage(storage)?;
+        Self::load_schemas_from_storage(storage, &mut catalog.schemas)?;
         Ok(catalog)
-    }
-
-    /// Reload all schemas from storage
-    pub fn reload_from_storage(&mut self, storage: &StorageEngine) -> Result<()> {
-        self.schemas.clear();
-        self.column_cache.clear();
-        Self::load_schemas_from_storage(storage, &mut self.schemas)?;
-
-        // Pre-build column cache for faster lookups
-        for (table_name, schema) in &self.schemas {
-            let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
-            self.column_cache.insert(table_name.clone(), column_names);
-        }
-        Ok(())
     }
 
     /// Get a reference to a table schema by name
@@ -60,21 +50,13 @@ impl Catalog {
         &self.schemas
     }
 
-    /// Get column names for a table (cached for performance)
-    pub fn get_column_names(&self, table_name: &str) -> Option<&[String]> {
-        self.column_cache.get(table_name).map(|v| v.as_slice())
-    }
-
     /// Add or update a table schema in the catalog
     pub fn add_table_schema(&mut self, schema: TableSchema) {
-        let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
-        self.column_cache.insert(schema.name.clone(), column_names);
         self.schemas.insert(schema.name.clone(), schema);
     }
 
     /// Remove a table schema from the catalog
     pub fn remove_table_schema(&mut self, table_name: &str) -> Option<TableSchema> {
-        self.column_cache.remove(table_name);
         self.schemas.remove(table_name)
     }
 
@@ -111,15 +93,15 @@ impl Catalog {
         schemas: &mut HashMap<String, TableSchema>,
     ) -> Result<()> {
         // Scan for all schema keys
-        let schema_prefix = "__schema__:".as_bytes().to_vec();
-        let schema_end = "__schema__~".as_bytes().to_vec(); // '~' comes after ':'
+        let schema_prefix = SCHEMA_KEY_PREFIX.as_bytes().to_vec();
+        let schema_end = SCHEMA_KEY_END.as_bytes().to_vec(); // '~' comes after ':'
 
         let schema_entries = storage.scan(schema_prefix..schema_end)?;
 
         for (key, value_arc) in schema_entries {
             // Extract table name from key
             let key_str = String::from_utf8_lossy(&key);
-            if let Some(table_name) = key_str.strip_prefix("__schema__:") {
+            if let Some(table_name) = key_str.strip_prefix(SCHEMA_KEY_PREFIX) {
                 // Deserialize schema using centralized utility
                 if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value_arc) {
                     schema.name = table_name.to_string(); // Set the actual table name
@@ -129,6 +111,44 @@ impl Catalog {
         }
 
         Ok(())
+    }
+
+    /// Serialize a table schema to bytes for storage
+    /// This provides a centralized schema serialization format
+    pub fn serialize_schema_to_bytes(schema: &TableSchema) -> Vec<u8> {
+        let mut schema_data = Vec::new();
+        
+        for (i, col) in schema.columns.iter().enumerate() {
+            if i > 0 {
+                schema_data.push(b'|');
+            }
+            schema_data.extend_from_slice(col.name.as_bytes());
+            schema_data.push(b':');
+            let type_str = format!("{:?}", col.data_type);
+            schema_data.extend_from_slice(type_str.as_bytes());
+
+            if !col.constraints.is_empty() {
+                schema_data.push(b':');
+                for (j, constraint) in col.constraints.iter().enumerate() {
+                    if j > 0 {
+                        schema_data.push(b',');
+                    }
+                    let constraint_str = match constraint {
+                        crate::parser::ColumnConstraint::PrimaryKey => "PRIMARY_KEY",
+                        crate::parser::ColumnConstraint::NotNull => "NOT_NULL",
+                        crate::parser::ColumnConstraint::Unique => "UNIQUE",
+                    };
+                    schema_data.extend_from_slice(constraint_str.as_bytes());
+                }
+            }
+        }
+        
+        schema_data
+    }
+
+    /// Get schema storage key for a table
+    pub fn get_schema_storage_key(table_name: &str) -> String {
+        format!("{}{}", SCHEMA_KEY_PREFIX, table_name)
     }
 }
 
@@ -174,6 +194,14 @@ mod tests {
         let retrieved = catalog.get_table_schema("users").unwrap();
         assert_eq!(retrieved.name, "users");
         assert_eq!(retrieved.columns.len(), 2);
+
+        // Test schema serialization
+        let serialized = Catalog::serialize_schema_to_bytes(&retrieved);
+        assert!(!serialized.is_empty());
+
+        // Test storage key generation
+        let storage_key = Catalog::get_schema_storage_key("users");
+        assert_eq!(storage_key, "S:users");
 
         // Remove schema
         let removed = catalog.remove_table_schema("users");

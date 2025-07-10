@@ -392,14 +392,7 @@ fn test_schema_operations_performance() -> Result<()> {
         table_count,
     ));
 
-    // Test schema cache refresh
-    let start = Instant::now();
-    db.refresh_schema_cache()?;
-    metrics.push(PerformanceMetrics::new(
-        "Schema Cache Refresh",
-        start.elapsed(),
-        1,
-    ));
+
 
     // Test schema introspection
     let start = Instant::now();
