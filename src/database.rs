@@ -340,7 +340,7 @@ impl DatabaseTransaction<'_> {
         let result = self.processor.execute_plan(plan)?;
 
         // Update schema cache for DDL operations using centralized helper
-        Database::update_schema_catalog_for_ddl(&mut self.catalog, &statement);
+        Database::update_schema_catalog_for_ddl(self.catalog, &statement);
 
         match result {
             crate::query::ResultSet::Insert { rows_affected } => Ok(rows_affected),

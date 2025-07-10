@@ -394,7 +394,7 @@ impl StorageFormat {
                 right,
             } => {
                 if let Some(left_value) = row_data.get(left) {
-                    crate::sql_utils::compare_values(left_value, operator, &right)
+                    crate::sql_utils::compare_values(left_value, operator, right)
                 } else {
                     false
                 }
@@ -423,7 +423,7 @@ pub fn evaluate_condition_on_row(
             right,
         } => {
             if let Some(left_value) = row_data.get(left) {
-                crate::sql_utils::compare_values(left_value, operator, &right)
+                crate::sql_utils::compare_values(left_value, operator, right)
             } else {
                 false
             }
