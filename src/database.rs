@@ -3,16 +3,14 @@
 //! This module provides a SQLite-like interface for TegDB, making it easy for users
 //! to interact with the database without dealing with low-level engine details.
 
+use crate::catalog::Catalog;
+use crate::executor::{QueryProcessor, TableSchema};
+use crate::parser::parse_sql;
 use crate::planner::QueryPlanner;
-use crate::protocol_utils::parse_storage_identifier;
-use crate::{
-    catalog::Catalog,
-    parser::{parse_sql, SqlValue},
-    executor::{QueryProcessor, TableSchema},
-    storage_engine::StorageEngine,
-    Result,
-};
-use std::{collections::HashMap, path::Path};
+use crate::storage_engine::StorageEngine;
+use crate::Result;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Database connection, similar to sqlite::Connection
 ///
@@ -42,7 +40,7 @@ impl Database {
     /// - ❌ file://relative/path (relative path with protocol)
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path_str = path.as_ref();
-        let (protocol, path_part) = parse_storage_identifier(path_str);
+        let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -54,7 +52,7 @@ impl Database {
             }
 
             // Check if path is absolute
-            let path_buf = Path::new(path_part);
+            let path_buf = std::path::Path::new(path_part);
             if !path_buf.is_absolute() {
                 return Err(crate::Error::Other(format!(
                     "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
@@ -104,6 +102,14 @@ impl Database {
         Catalog::create_table_schema(create_table)
     }
 
+    /// Helper function to convert schemas to Rc format for shared ownership
+    fn convert_schemas_to_rc(schemas: &HashMap<String, TableSchema>) -> HashMap<String, Rc<TableSchema>> {
+        schemas
+            .iter()
+            .map(|(k, v)| (k.clone(), Rc::new(v.clone())))
+            .collect()
+    }
+
     /// Helper function to update schema catalog for DDL operations
     /// Centralizes schema catalog update logic to avoid duplication
     fn update_schema_catalog_for_ddl(catalog: &mut Catalog, statement: &crate::parser::Statement) {
@@ -126,7 +132,9 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
-        Self::execute_query_core(&mut processor, sql, schemas)
+        // Convert schemas to Rc for the planner
+        let rc_schemas = Self::convert_schemas_to_rc(schemas);
+        Self::execute_query_core(&mut processor, sql, &rc_schemas)
     }
 
     /// Centralized query execution helper for mutable reference
@@ -136,7 +144,9 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, TableSchema>,
     ) -> Result<QueryResult> {
-        Self::execute_query_core(processor, sql, schemas)
+        // Convert schemas to Rc for the planner
+        let rc_schemas = Self::convert_schemas_to_rc(schemas);
+        Self::execute_query_core(processor, sql, &rc_schemas)
     }
 
     /// Core query execution logic - the actual implementation
@@ -144,7 +154,7 @@ impl Database {
     fn execute_query_core(
         processor: &mut QueryProcessor<'_>,
         sql: &str,
-        schemas: &HashMap<String, TableSchema>,
+        schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
@@ -161,7 +171,7 @@ impl Database {
                 match result {
                     crate::executor::ResultSet::Select { columns, rows } => {
                         // Collect all rows from the iterator
-                        let collected_rows: Result<Vec<Vec<SqlValue>>> = rows.collect();
+                        let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
                         let final_rows = collected_rows?;
                         Ok(QueryResult {
                             columns,
@@ -190,12 +200,12 @@ impl Database {
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
 
-        // Get schemas once to avoid multiple clones
-        let schemas = self.catalog.get_all_schemas().clone();
+        // Convert schemas to Rc for shared ownership (no cloning needed)
+        let schemas = Self::convert_schemas_to_rc(self.catalog.get_all_schemas());
 
         // Use the new planner pipeline with executor
         let planner = QueryPlanner::new(schemas.clone());
-        let mut processor = QueryProcessor::new_with_schemas(transaction, schemas);
+        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
 
         // Generate and execute the plan (no need to begin transaction as it's already started)
         let plan = planner.plan(statement.clone())?;
@@ -233,26 +243,26 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        // Get schemas once to avoid multiple clones
-        let schemas = self.catalog.get_all_schemas().clone();
+        // Convert schemas to Rc for shared ownership (no cloning needed)
+        let schemas = Self::convert_schemas_to_rc(self.catalog.get_all_schemas());
 
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
 
         // Create executor with schemas
-        let processor = QueryProcessor::new_with_schemas(transaction, schemas.clone());
+        let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
 
         // Use centralized query execution helper
-        let result = Self::execute_query_with_processor(processor, sql, &schemas)?;
+        let result = Self::execute_query_with_processor(processor, sql, self.catalog.get_all_schemas())?;
 
         Ok(result)
     }
 
     /// Begin a new database transaction
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
-        let schemas = self.catalog.get_all_schemas().clone();
+        let schemas = Self::convert_schemas_to_rc(self.catalog.get_all_schemas());
         let transaction = self.storage.begin_transaction();
-        let processor = QueryProcessor::new_with_schemas(transaction, schemas);
+        let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
 
         Ok(DatabaseTransaction {
             processor,
@@ -280,7 +290,7 @@ impl Database {
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryResult {
     columns: Vec<String>,
-    rows: Vec<Vec<SqlValue>>,
+    rows: Vec<Vec<crate::parser::SqlValue>>,
 }
 
 impl QueryResult {
@@ -290,7 +300,7 @@ impl QueryResult {
     }
 
     /// Get all rows
-    pub fn rows(&self) -> &[Vec<SqlValue>] {
+    pub fn rows(&self) -> &[Vec<crate::parser::SqlValue>] {
         &self.rows
     }
 
@@ -304,14 +314,14 @@ impl QueryResult {
         self.rows.is_empty()
     }
     /// Collect rows into a Vec (for compatibility)
-    pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
+    pub fn collect_rows(self) -> Result<Vec<Vec<crate::parser::SqlValue>>> {
         Ok(self.rows)
     }
 }
 
 // Allow iterating over QueryResult as a stream of Result<Vec<SqlValue>>
 impl IntoIterator for QueryResult {
-    type Item = Result<Vec<SqlValue>>;
+    type Item = Result<Vec<crate::parser::SqlValue>>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -335,8 +345,8 @@ impl DatabaseTransaction<'_> {
         let (_, statement) =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
-        // Get schemas from shared catalog (reuse existing schemas in processor)
-        let schemas = self.catalog.get_all_schemas().clone();
+        // Get schemas from shared catalog and convert to Rc
+        let schemas = Database::convert_schemas_to_rc(self.catalog.get_all_schemas());
 
         // Use the planner pipeline
         let planner = QueryPlanner::new(schemas);

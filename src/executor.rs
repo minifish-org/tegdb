@@ -11,6 +11,7 @@ use crate::storage_engine::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Type alias for scan iterator to reduce complexity
 type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, std::sync::Arc<[u8]>)> + 'a>;
@@ -194,7 +195,7 @@ impl<'a> ResultSet<'a> {
 /// SQL query processor with native row format support
 pub struct QueryProcessor<'a> {
     transaction: Transaction<'a>,
-    table_schemas: HashMap<String, TableSchema>,
+    table_schemas: HashMap<String, Rc<TableSchema>>,
     storage_format: StorageFormat,
     transaction_active: bool,
 }
@@ -204,6 +205,30 @@ impl<'a> QueryProcessor<'a> {
     pub fn new_with_schemas(
         transaction: Transaction<'a>,
         table_schemas: HashMap<String, TableSchema>,
+    ) -> Self {
+        // Convert TableSchema to Rc<TableSchema> for shared ownership
+        let rc_schemas: HashMap<String, Rc<TableSchema>> = table_schemas
+            .into_iter()
+            .map(|(k, v)| (k, Rc::new(v)))
+            .collect();
+
+        let mut processor = Self {
+            transaction,
+            table_schemas: rc_schemas,
+            storage_format: StorageFormat::new(), // Always use native format
+            transaction_active: false,
+        };
+
+        // Load additional schemas from storage and merge
+        let _ = processor.load_schemas_from_storage();
+
+        processor
+    }
+
+    /// Create a new query processor with transaction and Rc schemas (more efficient)
+    pub fn new_with_rc_schemas(
+        transaction: Transaction<'a>,
+        table_schemas: HashMap<String, Rc<TableSchema>>,
     ) -> Self {
         let mut processor = Self {
             transaction,
@@ -294,7 +319,7 @@ impl<'a> QueryProcessor<'a> {
         self.transaction.set(schema_key.as_bytes(), schema_data)?;
 
         // Update local schema cache
-        self.table_schemas.insert(create.table, schema);
+        self.table_schemas.insert(create.table, Rc::new(schema));
 
         Ok(ResultSet::CreateTable)
     }
@@ -440,7 +465,7 @@ impl<'a> QueryProcessor<'a> {
 
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    schema,
+                    (*schema).clone(),
                     selected_columns.clone(),
                     additional_filter,
                     Some(1), // PK lookup returns at most 1 row
@@ -467,7 +492,7 @@ impl<'a> QueryProcessor<'a> {
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    schema,
+                    (*schema).clone(),
                     selected_columns.clone(),
                     filter,
                     limit,
@@ -739,7 +764,7 @@ impl<'a> QueryProcessor<'a> {
                     if let Ok(schema_data) = String::from_utf8(value_arc.to_vec()) {
                         if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
                         {
-                            self.table_schemas.insert(table_name.to_string(), schema);
+                            self.table_schemas.insert(table_name.to_string(), Rc::new(schema));
                         }
                     }
                 }
@@ -750,7 +775,7 @@ impl<'a> QueryProcessor<'a> {
     }
 
     /// Get table schema
-    fn get_table_schema(&self, table_name: &str) -> Result<TableSchema> {
+    fn get_table_schema(&self, table_name: &str) -> Result<Rc<TableSchema>> {
         self.table_schemas
             .get(table_name)
             .cloned()

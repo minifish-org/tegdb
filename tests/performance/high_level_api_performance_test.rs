@@ -7,6 +7,7 @@
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tegdb::{Database, Result};
 #[cfg(not(target_arch = "wasm32"))]
@@ -613,12 +614,16 @@ fn measure_sql_execution(
         parse_sql(sql).map_err(|e| tegdb::Error::Other(format!("SQL parse error: {e:?}")))?;
     let parse_duration = parse_start.elapsed();
 
-    // Get schemas for planner
+    // Get schemas for planner and convert to Rc format
     let schemas = db.get_table_schemas();
+    let rc_schemas: HashMap<String, std::rc::Rc<tegdb::executor::TableSchema>> = schemas
+        .into_iter()
+        .map(|(k, v)| (k, std::rc::Rc::new(v)))
+        .collect();
 
     // Plan timing
     let plan_start = Instant::now();
-    let planner = QueryPlanner::new(schemas.clone());
+    let planner = QueryPlanner::new(rc_schemas);
     let _plan = planner.plan(statement.clone())?;
     let plan_duration = plan_start.elapsed();
 
