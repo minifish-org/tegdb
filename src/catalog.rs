@@ -8,6 +8,7 @@ use crate::sql_utils;
 use crate::storage_engine::StorageEngine;
 use crate::Result;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Storage key prefix for schema entries
 pub const SCHEMA_KEY_PREFIX: &str = "S:";
@@ -22,7 +23,7 @@ pub const UNKNOWN_TABLE_NAME: &str = "unknown";
 /// database objects, similar to the system catalog in traditional RDBMS.
 /// Optimized for single-threaded usage without locks.
 pub struct Catalog {
-    schemas: HashMap<String, TableSchema>,
+    schemas: HashMap<String, Rc<TableSchema>>,
 }
 
 impl Catalog {
@@ -41,22 +42,22 @@ impl Catalog {
     }
 
     /// Get a reference to a table schema by name
-    pub fn get_table_schema(&self, table_name: &str) -> Option<&TableSchema> {
+    pub fn get_table_schema(&self, table_name: &str) -> Option<&Rc<TableSchema>> {
         self.schemas.get(table_name)
     }
 
     /// Get all table schemas (returns reference to avoid cloning)
-    pub fn get_all_schemas(&self) -> &HashMap<String, TableSchema> {
+    pub fn get_all_schemas(&self) -> &HashMap<String, Rc<TableSchema>> {
         &self.schemas
     }
 
     /// Add or update a table schema in the catalog
     pub fn add_table_schema(&mut self, schema: TableSchema) {
-        self.schemas.insert(schema.name.clone(), schema);
+        self.schemas.insert(schema.name.clone(), Rc::new(schema));
     }
 
     /// Remove a table schema from the catalog
-    pub fn remove_table_schema(&mut self, table_name: &str) -> Option<TableSchema> {
+    pub fn remove_table_schema(&mut self, table_name: &str) -> Option<Rc<TableSchema>> {
         self.schemas.remove(table_name)
     }
 
@@ -90,7 +91,7 @@ impl Catalog {
     /// This is a utility function that can be used by other parts of the system
     pub fn load_schemas_from_storage(
         storage: &StorageEngine,
-        schemas: &mut HashMap<String, TableSchema>,
+        schemas: &mut HashMap<String, Rc<TableSchema>>,
     ) -> Result<()> {
         // Scan for all schema keys
         let schema_prefix = SCHEMA_KEY_PREFIX.as_bytes().to_vec();
@@ -105,7 +106,7 @@ impl Catalog {
                 // Deserialize schema using centralized utility
                 if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value_rc) {
                     schema.name = table_name.to_string(); // Set the actual table name
-                    schemas.insert(table_name.to_string(), schema);
+                    schemas.insert(table_name.to_string(), Rc::new(schema));
                 }
             }
         }

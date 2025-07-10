@@ -102,11 +102,11 @@ impl Database {
         Catalog::create_table_schema(create_table)
     }
 
-    /// Helper function to convert schemas to Rc format for shared ownership
-    fn convert_schemas_to_rc(schemas: &HashMap<String, TableSchema>) -> HashMap<String, Rc<TableSchema>> {
+    /// Helper function to get schemas in Rc format (no conversion needed)
+    fn get_schemas_rc(schemas: &HashMap<String, Rc<TableSchema>>) -> HashMap<String, Rc<TableSchema>> {
         schemas
             .iter()
-            .map(|(k, v)| (k.clone(), Rc::new(v.clone())))
+            .map(|(k, v)| (k.clone(), Rc::clone(v)))
             .collect()
     }
 
@@ -130,10 +130,10 @@ impl Database {
     fn execute_query_with_processor(
         mut processor: QueryProcessor<'_>,
         sql: &str,
-        schemas: &HashMap<String, TableSchema>,
+        schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        // Convert schemas to Rc for the planner
-        let rc_schemas = Self::convert_schemas_to_rc(schemas);
+        // Get schemas in Rc format for the planner
+        let rc_schemas = Self::get_schemas_rc(schemas);
         Self::execute_query_core(&mut processor, sql, &rc_schemas)
     }
 
@@ -142,10 +142,10 @@ impl Database {
     fn execute_query_with_processor_ref(
         processor: &mut QueryProcessor<'_>,
         sql: &str,
-        schemas: &HashMap<String, TableSchema>,
+        schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        // Convert schemas to Rc for the planner
-        let rc_schemas = Self::convert_schemas_to_rc(schemas);
+        // Get schemas in Rc format for the planner
+        let rc_schemas = Self::get_schemas_rc(schemas);
         Self::execute_query_core(processor, sql, &rc_schemas)
     }
 
@@ -200,8 +200,8 @@ impl Database {
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
 
-        // Convert schemas to Rc for shared ownership (no cloning needed)
-        let schemas = Self::convert_schemas_to_rc(self.catalog.get_all_schemas());
+        // Get schemas in Rc format for shared ownership (no cloning needed)
+        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
 
         // Use the new planner pipeline with executor
         let planner = QueryPlanner::new(schemas.clone());
@@ -243,8 +243,8 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        // Convert schemas to Rc for shared ownership (no cloning needed)
-        let schemas = Self::convert_schemas_to_rc(self.catalog.get_all_schemas());
+        // Get schemas in Rc format for shared ownership (no cloning needed)
+        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
 
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
@@ -260,7 +260,7 @@ impl Database {
 
     /// Begin a new database transaction
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
-        let schemas = Self::convert_schemas_to_rc(self.catalog.get_all_schemas());
+        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let transaction = self.storage.begin_transaction();
         let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
 
@@ -274,7 +274,7 @@ impl Database {
 
     /// Get a reference to all cached table schemas (no cloning)
     /// Use this when you only need to read schema information
-    pub fn get_table_schemas_ref(&self) -> &HashMap<String, TableSchema> {
+    pub fn get_table_schemas_ref(&self) -> &HashMap<String, Rc<TableSchema>> {
         self.catalog.get_all_schemas()
     }
 
@@ -282,7 +282,7 @@ impl Database {
     /// Useful for debugging or introspection
     /// Note: This clones the entire schema HashMap - use sparingly
     pub fn get_table_schemas(&self) -> HashMap<String, TableSchema> {
-        self.catalog.get_all_schemas().clone()
+        self.catalog.get_all_schemas().iter().map(|(k, v)| (k.clone(), (**v).clone())).collect()
     }
 }
 
@@ -346,7 +346,7 @@ impl DatabaseTransaction<'_> {
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Get schemas from shared catalog and convert to Rc
-        let schemas = Database::convert_schemas_to_rc(self.catalog.get_all_schemas());
+        let schemas = Database::get_schemas_rc(self.catalog.get_all_schemas());
 
         // Use the planner pipeline
         let planner = QueryPlanner::new(schemas);
