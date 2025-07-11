@@ -51,8 +51,7 @@ fn parse_u64_safe(s: &str) -> Result<u64, String> {
 
 // Safe float parsing with error handling
 fn parse_f64_safe(s: &str) -> Result<f64, String> {
-    s.parse::<f64>()
-        .map_err(|e| format!("Invalid float: {e}"))
+    s.parse::<f64>().map_err(|e| format!("Invalid float: {e}"))
 }
 
 #[derive(Debug, Clone, PartialEq)]

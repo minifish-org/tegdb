@@ -685,7 +685,7 @@ impl<'a> QueryProcessor<'a> {
                     let required_columns = cache.required_columns.clone();
                     let valid_columns = cache.valid_columns.clone();
                     let pk_column = cache.primary_key_column.clone();
-                    drop(cache);
+                    let _ = cache;
 
                     // Check for unknown columns
                     for column_name in row_data.keys() {
@@ -956,7 +956,7 @@ impl<'a> QueryProcessor<'a> {
         let required_columns = cache.required_columns.clone();
         let valid_columns = cache.valid_columns.clone();
         let pk_column = cache.primary_key_column.clone();
-        drop(cache);
+        let _ = cache;
 
         // Check for unknown columns
         for column_name in row_data.keys() {
@@ -987,65 +987,6 @@ impl<'a> QueryProcessor<'a> {
                 if value != &SqlValue::Null {
                     let key = self.build_primary_key(table_name, row_data, schema)?;
                     if self.transaction.get(key.as_bytes()).is_some() {
-                        return Err(Error::Other(format!(
-                            "Primary key constraint violation for table '{table_name}'"
-                        )));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Validate row data with option to exclude a specific primary key from UNIQUE checks
-    fn validate_row_data_excluding(
-        &mut self,
-        table_name: &str,
-        row_data: &HashMap<String, SqlValue>,
-        schema: &TableSchema,
-        exclude_key: Option<&str>,
-    ) -> Result<()> {
-        let cache = self.get_validation_cache(table_name)?;
-        let required_columns = cache.required_columns.clone();
-        let valid_columns = cache.valid_columns.clone();
-        let pk_column = cache.primary_key_column.clone();
-        drop(cache);
-
-        // Check for unknown columns
-        for column_name in row_data.keys() {
-            if !valid_columns.contains(column_name) {
-                return Err(Error::Other(format!(
-                    "Unknown column '{column_name}' for table '{table_name}'"
-                )));
-            }
-        }
-
-        // Check required columns
-        for column_name in &required_columns {
-            if !row_data.contains_key(column_name) {
-                return Err(Error::Other(format!(
-                    "Missing required column '{column_name}' for table '{table_name}'"
-                )));
-            }
-            if row_data.get(column_name) == Some(&SqlValue::Null) {
-                return Err(Error::Other(format!(
-                    "Column '{column_name}' cannot be NULL"
-                )));
-            }
-        }
-
-        // Check PRIMARY KEY constraint (only if PK column exists)
-        if let Some(pk_col) = &pk_column {
-            if let Some(value) = row_data.get(pk_col) {
-                if value != &SqlValue::Null {
-                    let key = self.build_primary_key(table_name, row_data, schema)?;
-                    if let Some(exclude) = exclude_key {
-                        if key != exclude && self.transaction.get(key.as_bytes()).is_some() {
-                            return Err(Error::Other(format!(
-                                "Primary key constraint violation for table '{table_name}'"
-                            )));
-                        }
-                    } else if self.transaction.get(key.as_bytes()).is_some() {
                         return Err(Error::Other(format!(
                             "Primary key constraint violation for table '{table_name}'"
                         )));
