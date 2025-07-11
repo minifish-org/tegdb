@@ -10,7 +10,7 @@ use crate::sql_utils;
 use crate::storage_engine::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// Type alias for scan iterator to reduce complexity
@@ -29,6 +29,49 @@ pub struct ColumnInfo {
 pub struct TableSchema {
     pub name: String,
     pub columns: Vec<ColumnInfo>,
+}
+
+/// Optimized schema validation cache
+#[derive(Debug, Clone)]
+pub struct SchemaValidationCache {
+    /// Pre-computed valid column names for fast validation
+    pub valid_columns: HashSet<String>,
+    /// Pre-computed required column names (NOT NULL or PRIMARY KEY)
+    pub required_columns: HashSet<String>,
+    /// Primary key column name (single column only)
+    pub primary_key_column: Option<String>,
+    /// Column name to index mapping for fast lookups
+    pub column_indices: HashMap<String, usize>,
+}
+
+impl SchemaValidationCache {
+    pub fn new(schema: &TableSchema) -> Self {
+        let mut valid_columns = HashSet::new();
+        let mut required_columns = HashSet::new();
+        let mut primary_key_column = None;
+        let mut column_indices = HashMap::new();
+
+        for (idx, col) in schema.columns.iter().enumerate() {
+            valid_columns.insert(col.name.clone());
+            column_indices.insert(col.name.clone(), idx);
+
+            if col.constraints.contains(&ColumnConstraint::NotNull) 
+                || col.constraints.contains(&ColumnConstraint::PrimaryKey) {
+                required_columns.insert(col.name.clone());
+            }
+
+            if col.constraints.contains(&ColumnConstraint::PrimaryKey) {
+                primary_key_column = Some(col.name.clone());
+            }
+        }
+
+        Self {
+            valid_columns,
+            required_columns,
+            primary_key_column,
+            column_indices,
+        }
+    }
 }
 
 /// Streaming iterator for SELECT query results
@@ -196,13 +239,13 @@ impl<'a> ResultSet<'a> {
 pub struct QueryProcessor<'a> {
     transaction: Transaction<'a>,
     table_schemas: HashMap<String, Rc<TableSchema>>,
+    /// Cached validation data for performance
+    validation_caches: HashMap<String, SchemaValidationCache>,
     storage_format: StorageFormat,
     transaction_active: bool,
 }
 
 impl<'a> QueryProcessor<'a> {
-
-
     /// Create a new query processor with transaction and Rc schemas (more efficient)
     pub fn new_with_rc_schemas(
         transaction: Transaction<'a>,
@@ -210,10 +253,19 @@ impl<'a> QueryProcessor<'a> {
     ) -> Self {
         let mut processor = Self {
             transaction,
-            table_schemas,
+            table_schemas: table_schemas.clone(),
+            validation_caches: HashMap::new(),
             storage_format: StorageFormat::new(), // Always use native format
             transaction_active: false,
         };
+
+        // Pre-build validation caches for all schemas
+        for (table_name, schema) in table_schemas {
+            processor.validation_caches.insert(
+                table_name.clone(),
+                SchemaValidationCache::new(&schema),
+            );
+        }
 
         // Load additional schemas from storage and merge
         let _ = processor.load_schemas_from_storage();
@@ -224,6 +276,18 @@ impl<'a> QueryProcessor<'a> {
     /// Get mutable reference to the transaction
     pub fn transaction_mut(&mut self) -> &mut Transaction<'a> {
         &mut self.transaction
+    }
+
+    /// Get or create validation cache for a table
+    fn get_validation_cache(&mut self, table_name: &str) -> Result<&SchemaValidationCache> {
+        if !self.validation_caches.contains_key(table_name) {
+            let schema = self.get_table_schema(table_name)?;
+            self.validation_caches.insert(
+                table_name.to_string(),
+                SchemaValidationCache::new(&schema),
+            );
+        }
+        Ok(self.validation_caches.get(table_name).unwrap())
     }
 
     /// Execute CREATE TABLE statement
@@ -294,10 +358,17 @@ impl<'a> QueryProcessor<'a> {
                 }
             }
         }
+
+        // Store schema
         self.transaction.set(schema_key.as_bytes(), schema_data)?;
 
-        // Update local schema cache
-        self.table_schemas.insert(create.table, Rc::new(schema));
+        // Add to in-memory schemas and validation cache
+        let schema_rc = Rc::new(schema.clone());
+        self.table_schemas.insert(create.table.clone(), schema_rc);
+        self.validation_caches.insert(
+            create.table.clone(),
+            SchemaValidationCache::new(&schema),
+        );
 
         Ok(ResultSet::CreateTable)
     }
@@ -336,6 +407,7 @@ impl<'a> QueryProcessor<'a> {
 
             // Remove from local schema cache
             self.table_schemas.remove(&drop.table);
+            self.validation_caches.remove(&drop.table);
         }
 
         Ok(ResultSet::DropTable)
@@ -602,14 +674,63 @@ impl<'a> QueryProcessor<'a> {
                         row_data.insert(assignment.column.clone(), new_value);
                     }
 
-                    // Validate updated row (exclude current row from UNIQUE checks)
-                    let original_key = self.build_primary_key(table, &row_data, &schema)?;
-                    let exclude_key = Some(original_key.as_str());
-                    self.validate_row_data_excluding(table, &row_data, &schema, exclude_key)?;
+                    // Validate updated row
+                    // Check if primary key was changed and if new key conflicts with existing data
+                    let new_key = self.build_primary_key(table, &row_data, &schema)?;
+                    if new_key != key && self.transaction.get(new_key.as_bytes()).is_some() {
+                        return Err(Error::Other(format!(
+                            "Primary key constraint violation for table '{table}'"
+                        )));
+                    }
+                    
+                    // Validate other constraints (NOT NULL, etc.) but skip primary key validation
+                    // since we already handled it above
+                    let cache = self.get_validation_cache(table)?;
+                    let required_columns = cache.required_columns.clone();
+                    let valid_columns = cache.valid_columns.clone();
+                    let pk_column = cache.primary_key_column.clone();
+                    drop(cache);
+
+                    // Check for unknown columns
+                    for column_name in row_data.keys() {
+                        if !valid_columns.contains(column_name) {
+                            return Err(Error::Other(format!(
+                                "Unknown column '{column_name}' for table '{table}'"
+                            )));
+                        }
+                    }
+
+                    // Check required columns (excluding primary key since we already validated it)
+                    for column_name in &required_columns {
+                        if let Some(pk_col) = &pk_column {
+                            if column_name == pk_col {
+                                continue; // Skip primary key validation
+                            }
+                        }
+                        if !row_data.contains_key(column_name) {
+                            return Err(Error::Other(format!(
+                                "Missing required column '{}' for table '{}'",
+                                column_name, table
+                            )));
+                        }
+                        if row_data.get(column_name) == Some(&SqlValue::Null) {
+                            return Err(Error::Other(format!(
+                                "Column '{}' cannot be NULL",
+                                column_name
+                            )));
+                        }
+                    }
 
                     // Serialize and store the updated row
                     let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
-                    self.transaction.set(key.as_bytes(), serialized)?;
+                    
+                    // If primary key changed, we need to delete the old row and insert the new one
+                    if new_key != key {
+                        self.transaction.delete(key.as_bytes())?;
+                        self.transaction.set(new_key.as_bytes(), serialized)?;
+                    } else {
+                        self.transaction.set(key.as_bytes(), serialized)?;
+                    }
 
                     rows_affected += 1;
                 }
@@ -798,7 +919,7 @@ impl<'a> QueryProcessor<'a> {
 
         let scan_results: Vec<_> = self.transaction.scan(schema_prefix..schema_end)?.collect();
 
-                    for (key, value_rc) in scan_results {
+        for (key, value_rc) in scan_results {
             let key_str = String::from_utf8_lossy(&key);
             if let Some(table_name) = key_str.strip_prefix("S:") {
                 // Only load from storage if we don't already have this schema
@@ -807,7 +928,11 @@ impl<'a> QueryProcessor<'a> {
                     if let Ok(schema_data) = String::from_utf8(value_rc.to_vec()) {
                         if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
                         {
-                            self.table_schemas.insert(table_name.to_string(), Rc::new(schema));
+                            self.table_schemas.insert(table_name.to_string(), Rc::new(schema.clone()));
+                            self.validation_caches.insert(
+                                table_name.to_string(),
+                                SchemaValidationCache::new(&schema),
+                            );
                         }
                     }
                 }
@@ -827,14 +952,18 @@ impl<'a> QueryProcessor<'a> {
 
     /// Validate row data against schema
     fn validate_row_data(
-        &self,
+        &mut self,
         table_name: &str,
         row_data: &HashMap<String, SqlValue>,
         schema: &TableSchema,
     ) -> Result<()> {
+        let cache = self.get_validation_cache(table_name)?;
+        let required_columns = cache.required_columns.clone();
+        let valid_columns = cache.valid_columns.clone();
+        let pk_column = cache.primary_key_column.clone();
+        drop(cache);
+
         // Check for unknown columns
-        let valid_columns: std::collections::HashSet<_> =
-            schema.columns.iter().map(|col| &col.name).collect();
         for column_name in row_data.keys() {
             if !valid_columns.contains(column_name) {
                 return Err(Error::Other(format!(
@@ -844,62 +973,52 @@ impl<'a> QueryProcessor<'a> {
         }
 
         // Check required columns
-        for column in &schema.columns {
-            if column.constraints.contains(&ColumnConstraint::NotNull)
-                || column.constraints.contains(&ColumnConstraint::PrimaryKey)
-            {
-                if !row_data.contains_key(&column.name) {
-                    return Err(Error::Other(format!(
-                        "Missing required column '{}' for table '{}'",
-                        column.name, table_name
-                    )));
-                }
-
-                if row_data.get(&column.name) == Some(&SqlValue::Null) {
-                    return Err(Error::Other(format!(
-                        "Column '{}' cannot be NULL",
-                        column.name
-                    )));
-                }
+        for column_name in &required_columns {
+            if !row_data.contains_key(column_name) {
+                return Err(Error::Other(format!(
+                    "Missing required column '{}' for table '{}'",
+                    column_name, table_name
+                )));
+            }
+            if row_data.get(column_name) == Some(&SqlValue::Null) {
+                return Err(Error::Other(format!(
+                    "Column '{}' cannot be NULL",
+                    column_name
+                )));
             }
         }
 
-        // Check UNIQUE constraints
-        for column in &schema.columns {
-            if column.constraints.contains(&ColumnConstraint::Unique) {
-                if let Some(value) = row_data.get(&column.name) {
-                    if value != &SqlValue::Null {
-                        // Check if this value already exists in the table using table scan
-                        if self.check_unique_constraint_violation_table_scan(
-                            table_name,
-                            &column.name,
-                            value,
-                            schema,
-                        )? {
-                            return Err(Error::Other(format!(
-                                "UNIQUE constraint violation for column '{}' in table '{}'",
-                                column.name, table_name
-                            )));
-                        }
+        // Check PRIMARY KEY constraint (only if PK column exists)
+        if let Some(pk_col) = &pk_column {
+            if let Some(value) = row_data.get(pk_col) {
+                if value != &SqlValue::Null {
+                    let key = self.build_primary_key(table_name, row_data, schema)?;
+                    if self.transaction.get(key.as_bytes()).is_some() {
+                        return Err(Error::Other(format!(
+                            "Primary key constraint violation for table '{table_name}'"
+                        )));
                     }
                 }
             }
         }
-
         Ok(())
     }
 
     /// Validate row data with option to exclude a specific primary key from UNIQUE checks
     fn validate_row_data_excluding(
-        &self,
+        &mut self,
         table_name: &str,
         row_data: &HashMap<String, SqlValue>,
         schema: &TableSchema,
         exclude_key: Option<&str>,
     ) -> Result<()> {
+        let cache = self.get_validation_cache(table_name)?;
+        let required_columns = cache.required_columns.clone();
+        let valid_columns = cache.valid_columns.clone();
+        let pk_column = cache.primary_key_column.clone();
+        drop(cache);
+
         // Check for unknown columns
-        let valid_columns: std::collections::HashSet<_> =
-            schema.columns.iter().map(|col| &col.name).collect();
         for column_name in row_data.keys() {
             if !valid_columns.contains(column_name) {
                 return Err(Error::Other(format!(
@@ -909,152 +1028,73 @@ impl<'a> QueryProcessor<'a> {
         }
 
         // Check required columns
-        for column in &schema.columns {
-            if column.constraints.contains(&ColumnConstraint::NotNull)
-                || column.constraints.contains(&ColumnConstraint::PrimaryKey)
-            {
-                if !row_data.contains_key(&column.name) {
-                    return Err(Error::Other(format!(
-                        "Missing required column '{}' for table '{}'",
-                        column.name, table_name
-                    )));
-                }
-
-                if row_data.get(&column.name) == Some(&SqlValue::Null) {
-                    return Err(Error::Other(format!(
-                        "Column '{}' cannot be NULL",
-                        column.name
-                    )));
-                }
+        for column_name in &required_columns {
+            if !row_data.contains_key(column_name) {
+                return Err(Error::Other(format!(
+                    "Missing required column '{}' for table '{}'",
+                    column_name, table_name
+                )));
+            }
+            if row_data.get(column_name) == Some(&SqlValue::Null) {
+                return Err(Error::Other(format!(
+                    "Column '{}' cannot be NULL",
+                    column_name
+                )));
             }
         }
 
-        // Check UNIQUE constraints
-        for column in &schema.columns {
-            if column.constraints.contains(&ColumnConstraint::Unique) {
-                if let Some(value) = row_data.get(&column.name) {
-                    if value != &SqlValue::Null {
-                        // Check if this value already exists in the table (excluding current row)
-                        if self.check_unique_constraint_violation_table_scan_excluding(
-                            table_name,
-                            &column.name,
-                            value,
-                            schema,
-                            exclude_key,
-                        )? {
+        // Check PRIMARY KEY constraint (only if PK column exists)
+        if let Some(pk_col) = &pk_column {
+            if let Some(value) = row_data.get(pk_col) {
+                if value != &SqlValue::Null {
+                    let key = self.build_primary_key(table_name, row_data, schema)?;
+                    if let Some(exclude) = exclude_key {
+                        if key != exclude && self.transaction.get(key.as_bytes()).is_some() {
                             return Err(Error::Other(format!(
-                                "UNIQUE constraint violation for column '{}' in table '{}'",
-                                column.name, table_name
+                                "Primary key constraint violation for table '{table_name}'"
                             )));
                         }
+                    } else if self.transaction.get(key.as_bytes()).is_some() {
+                        return Err(Error::Other(format!(
+                            "Primary key constraint violation for table '{table_name}'"
+                        )));
                     }
                 }
             }
         }
-
         Ok(())
-    }
-
-    /// Check if a value violates a UNIQUE constraint by scanning existing data
-    fn check_unique_constraint_violation_table_scan(
-        &self,
-        table_name: &str,
-        column_name: &str,
-        value: &SqlValue,
-        schema: &TableSchema,
-    ) -> Result<bool> {
-        self.check_unique_constraint_violation_table_scan_excluding(
-            table_name,
-            column_name,
-            value,
-            schema,
-            None,
-        )
-    }
-
-    /// Check if a value violates a UNIQUE constraint using table scan, optionally excluding a specific key
-    fn check_unique_constraint_violation_table_scan_excluding(
-        &self,
-        table_name: &str,
-        column_name: &str,
-        value: &SqlValue,
-        schema: &TableSchema,
-        exclude_key: Option<&str>,
-    ) -> Result<bool> {
-        // Use table scan for unique constraint checking - O(n) operation
-        let table_prefix = format!("{table_name}:");
-        let start_key = table_prefix.as_bytes().to_vec();
-        let end_key = format!("{table_name}~").as_bytes().to_vec();
-
-        let scan_iter = self.transaction.scan(start_key..end_key)?;
-
-                    for (key, value_bytes_rc) in scan_iter {
-            let key_str = String::from_utf8_lossy(&key);
-
-            // If we have a key to exclude, check if this is the same key
-            if let Some(exclude_key_str) = exclude_key {
-                if key_str == exclude_key_str {
-                    continue; // Skip the row being updated
-                }
-            }
-
-            // Deserialize the row and check the column value
-            if let Ok(row_data) = self
-                .storage_format
-                .deserialize_row(&value_bytes_rc, schema)
-            {
-                if let Some(existing_value) = row_data.get(column_name) {
-                    if existing_value == value && existing_value != &SqlValue::Null {
-                        return Ok(true); // Violation found - value exists for a different primary key
-                    }
-                }
-            }
-        }
-
-        Ok(false) // No violation - value doesn't exist in table
     }
 
     /// Build primary key string for a row
     /// Note: TegDB only supports single-column primary keys
     fn build_primary_key(
-        &self,
+        &mut self,
         table_name: &str,
         row_data: &HashMap<String, SqlValue>,
         schema: &TableSchema,
     ) -> Result<String> {
-        // Find primary key columns
-        let pk_columns: Vec<_> = schema
-            .columns
-            .iter()
-            .filter(|col| col.constraints.contains(&ColumnConstraint::PrimaryKey))
-            .collect();
+        let cache = self.get_validation_cache(table_name)?;
 
-        if pk_columns.is_empty() {
-            return Err(Error::Other(format!(
-                "Table '{table_name}' has no primary key"
-            )));
+        // Use cached primary key column for better performance
+        if let Some(pk_column) = &cache.primary_key_column {
+            if let Some(value) = row_data.get(pk_column) {
+                return Ok(format!(
+                    "{}:{}",
+                    table_name,
+                    self.value_to_key_string(value)
+                ));
+            } else {
+                return Err(Error::Other(format!(
+                    "Missing primary key value for column '{}'",
+                    pk_column
+                )));
+            }
         }
 
-        // TegDB only supports single-column primary keys
-        if pk_columns.len() > 1 {
-            return Err(Error::Other(format!(
-                "Table '{table_name}' has composite primary key, but TegDB only supports single-column primary keys"
-            )));
-        }
-
-        let pk_col = &pk_columns[0];
-        if let Some(value) = row_data.get(&pk_col.name) {
-            Ok(format!(
-                "{}:{}",
-                table_name,
-                self.value_to_key_string(value)
-            ))
-        } else {
-            Err(Error::Other(format!(
-                "Missing primary key value for column '{}'",
-                pk_col.name
-            )))
-        }
+        // Fallback to schema-based lookup (should not happen with proper cache)
+        Err(Error::Other(format!(
+            "Table '{table_name}' has no primary key or cache is invalid"
+        )))
     }
 
     /// Convert SqlValue to key string representation

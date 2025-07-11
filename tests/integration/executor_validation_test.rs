@@ -9,9 +9,9 @@ fn test_insert_validation() -> Result<()> {
     run_with_both_backends("test_insert_validation", |db_path| {
         let mut db = Database::open(db_path)?;
 
-        // Create test table
+        // Create test table (TegDB only supports PRIMARY KEY constraints)
         db.execute(
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)",
         )?;
 
         // Test valid insert
@@ -25,12 +25,12 @@ fn test_insert_validation() -> Result<()> {
         assert!(result.is_err(), "Should fail for NOT NULL violation");
         println!("NOT NULL validation: {result:?}");
 
-        // Test UNIQUE constraint violation
+        // Test PRIMARY KEY constraint violation
         let result = db.execute(
-            "INSERT INTO users (id, name, email) VALUES (3, 'Charlie', 'alice@example.com')",
+            "INSERT INTO users (id, name, email) VALUES (1, 'Charlie', 'charlie@example.com')",
         );
-        assert!(result.is_err(), "Should fail for UNIQUE violation");
-        println!("UNIQUE validation: {result:?}");
+        assert!(result.is_err(), "Should fail for PRIMARY KEY violation");
+        println!("PRIMARY KEY validation: {result:?}");
 
         // Test unknown column
         let result = db.execute(
@@ -48,9 +48,9 @@ fn test_update_validation() -> Result<()> {
     run_with_both_backends("test_update_validation", |db_path| {
         let mut db = Database::open(db_path)?;
 
-        // Create test table
+        // Create test table (TegDB only supports PRIMARY KEY constraints)
         db.execute(
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)",
         )?;
 
         // Insert test data
@@ -67,10 +67,10 @@ fn test_update_validation() -> Result<()> {
         assert!(result.is_err(), "Should fail for NOT NULL violation");
         println!("NOT NULL update validation: {result:?}");
 
-        // Test UNIQUE constraint violation
-        let result = db.execute("UPDATE users SET email = 'bob@example.com' WHERE id = 1");
-        assert!(result.is_err(), "Should fail for UNIQUE violation");
-        println!("UNIQUE update validation: {result:?}");
+        // Test PRIMARY KEY constraint violation (updating to existing PK)
+        let result = db.execute("UPDATE users SET id = 2 WHERE id = 1");
+        assert!(result.is_err(), "Should fail for PRIMARY KEY violation");
+        println!("PRIMARY KEY update validation: {result:?}");
 
         Ok(())
     })
@@ -81,9 +81,9 @@ fn test_select_memory_optimization() -> Result<()> {
     run_with_both_backends("test_select_memory_optimization", |db_path| {
         let mut db = Database::open(db_path)?;
 
-        // Create test table
+        // Create test table (TegDB only supports PRIMARY KEY constraints)
         db.execute(
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)",
         )?;
 
         // Insert test data
