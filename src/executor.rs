@@ -494,7 +494,7 @@ impl<'a> QueryProcessor<'a> {
                 additional_filter,
             } => {
                 let schema = self.get_table_schema(&table)?;
-                let key = self.build_primary_key(&table, &pk_values, &schema)?;
+                                    let key = self.build_primary_key(&table, &pk_values)?;
 
                 // Create an iterator that returns at most one row if the key exists and matches
                 let key_bytes = key.as_bytes().to_vec();
@@ -591,10 +591,10 @@ impl<'a> QueryProcessor<'a> {
 
         for row_data in rows {
             // Validate row data
-            self.validate_row_data(table, row_data, &schema)?;
+            self.validate_row_data(table, row_data)?;
 
             // Build primary key
-            let key = self.build_primary_key(table, row_data, &schema)?;
+                            let key = self.build_primary_key(table, row_data)?;
 
             // Check for primary key conflicts
             if self.transaction.get(key.as_bytes()).is_some() {
@@ -651,7 +651,7 @@ impl<'a> QueryProcessor<'a> {
                         row_data.insert(col_name.clone(), value.clone());
                     }
                 }
-                let key = self.build_primary_key(table, &row_data, &schema)?;
+                let key = self.build_primary_key(table, &row_data)?;
                 keys.push(key);
             }
             keys
@@ -672,7 +672,7 @@ impl<'a> QueryProcessor<'a> {
 
                     // Validate updated row
                     // Check if primary key was changed and if new key conflicts with existing data
-                    let new_key = self.build_primary_key(table, &row_data, &schema)?;
+                    let new_key = self.build_primary_key(table, &row_data)?;
                     if new_key != key && self.transaction.get(new_key.as_bytes()).is_some() {
                         return Err(Error::Other(format!(
                             "Primary key constraint violation for table '{table}'"
@@ -808,7 +808,7 @@ impl<'a> QueryProcessor<'a> {
                 additional_filter,
                 ..
             } => {
-                let key = self.build_primary_key(table, pk_values, schema)?;
+                let key = self.build_primary_key(table, pk_values)?;
                 if let Some(value) = self.transaction.get(key.as_bytes()) {
                     let matches = if let Some(filter) = additional_filter {
                         if let Ok(row_data) = self.storage_format.deserialize_row(&value, schema) {
@@ -950,7 +950,6 @@ impl<'a> QueryProcessor<'a> {
         &mut self,
         table_name: &str,
         row_data: &HashMap<String, SqlValue>,
-        schema: &TableSchema,
     ) -> Result<()> {
         let cache = self.get_validation_cache(table_name)?;
         let required_columns = cache.required_columns.clone();
@@ -985,7 +984,7 @@ impl<'a> QueryProcessor<'a> {
         if let Some(pk_col) = &pk_column {
             if let Some(value) = row_data.get(pk_col) {
                 if value != &SqlValue::Null {
-                    let key = self.build_primary_key(table_name, row_data, schema)?;
+                    let key = self.build_primary_key(table_name, row_data)?;
                     if self.transaction.get(key.as_bytes()).is_some() {
                         return Err(Error::Other(format!(
                             "Primary key constraint violation for table '{table_name}'"
@@ -1003,7 +1002,6 @@ impl<'a> QueryProcessor<'a> {
         &mut self,
         table_name: &str,
         row_data: &HashMap<String, SqlValue>,
-        schema: &TableSchema,
     ) -> Result<String> {
         let cache = self.get_validation_cache(table_name)?;
 
