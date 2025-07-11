@@ -188,6 +188,68 @@ impl StorageFormat {
         Ok(result)
     }
 
+    /// Ultra-fast row extraction for selected columns (no HashMap, no string lookups)
+    pub fn deserialize_row_indices(
+        &self,
+        data: &[u8],
+        offsets: &[usize],
+        types: &[u8],
+    ) -> Result<Vec<SqlValue>> {
+        let mut result = Vec::with_capacity(offsets.len());
+        for (i, &offset) in offsets.iter().enumerate() {
+            let type_code = types[i];
+            // Fast path: direct memory access, no bounds checks (assume valid input)
+            let value = match type_code {
+                0 => SqlValue::Null,
+                1 => SqlValue::Integer(data[offset] as i64),
+                2 => SqlValue::Integer(i16::from_le_bytes([data[offset], data[offset + 1]]) as i64),
+                3 => SqlValue::Integer(i32::from_le_bytes([
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
+                ]) as i64),
+                4 => SqlValue::Integer(i64::from_le_bytes([
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
+                    data[offset + 4],
+                    data[offset + 5],
+                    data[offset + 6],
+                    data[offset + 7],
+                ])),
+                5 => SqlValue::Real(f64::from_le_bytes([
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
+                    data[offset + 4],
+                    data[offset + 5],
+                    data[offset + 6],
+                    data[offset + 7],
+                ])),
+                code if code >= 12 && code % 2 == 0 => {
+                    let size = (code - 12) as usize / 2;
+                    let text = std::str::from_utf8(&data[offset..offset + size])
+                        .unwrap_or("")
+                        .to_string();
+                    SqlValue::Text(text)
+                }
+                code if code >= 13 && code % 2 == 1 => {
+                    let size = (code - 13) as usize / 2;
+                    let text = std::str::from_utf8(&data[offset..offset + size])
+                        .unwrap_or("")
+                        .to_string();
+                    SqlValue::Text(text)
+                }
+                _ => return Err(crate::Error::Other(format!("Unknown type code: {}", type_code))),
+            };
+            result.push(value);
+        }
+        Ok(result)
+    }
+
     /// Ultra-fast value deserialization at specific offset (no bounds checking for speed)
     fn deserialize_value_at_offset_fast(
         data: &[u8],
@@ -283,28 +345,39 @@ impl StorageFormat {
 
         // Read type codes (pre-allocate for better performance)
         let mut columns = Vec::with_capacity(schema.columns.len());
-        let mut data_offset = cursor + header_size - 1; // Start of data section
+        let mut data_offset = cursor + schema.columns.len(); // Start of data section (after type codes)
 
-        // Fast path: if we know the schema size, we can avoid bounds checking in the loop
+        // Validate that we have enough data for the header
         let schema_len = schema.columns.len();
         if cursor + schema_len > data.len() {
             return Err(crate::Error::Other("Truncated record header".to_string()));
         }
 
-        // Ultra-fast loop: no bounds checking, direct memory access
-        unsafe {
-            for i in 0..schema_len {
-                let type_code = *data.get_unchecked(cursor + i);
-                let column_size = Self::get_column_size_fast(type_code);
+        // Calculate total data size and validate
+        let mut total_data_size = 0;
+        for i in 0..schema_len {
+            let type_code = data[cursor + i];
+            let column_size = Self::get_column_size_fast(type_code);
+            total_data_size += column_size;
+        }
 
-                columns.push(ColumnInfo {
-                    offset: data_offset,
-                    type_code,
-                    size: column_size,
-                });
+        // Validate that we have enough data for all columns
+        if data_offset + total_data_size > data.len() {
+            return Err(crate::Error::Other("Truncated record data".to_string()));
+        }
 
-                data_offset += column_size;
-            }
+        // Build column info with validated offsets
+        for i in 0..schema_len {
+            let type_code = data[cursor + i];
+            let column_size = Self::get_column_size_fast(type_code);
+
+            columns.push(ColumnInfo {
+                offset: data_offset,
+                type_code,
+                size: column_size,
+            });
+
+            data_offset += column_size;
         }
 
         Ok(RecordHeader {

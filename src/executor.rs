@@ -105,17 +105,14 @@ impl<'a> SelectRowIterator<'a> {
         filter: Option<Condition>,
         limit: Option<u64>,
     ) -> Self {
-        // Pre-compute column indices for faster row extraction
-        let column_indices: Vec<usize> = selected_columns
-            .iter()
-            .map(|col_name| {
-                schema
-                    .columns
-                    .iter()
-                    .position(|col| &col.name == col_name)
-                    .unwrap_or(usize::MAX) // Will be handled in next()
-            })
-            .collect();
+        let mut column_indices = Vec::with_capacity(selected_columns.len());
+        for col_name in &selected_columns {
+            if let Some((idx, _col)) = schema.columns.iter().enumerate().find(|(_, c)| &c.name == col_name) {
+                column_indices.push(idx);
+            } else {
+                column_indices.push(usize::MAX);
+            }
+        }
 
         Self {
             scan_iter,
@@ -148,27 +145,13 @@ impl<'a> Iterator for SelectRowIterator<'a> {
 
         // Process rows until we find one that matches the filter
         for (_, value) in self.scan_iter.by_ref() {
-            let t0 = std::time::Instant::now();
-            
             // Check if we need to apply a filter
             let matches = if let Some(ref filter) = self.filter {
                 // For filtering, we need to deserialize the full row to evaluate the condition
-                let deserialize_start = std::time::Instant::now();
                 let row_data_result = self.storage_format.deserialize_row(&value, &self.schema);
-                let deserialize_time = deserialize_start.elapsed();
-                
                 match row_data_result {
                     Ok(row_data) => {
-                        let filter_start = std::time::Instant::now();
-                        let matches = crate::sql_utils::evaluate_condition(filter, &row_data);
-                        let filter_time = filter_start.elapsed();
-                        
-                        if self.count < 5 {
-                            eprintln!("Row {} timing: total={:?}, deserialize={:?}, filter={:?}", 
-                                self.count, t0.elapsed(), deserialize_time, filter_time);
-                        }
-                        
-                        matches
+                        crate::sql_utils::evaluate_condition(filter, &row_data)
                     }
                     Err(e) => return Some(Err(e)),
                 }
@@ -178,22 +161,14 @@ impl<'a> Iterator for SelectRowIterator<'a> {
 
             if matches {
                 // Extract only the selected columns (ultra-fast path!)
-                let column_extract_start = std::time::Instant::now();
-                
-                // Fall back to the optimized method for now (the ultra-fast method needs proper offset calculation)
-                let row_values_result = self.storage_format.deserialize_column_indices(&value, &self.schema, &self.column_indices);
-                let column_extract_time = column_extract_start.elapsed();
+                let row_values_result = self.storage_format.deserialize_column_indices(
+                    &value,
+                    &self.schema,
+                    &self.column_indices,
+                );
                 
                 match row_values_result {
                     Ok(row_values) => {
-                        let total_time = t0.elapsed();
-                        
-                        // Print timing information (only for first few rows to avoid spam)
-                        if self.count < 5 {
-                            eprintln!("Row {} timing: total={:?}, column_extract={:?}", 
-                                self.count, total_time, column_extract_time);
-                        }
-
                         self.count += 1;
                         return Some(Ok(row_values));
                     }
@@ -316,7 +291,7 @@ impl<'a> QueryProcessor<'a> {
             
             // For now, use a simple fixed layout (can be optimized further)
             let mut current_offset = 0;
-            for col in &schema.columns {
+            for _col in &schema.columns {
                 offsets.push(current_offset);
                 // Assume all columns are 8-byte integers for now (fastest path)
                 types.push(4); // 8-byte integer type code
