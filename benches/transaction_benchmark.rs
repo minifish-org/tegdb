@@ -248,11 +248,24 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
                 // Read current value
                 let current = black_box(tx.get(black_box(key.as_bytes())));
 
-                // Modify and write back
+                // Modify and write back - use modulo to prevent value size explosion
                 let new_value = if let Some(val) = current {
-                    format!("{}_modified_{}", String::from_utf8_lossy(&val), counter)
+                    // Limit the value size by using a small counter and truncating if needed
+                    let base_value = String::from_utf8_lossy(&val);
+                    let counter_mod = counter % 1000; // Keep counter small
+                    let suffix = format!("_modified_{}", counter_mod);
+                    
+                    // Ensure the total value doesn't exceed a reasonable size (e.g., 1KB)
+                    let max_base_size = 1024 - suffix.len();
+                    let truncated_base = if base_value.len() > max_base_size {
+                        &base_value[..max_base_size]
+                    } else {
+                        &base_value
+                    };
+                    
+                    format!("{}{}", truncated_base, suffix)
                 } else {
-                    format!("new_value_{counter}")
+                    format!("new_value_{}", counter % 1000)
                 };
 
                 tx.set(black_box(key.as_bytes()), black_box(new_value.into_bytes()))
