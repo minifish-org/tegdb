@@ -148,45 +148,59 @@ impl<'a> Iterator for SelectRowIterator<'a> {
 
         // Process rows until we find one that matches the filter
         for (_, value) in self.scan_iter.by_ref() {
-            // Deserialize the row
-            match self.storage_format.deserialize_row(&value, &self.schema) {
-                Ok(row_data) => {
-                    // Apply filter if present
-                    let matches = if let Some(ref filter) = self.filter {
-                        crate::sql_utils::evaluate_condition(filter, &row_data)
-                    } else {
-                        true
-                    };
+            let t0 = std::time::Instant::now();
+            
+            // Check if we need to apply a filter
+            let matches = if let Some(ref filter) = self.filter {
+                // For filtering, we need to deserialize the full row to evaluate the condition
+                let deserialize_start = std::time::Instant::now();
+                let row_data_result = self.storage_format.deserialize_row(&value, &self.schema);
+                let deserialize_time = deserialize_start.elapsed();
+                
+                match row_data_result {
+                    Ok(row_data) => {
+                        let filter_start = std::time::Instant::now();
+                        let matches = crate::sql_utils::evaluate_condition(filter, &row_data);
+                        let filter_time = filter_start.elapsed();
+                        
+                        if self.count < 5 {
+                            eprintln!("Row {} timing: total={:?}, deserialize={:?}, filter={:?}", 
+                                self.count, t0.elapsed(), deserialize_time, filter_time);
+                        }
+                        
+                        matches
+                    }
+                    Err(e) => return Some(Err(e)),
+                }
+            } else {
+                true // No filter, so it matches
+            };
 
-                    if matches {
-                        // Extract selected columns using pre-computed indices
-                        let mut row_values = Vec::with_capacity(self.selected_columns.len());
-                        for &col_idx in &self.column_indices {
-                            if col_idx != usize::MAX {
-                                // Use direct index access for better performance
-                                if let Some(col) = self.schema.columns.get(col_idx) {
-                                    row_values.push(
-                                        row_data.get(&col.name).cloned().unwrap_or(SqlValue::Null),
-                                    );
-                                } else {
-                                    row_values.push(SqlValue::Null);
-                                }
-                            } else {
-                                // Fallback to HashMap lookup for columns not found in schema
-                                let col_name = &self.selected_columns[row_values.len()];
-                                row_values.push(
-                                    row_data.get(col_name).cloned().unwrap_or(SqlValue::Null),
-                                );
-                            }
+            if matches {
+                // Extract only the selected columns (ultra-fast path!)
+                let column_extract_start = std::time::Instant::now();
+                
+                // Fall back to the optimized method for now (the ultra-fast method needs proper offset calculation)
+                let row_values_result = self.storage_format.deserialize_column_indices(&value, &self.schema, &self.column_indices);
+                let column_extract_time = column_extract_start.elapsed();
+                
+                match row_values_result {
+                    Ok(row_values) => {
+                        let total_time = t0.elapsed();
+                        
+                        // Print timing information (only for first few rows to avoid spam)
+                        if self.count < 5 {
+                            eprintln!("Row {} timing: total={:?}, column_extract={:?}", 
+                                self.count, total_time, column_extract_time);
                         }
 
                         self.count += 1;
                         return Some(Ok(row_values));
                     }
-                    // If row doesn't match filter, continue to next row
+                    Err(e) => return Some(Err(e)),
                 }
-                Err(e) => return Some(Err(e)),
             }
+            // If row doesn't match filter, continue to next row
         }
 
         // No more matching rows found
@@ -242,6 +256,8 @@ pub struct QueryProcessor<'a> {
     table_schemas: HashMap<String, Rc<TableSchema>>,
     /// Cached validation data for performance
     validation_caches: HashMap<String, SchemaValidationCache>,
+    /// Pre-computed storage format headers for ultra-fast access
+    storage_headers: HashMap<String, (Vec<usize>, Vec<u8>)>,
     storage_format: StorageFormat,
     transaction_active: bool,
 }
@@ -256,6 +272,7 @@ impl<'a> QueryProcessor<'a> {
             transaction,
             table_schemas: table_schemas.clone(),
             validation_caches: HashMap::new(),
+            storage_headers: HashMap::new(),
             storage_format: StorageFormat::new(), // Always use native format
             transaction_active: false,
         };
@@ -286,6 +303,29 @@ impl<'a> QueryProcessor<'a> {
                 .insert(table_name.to_string(), SchemaValidationCache::new(&schema));
         }
         Ok(self.validation_caches.get(table_name).unwrap())
+    }
+
+    /// Get or create pre-computed storage header for a table
+    fn get_storage_header(&mut self, table_name: &str) -> Result<&(Vec<usize>, Vec<u8>)> {
+        if !self.storage_headers.contains_key(table_name) {
+            let schema = self.get_table_schema(table_name)?;
+            
+            // Pre-compute the header information for this schema
+            let mut offsets = Vec::with_capacity(schema.columns.len());
+            let mut types = Vec::with_capacity(schema.columns.len());
+            
+            // For now, use a simple fixed layout (can be optimized further)
+            let mut current_offset = 0;
+            for col in &schema.columns {
+                offsets.push(current_offset);
+                // Assume all columns are 8-byte integers for now (fastest path)
+                types.push(4); // 8-byte integer type code
+                current_offset += 8;
+            }
+            
+            self.storage_headers.insert(table_name.to_string(), (offsets, types));
+        }
+        Ok(self.storage_headers.get(table_name).unwrap())
     }
 
     /// Execute CREATE TABLE statement

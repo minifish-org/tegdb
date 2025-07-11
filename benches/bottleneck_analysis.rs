@@ -455,6 +455,82 @@ fn bottleneck_analysis(c: &mut Criterion) {
         })
     });
 
+    // 29. Storage format micro-benchmarks
+    let test_data = {
+        let mut row = HashMap::new();
+        row.insert("id".to_string(), tegdb::parser::SqlValue::Integer(123));
+        row.insert("value".to_string(), tegdb::parser::SqlValue::Integer(456));
+        row.insert("name".to_string(), tegdb::parser::SqlValue::Text("test".to_string()));
+        row
+    };
+    
+    let serialized_data = storage_format
+        .serialize_row(&test_data, &test_schema)
+        .unwrap();
+
+    // Benchmark parse_header specifically (by calling deserialize_row and measuring overhead)
+    c.bench_function("parse_header_only", |b| {
+        b.iter(|| {
+            // This will call parse_header internally
+            let _result = storage_format
+                .deserialize_row(black_box(&serialized_data), black_box(&test_schema))
+                .unwrap();
+        })
+    });
+
+    // Benchmark varint decoding (simulate with a simple loop)
+    c.bench_function("varint_decode", |b| {
+        b.iter(|| {
+            // Simulate varint decoding overhead
+            let mut result = 0;
+            let mut shift = 0;
+            for &byte in &[0x89, 0x60] { // 12345 in varint format
+                result |= ((byte & 0x7F) as usize) << shift;
+                shift += 7;
+            }
+            black_box(result);
+        })
+    });
+
+    // Benchmark string cloning
+    let test_strings = vec!["id".to_string(), "value".to_string(), "name".to_string()];
+    c.bench_function("string_cloning", |b| {
+        b.iter(|| {
+            for s in &test_strings {
+                let _cloned = black_box(s.clone());
+            }
+        })
+    });
+
+    // Benchmark HashMap creation
+    c.bench_function("hashmap_creation", |b| {
+        b.iter(|| {
+            let mut map = HashMap::new();
+            map.insert("id".to_string(), tegdb::parser::SqlValue::Integer(123));
+            map.insert("value".to_string(), tegdb::parser::SqlValue::Integer(456));
+            black_box(map);
+        })
+    });
+
+    // Benchmark full deserialize_row
+    c.bench_function("deserialize_row_full", |b| {
+        b.iter(|| {
+            let _result = storage_format
+                .deserialize_row(black_box(&serialized_data), black_box(&test_schema))
+                .unwrap();
+        })
+    });
+
+    // Benchmark deserialize_columns (should be faster)
+    let column_names = vec!["id".to_string(), "value".to_string()];
+    c.bench_function("deserialize_columns_partial", |b| {
+        b.iter(|| {
+            let _result = storage_format
+                .deserialize_columns(black_box(&serialized_data), black_box(&test_schema), black_box(&column_names))
+                .unwrap();
+        })
+    });
+
     // Benchmark complete query execution pipeline
     c.bench_function("complete query pipeline", |b| {
         b.iter(|| {

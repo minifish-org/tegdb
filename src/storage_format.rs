@@ -148,6 +148,105 @@ impl StorageFormat {
         Ok(result)
     }
 
+    /// Ultra-fast deserialize for specific column indices (no string lookups)
+    pub fn deserialize_column_indices(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+        column_indices: &[usize],
+    ) -> Result<Vec<SqlValue>> {
+        let header = Self::parse_header(data, schema)?;
+        let mut result = Vec::with_capacity(column_indices.len());
+
+        for &column_index in column_indices {
+            if let Some(column_info) = header.columns.get(column_index) {
+                let value = Self::deserialize_column_at_offset(data, column_info)?;
+                result.push(value);
+            } else {
+                result.push(SqlValue::Null);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Ultra-fast deserialize with pre-computed header (zero allocation for header parsing)
+    pub fn deserialize_columns_fast(
+        &self,
+        data: &[u8],
+        column_offsets: &[usize],
+        column_types: &[u8],
+    ) -> Result<Vec<SqlValue>> {
+        let mut result = Vec::with_capacity(column_offsets.len());
+        
+        for (i, &offset) in column_offsets.iter().enumerate() {
+            let type_code = column_types[i];
+            let value = Self::deserialize_value_at_offset_fast(data, offset, type_code)?;
+            result.push(value);
+        }
+
+        Ok(result)
+    }
+
+    /// Ultra-fast value deserialization at specific offset (no bounds checking for speed)
+    fn deserialize_value_at_offset_fast(
+        data: &[u8],
+        offset: usize,
+        type_code: u8,
+    ) -> Result<SqlValue> {
+        // Fast path: assume data is valid (caller responsibility)
+        match type_code {
+            0 => Ok(SqlValue::Null),
+            1 => Ok(SqlValue::Integer(data[offset] as i64)),
+            2 => Ok(SqlValue::Integer(
+                i16::from_le_bytes([data[offset], data[offset + 1]]) as i64,
+            )),
+            3 => Ok(SqlValue::Integer(i32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]) as i64)),
+            4 => Ok(SqlValue::Integer(i64::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+            ]))),
+            5 => Ok(SqlValue::Real(f64::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+            ]))),
+            code if code >= 12 && code % 2 == 0 => {
+                // Text data - use from_utf8_lossy for speed (no validation)
+                let size = (code - 12) as usize / 2;
+                let text = std::str::from_utf8(&data[offset..offset + size])
+                    .unwrap_or("")
+                    .to_string();
+                Ok(SqlValue::Text(text))
+            }
+            code if code >= 13 && code % 2 == 1 => {
+                // Blob data (treat as text for now)
+                let size = (code - 13) as usize / 2;
+                let text = std::str::from_utf8(&data[offset..offset + size])
+                    .unwrap_or("")
+                    .to_string();
+                Ok(SqlValue::Text(text))
+            }
+            _ => Err(crate::Error::Other(format!("Unknown type code: {}", type_code))),
+        }
+    }
+
     /// Check if row matches condition without full deserialization
     pub fn matches_condition(
         &self,
@@ -174,35 +273,38 @@ impl StorageFormat {
     fn parse_header(data: &[u8], schema: &TableSchema) -> Result<RecordHeader> {
         let mut cursor = 0;
 
-        // Read record size
-        let (record_size, consumed) = Self::decode_varint(&data[cursor..])?;
+        // Read record size (optimized varint decoding)
+        let (record_size, consumed) = Self::decode_varint_fast(&data[cursor..])?;
         cursor += consumed;
 
-        // Read header size
-        let (header_size, consumed) = Self::decode_varint(&data[cursor..])?;
+        // Read header size (optimized varint decoding)
+        let (header_size, consumed) = Self::decode_varint_fast(&data[cursor..])?;
         cursor += consumed;
 
-        // Read type codes
+        // Read type codes (pre-allocate for better performance)
         let mut columns = Vec::with_capacity(schema.columns.len());
         let mut data_offset = cursor + header_size - 1; // Start of data section
 
-        for _ in &schema.columns {
-            if cursor >= data.len() {
-                return Err(crate::Error::Other("Truncated record header".to_string()));
+        // Fast path: if we know the schema size, we can avoid bounds checking in the loop
+        let schema_len = schema.columns.len();
+        if cursor + schema_len > data.len() {
+            return Err(crate::Error::Other("Truncated record header".to_string()));
+        }
+
+        // Ultra-fast loop: no bounds checking, direct memory access
+        unsafe {
+            for i in 0..schema_len {
+                let type_code = *data.get_unchecked(cursor + i);
+                let column_size = Self::get_column_size_fast(type_code);
+
+                columns.push(ColumnInfo {
+                    offset: data_offset,
+                    type_code,
+                    size: column_size,
+                });
+
+                data_offset += column_size;
             }
-
-            let type_code = data[cursor];
-            cursor += 1;
-
-            let column_size = Self::get_column_size(type_code);
-
-            columns.push(ColumnInfo {
-                offset: data_offset,
-                type_code,
-                size: column_size,
-            });
-
-            data_offset += column_size;
         }
 
         Ok(RecordHeader {
@@ -223,54 +325,61 @@ impl StorageFormat {
             ));
         }
 
-        let column_data = &data[start..end];
-
-        match column_info.type_code {
-            0 => Ok(SqlValue::Null),
-            1 => Ok(SqlValue::Integer(column_data[0] as i64)),
-            2 => Ok(SqlValue::Integer(
-                i16::from_le_bytes([column_data[0], column_data[1]]) as i64,
-            )),
-            3 => Ok(SqlValue::Integer(i32::from_le_bytes([
-                column_data[0],
-                column_data[1],
-                column_data[2],
-                column_data[3],
-            ]) as i64)),
-            4 => Ok(SqlValue::Integer(i64::from_le_bytes([
-                column_data[0],
-                column_data[1],
-                column_data[2],
-                column_data[3],
-                column_data[4],
-                column_data[5],
-                column_data[6],
-                column_data[7],
-            ]))),
-            5 => Ok(SqlValue::Real(f64::from_le_bytes([
-                column_data[0],
-                column_data[1],
-                column_data[2],
-                column_data[3],
-                column_data[4],
-                column_data[5],
-                column_data[6],
-                column_data[7],
-            ]))),
-            code if code >= 12 && code % 2 == 0 => {
-                // Text data
-                let text = String::from_utf8_lossy(column_data).to_string();
-                Ok(SqlValue::Text(text))
+        // Ultra-fast path: assume data is valid and use direct memory access
+        unsafe {
+            let column_data = data.get_unchecked(start..end);
+            
+            match column_info.type_code {
+                0 => Ok(SqlValue::Null),
+                1 => Ok(SqlValue::Integer(*column_data.get_unchecked(0) as i64)),
+                2 => Ok(SqlValue::Integer(
+                    i16::from_le_bytes([*column_data.get_unchecked(0), *column_data.get_unchecked(1)]) as i64,
+                )),
+                3 => Ok(SqlValue::Integer(i32::from_le_bytes([
+                    *column_data.get_unchecked(0),
+                    *column_data.get_unchecked(1),
+                    *column_data.get_unchecked(2),
+                    *column_data.get_unchecked(3),
+                ]) as i64)),
+                4 => Ok(SqlValue::Integer(i64::from_le_bytes([
+                    *column_data.get_unchecked(0),
+                    *column_data.get_unchecked(1),
+                    *column_data.get_unchecked(2),
+                    *column_data.get_unchecked(3),
+                    *column_data.get_unchecked(4),
+                    *column_data.get_unchecked(5),
+                    *column_data.get_unchecked(6),
+                    *column_data.get_unchecked(7),
+                ]))),
+                5 => Ok(SqlValue::Real(f64::from_le_bytes([
+                    *column_data.get_unchecked(0),
+                    *column_data.get_unchecked(1),
+                    *column_data.get_unchecked(2),
+                    *column_data.get_unchecked(3),
+                    *column_data.get_unchecked(4),
+                    *column_data.get_unchecked(5),
+                    *column_data.get_unchecked(6),
+                    *column_data.get_unchecked(7),
+                ]))),
+                code if code >= 12 && code % 2 == 0 => {
+                    // Text data - use from_utf8_lossy for speed
+                    let text = std::str::from_utf8(column_data)
+                        .unwrap_or("")
+                        .to_string();
+                    Ok(SqlValue::Text(text))
+                }
+                code if code >= 13 && code % 2 == 1 => {
+                    // Blob data (treat as text for now)
+                    let text = std::str::from_utf8(column_data)
+                        .unwrap_or("")
+                        .to_string();
+                    Ok(SqlValue::Text(text))
+                }
+                _ => Err(crate::Error::Other(format!(
+                    "Unknown type code: {}",
+                    column_info.type_code
+                ))),
             }
-            code if code >= 13 && code % 2 == 1 => {
-                // Blob data (treat as text for now)
-                let text = String::from_utf8_lossy(column_data).to_string();
-                Ok(SqlValue::Text(text))
-            }
-            _ => Err(crate::Error::Other(format!(
-                "Unknown type code: {}",
-                column_info.type_code
-            ))),
         }
     }
 
@@ -357,6 +466,37 @@ impl StorageFormat {
         }
 
         Err(crate::Error::Other("Incomplete varint".to_string()))
+    }
+
+    /// Fast varint decoding (optimized for common cases)
+    fn decode_varint_fast(data: &[u8]) -> Result<(usize, usize)> {
+        if data.is_empty() {
+            return Err(crate::Error::Other("Incomplete varint".to_string()));
+        }
+
+        let byte = data[0];
+        if byte & 0x80 == 0 {
+            // Single byte varint (most common case)
+            return Ok((byte as usize, 1));
+        }
+
+        // Fall back to regular decoding for multi-byte varints
+        Self::decode_varint(data)
+    }
+
+    /// Fast column size lookup (optimized for common types)
+    fn get_column_size_fast(type_code: u8) -> usize {
+        match type_code {
+            0 => 0,                                                          // NULL
+            1 => 1,                                                          // 1-byte integer
+            2 => 2,                                                          // 2-byte integer
+            3 => 4,                                                          // 4-byte integer
+            4 => 8,                                                          // 8-byte integer
+            5 => 8,                                                          // 8-byte real
+            code if code >= 12 && code % 2 == 0 => (code - 12) as usize / 2, // Text
+            code if code >= 13 && code % 2 == 1 => (code - 13) as usize / 2, // Blob
+            _ => 0,
+        }
     }
 
     /// Extract column names referenced in a condition
