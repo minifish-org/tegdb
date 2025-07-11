@@ -118,7 +118,7 @@ impl Catalog {
     /// This provides a centralized schema serialization format
     pub fn serialize_schema_to_bytes(schema: &TableSchema) -> Vec<u8> {
         let mut schema_data = Vec::new();
-        
+
         for (i, col) in schema.columns.iter().enumerate() {
             if i > 0 {
                 schema_data.push(b'|');
@@ -143,13 +143,13 @@ impl Catalog {
                 }
             }
         }
-        
+
         schema_data
     }
 
     /// Get schema storage key for a table
     pub fn get_schema_storage_key(table_name: &str) -> String {
-        format!("{}{}", SCHEMA_KEY_PREFIX, table_name)
+        format!("{SCHEMA_KEY_PREFIX}{table_name}")
     }
 }
 
@@ -162,8 +162,8 @@ impl Default for Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{ColumnConstraint, DataType};
     use crate::executor::{ColumnInfo, TableSchema};
+    use crate::parser::{ColumnConstraint, DataType};
 
     #[test]
     fn test_catalog_basic_operations() {
@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(retrieved.columns.len(), 2);
 
         // Test schema serialization
-        let serialized = Catalog::serialize_schema_to_bytes(&retrieved);
+        let serialized = Catalog::serialize_schema_to_bytes(retrieved);
         assert!(!serialized.is_empty());
 
         // Test storage key generation

@@ -2,7 +2,6 @@
 use std::ops::Range;
 use std::path::PathBuf;
 
-
 use crate::error::{Error, Result};
 use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
@@ -146,8 +145,8 @@ impl StorageEngine {
         let iter = self
             .key_map
             .range(range)
-                    // clone key Vec (small) and clone Rc (cheap refcount increment)
-        .map(|(key, value)| (key.clone(), Rc::clone(value)));
+            // clone key Vec (small) and clone Rc (cheap refcount increment)
+            .map(|(key, value)| (key.clone(), Rc::clone(value)));
         Ok(Box::new(iter))
     }
 
@@ -215,7 +214,7 @@ impl Drop for StorageEngine {
 /// Undo log entry for rollback
 struct UndoEntry {
     key: Vec<u8>,
-            old_value: Option<Rc<[u8]>>, // None means key didn't exist
+    old_value: Option<Rc<[u8]>>, // None means key didn't exist
 }
 
 /// Write-through transactional context for ACID operations

@@ -29,9 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Collecting All Results (if needed) ===");
 
     // If you need all results at once, you can use rows()
-    let qr_all = db
-        .query("SELECT name, age FROM users")
-        .unwrap();
+    let qr_all = db.query("SELECT name, age FROM users").unwrap();
     let all_rows = qr_all.rows().to_vec();
 
     println!("All rows collected: {all_rows:?}");

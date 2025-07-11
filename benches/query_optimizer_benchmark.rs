@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::hint::black_box;
 use std::fs;
+use std::hint::black_box;
 use tegdb::{Database, Result};
 
 fn setup_test_database() -> Result<Database> {

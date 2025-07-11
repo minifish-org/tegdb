@@ -393,8 +393,6 @@ fn test_schema_operations_performance() -> Result<()> {
         table_count,
     ));
 
-
-
     // Test schema introspection
     let start = Instant::now();
     let schemas = db.get_table_schemas();

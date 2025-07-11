@@ -1,5 +1,5 @@
-use crate::parser::SqlValue;
 use crate::executor::TableSchema;
+use crate::parser::SqlValue;
 use crate::Result;
 use std::collections::HashMap;
 
@@ -440,8 +440,8 @@ pub fn evaluate_condition_on_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{DataType, SqlValue};
     use crate::executor::{ColumnInfo, TableSchema};
+    use crate::parser::{DataType, SqlValue};
     use std::collections::HashMap;
 
     fn create_test_schema() -> TableSchema {

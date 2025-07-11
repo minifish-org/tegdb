@@ -50,9 +50,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
                 db.execute("INSERT INTO users (id, name, age) VALUES (3, 'Charlie', 35)")?;
 
                 // 2. Query the data (including old and new data)
-                let result = db
-                    .query("SELECT name, age FROM users")
-                    .unwrap();
+                let result = db.query("SELECT name, age FROM users").unwrap();
                 assert_eq!(result.rows().len(), 3);
 
                 // Verify we have the correct columns

@@ -52,9 +52,7 @@ fn main() -> tegdb::Result<()> {
 
     // 6. Final query
     println!("6. Final results...");
-    let final_results = db
-        .query("SELECT name, score FROM users")
-        .unwrap();
+    let final_results = db.query("SELECT name, score FROM users").unwrap();
 
     println!("   All users:");
     for row in final_results.rows() {

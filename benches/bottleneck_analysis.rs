@@ -2,8 +2,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
 use std::hint::black_box;
+use std::path::PathBuf;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {

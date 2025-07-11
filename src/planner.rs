@@ -1,14 +1,14 @@
 //! Query planner and optimizer for TegDB
 //!
-//! This module provides a simple rule-based query planner that takes parsed SQL statements 
-//! and generates optimized execution plans. The planner focuses on fast, predictable 
+//! This module provides a simple rule-based query planner that takes parsed SQL statements
+//! and generates optimized execution plans. The planner focuses on fast, predictable
 //! optimizations without complex cost estimation.
 
-use crate::parser::{
-    SqlValue, Condition, Statement, SelectStatement, InsertStatement, UpdateStatement,
-    DeleteStatement, CreateTableStatement, DropTableStatement, ComparisonOperator,
-};
 use crate::executor::{ColumnInfo, TableSchema};
+use crate::parser::{
+    ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
+    InsertStatement, SelectStatement, SqlValue, Statement, UpdateStatement,
+};
 use crate::Result;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -171,9 +171,14 @@ impl QueryPlanner {
     }
 
     /// Try to create a primary key range scan plan
-    fn try_primary_key_range_scan(&self, select: &SelectStatement) -> Result<Option<ExecutionPlan>> {
+    fn try_primary_key_range_scan(
+        &self,
+        select: &SelectStatement,
+    ) -> Result<Option<ExecutionPlan>> {
         if let Some(ref where_clause) = select.where_clause {
-            if let Some(pk_range) = self.extract_pk_range_conditions(&select.table, &where_clause.condition)? {
+            if let Some(pk_range) =
+                self.extract_pk_range_conditions(&select.table, &where_clause.condition)?
+            {
                 let additional_filter =
                     self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
                 let selected_columns =
@@ -257,7 +262,9 @@ impl QueryPlanner {
                     }
                 } else {
                     // Try range scan
-                    if let Some(pk_range) = self.extract_pk_range_conditions(&update.table, &where_clause.condition)? {
+                    if let Some(pk_range) =
+                        self.extract_pk_range_conditions(&update.table, &where_clause.condition)?
+                    {
                         ExecutionPlan::TableRangeScan {
                             table: update.table.clone(),
                             selected_columns: all_columns.clone(),
@@ -276,7 +283,9 @@ impl QueryPlanner {
                 }
             } else {
                 // Try range scan
-                if let Some(pk_range) = self.extract_pk_range_conditions(&update.table, &where_clause.condition)? {
+                if let Some(pk_range) =
+                    self.extract_pk_range_conditions(&update.table, &where_clause.condition)?
+                {
                     ExecutionPlan::TableRangeScan {
                         table: update.table.clone(),
                         selected_columns: all_columns.clone(),
@@ -331,7 +340,9 @@ impl QueryPlanner {
                     }
                 } else {
                     // Try range scan
-                    if let Some(pk_range) = self.extract_pk_range_conditions(&delete.table, &where_clause.condition)? {
+                    if let Some(pk_range) =
+                        self.extract_pk_range_conditions(&delete.table, &where_clause.condition)?
+                    {
                         ExecutionPlan::TableRangeScan {
                             table: delete.table.clone(),
                             selected_columns: all_columns.clone(),
@@ -350,7 +361,9 @@ impl QueryPlanner {
                 }
             } else {
                 // Try range scan
-                if let Some(pk_range) = self.extract_pk_range_conditions(&delete.table, &where_clause.condition)? {
+                if let Some(pk_range) =
+                    self.extract_pk_range_conditions(&delete.table, &where_clause.condition)?
+                {
                     ExecutionPlan::TableRangeScan {
                         table: delete.table.clone(),
                         selected_columns: all_columns.clone(),
@@ -438,11 +451,11 @@ impl QueryPlanner {
         condition: &Condition,
     ) -> Result<Option<PkRange>> {
         let pk_columns = self.get_primary_key_columns(table_name)?;
-        
+
         // Check if we have any PK conditions (but not all for exact lookup)
         let mut pk_conditions = HashMap::new();
         Self::collect_pk_range_values(condition, &pk_columns, &mut pk_conditions);
-        
+
         if pk_conditions.is_empty() {
             return Ok(None);
         }
@@ -492,7 +505,10 @@ impl QueryPlanner {
         }
 
         if start_bound.is_some() || end_bound.is_some() {
-            Ok(Some(PkRange { start_bound, end_bound }))
+            Ok(Some(PkRange {
+                start_bound,
+                end_bound,
+            }))
         } else {
             Ok(None)
         }
@@ -541,7 +557,7 @@ impl QueryPlanner {
                 if pk_columns.contains(left) {
                     pk_conditions
                         .entry(left.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push((operator.clone(), right.clone()));
                 }
             }
@@ -707,12 +723,14 @@ impl ExecutionPlan {
                 table, pk_range, ..
             } => {
                 let range_desc = match (&pk_range.start_bound, &pk_range.end_bound) {
-                    (Some(start), Some(end)) => format!("range: {:?} to {:?}", start.values, end.values),
+                    (Some(start), Some(end)) => {
+                        format!("range: {:?} to {:?}", start.values, end.values)
+                    }
                     (Some(start), None) => format!("range: >= {:?}", start.values),
                     (None, Some(end)) => format!("range: <= {:?}", end.values),
                     (None, None) => "range: all".to_string(),
                 };
-                format!("Table Range Scan on {} ({})", table, range_desc)
+                format!("Table Range Scan on {table} ({range_desc})")
             }
             ExecutionPlan::TableScan { table, .. } => {
                 format!("Table Scan on {table}")
@@ -746,8 +764,8 @@ impl ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement, WhereClause};
     use crate::executor::{ColumnInfo, TableSchema};
+    use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement, WhereClause};
     use std::collections::HashMap;
     use std::rc::Rc;
 
@@ -873,11 +891,7 @@ mod tests {
         let plan = planner.plan(Statement::Select(select)).unwrap();
 
         match plan {
-            ExecutionPlan::TableScan {
-                table,
-                limit,
-                ..
-            } => {
+            ExecutionPlan::TableScan { table, limit, .. } => {
                 assert_eq!(table, "users");
                 assert_eq!(limit, Some(10));
             }

@@ -78,17 +78,15 @@ pub use error::{Error, Result};
 #[cfg(feature = "dev")]
 pub use catalog::Catalog;
 #[cfg(feature = "dev")]
+pub use executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+#[cfg(feature = "dev")]
 pub use parser::{
     parse_sql, Assignment, ColumnConstraint, ColumnDefinition, ComparisonOperator, Condition,
     CreateTableStatement, DataType, DeleteStatement, DropTableStatement, InsertStatement,
     SelectStatement, Statement, UpdateStatement, WhereClause,
 };
 #[cfg(feature = "dev")]
-pub use planner::{
-    ExecutionPlan, QueryPlanner,
-};
-#[cfg(feature = "dev")]
-pub use executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+pub use planner::{ExecutionPlan, QueryPlanner};
 #[cfg(feature = "dev")]
 pub use storage_engine::{EngineConfig, StorageEngine, Transaction};
 #[cfg(feature = "dev")]
@@ -101,9 +99,9 @@ pub use parser::SqlValue;
 #[cfg(feature = "dev")]
 pub mod low_level {
     pub use crate::catalog::Catalog;
+    pub use crate::executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
     pub use crate::parser::{parse_sql, SqlValue, Statement};
     pub use crate::planner::{ExecutionPlan, QueryPlanner};
-    pub use crate::executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
     pub use crate::storage_engine::{
         EngineConfig, StorageEngine, Transaction as EngineTransaction,
     };

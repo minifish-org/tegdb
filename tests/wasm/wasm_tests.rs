@@ -136,9 +136,7 @@ fn test_wasm_transactions() -> Result<()> {
         assert_eq!(affected2, 1);
 
         // Verify changes within transaction
-        let result = tx
-            .query("SELECT id, balance FROM accounts")
-            .unwrap();
+        let result = tx.query("SELECT id, balance FROM accounts").unwrap();
         assert_eq!(result.rows().len(), 2);
 
         // Commit transaction
@@ -146,9 +144,7 @@ fn test_wasm_transactions() -> Result<()> {
     }
 
     // Verify changes persisted after transaction commit
-    let result = db
-        .query("SELECT id, balance FROM accounts")
-        .unwrap();
+    let result = db.query("SELECT id, balance FROM accounts").unwrap();
     let row1 = &result.rows()[0];
     let row2 = &result.rows()[1];
     assert_eq!(row1[1], SqlValue::Integer(800));

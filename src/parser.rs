@@ -21,7 +21,8 @@ fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
     let (input, identifier) = recognize(pair(
         alt((alpha1, tag("_"))),
         many0(alt((alphanumeric1, tag("_")))),
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     Ok((input, identifier.to_string()))
 }
@@ -37,18 +38,21 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
     let (input, columns) = separated_list1(
         delimited(multispace0, char(','), multispace0),
         parse_identifier_optimized,
-    ).parse(input)?;
+    )
+    .parse(input)?;
     Ok((input, columns))
 }
 
 // Safe integer parsing with error handling
 fn parse_u64_safe(s: &str) -> Result<u64, String> {
-    s.parse::<u64>().map_err(|e| format!("Invalid integer: {}", e))
+    s.parse::<u64>()
+        .map_err(|e| format!("Invalid integer: {e}"))
 }
 
 // Safe float parsing with error handling
 fn parse_f64_safe(s: &str) -> Result<f64, String> {
-    s.parse::<f64>().map_err(|e| format!("Invalid float: {}", e))
+    s.parse::<f64>()
+        .map_err(|e| format!("Invalid float: {e}"))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -306,19 +310,19 @@ pub enum ArithmeticOperator {
 pub fn parse_sql(input: &str) -> Result<Statement, String> {
     let (remaining, statement) = parse_statement
         .parse(input)
-        .map_err(|e| format!("Parse error: {:?}", e))?;
-    
+        .map_err(|e| format!("Parse error: {e:?}"))?;
+
     if !remaining.trim().is_empty() {
-        return Err(format!("Unexpected input after statement: '{}'", remaining));
+        return Err(format!("Unexpected input after statement: '{remaining}'"));
     }
-    
+
     Ok(statement)
 }
 
 /// Parse a single SQL statement
 fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
-    
+
     alt((
         parse_create_table,
         parse_insert,
@@ -329,43 +333,42 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
         parse_begin_transaction,
         parse_commit,
         parse_rollback,
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 /// Parse CREATE TABLE statement
 fn parse_create_table(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("CREATE"),
-        multispace1,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("CREATE"), multispace1).parse(input)?;
+
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-    
+
     // Try to parse optional "IF EXISTS"
     let (input, _if_exists) = opt((
         tag_no_case("IF"),
         multispace1,
         tag_no_case("EXISTS"),
         multispace1,
-    )).parse(input)?;
-    
+    ))
+    .parse(input)?;
+
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('(').parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     let (input, columns) = separated_list1(
         delimited(multispace0, char(','), multispace0),
         parse_column_definition,
-    ).parse(input)?;
-    
+    )
+    .parse(input)?;
+
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char(')').parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
-    
+
     Ok((
         input,
         Statement::CreateTable(CreateTableStatement {
@@ -377,11 +380,7 @@ fn parse_create_table(input: &str) -> IResult<&str, Statement> {
 
 /// Parse INSERT statement
 fn parse_insert(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("INSERT"),
-        multispace1,
-    ).parse(input)?;
+    let (input, _) = delimited(multispace0, tag_no_case("INSERT"), multispace1).parse(input)?;
     let (input, _) = tag_no_case("INTO").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
@@ -391,7 +390,8 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     let (input, columns) = separated_list1(
         delimited(multispace0, char(','), multispace0),
         parse_identifier_optimized,
-    ).parse(input)?;
+    )
+    .parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char(')').parse(input)?;
     let (input, _) = multispace1.parse(input)?;
@@ -408,7 +408,8 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
             ),
             char(')'),
         ),
-    ).parse(input)?;
+    )
+    .parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
     Ok((
@@ -423,38 +424,39 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
 
 /// Parse SELECT statement
 fn parse_select(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("SELECT"),
-        multispace1,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("SELECT"), multispace1).parse(input)?;
+
     let (input, columns) = parse_column_list_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-    
+
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
-    
+
     // Parse optional WHERE clause
     let (input, where_clause) = opt(preceded(
         delimited(multispace0, tag_no_case("WHERE"), multispace1),
         parse_where_clause,
-    )).parse(input)?;
-    
+    ))
+    .parse(input)?;
+
     // Remove ORDER BY clause parsing
     // Parse optional LIMIT clause
     let (input, limit) = opt(preceded(
         delimited(multispace0, tag_no_case("LIMIT"), multispace1),
         parse_limit,
-    )).parse(input)?;
+    ))
+    .parse(input)?;
     // Accept any trailing whitespace and optional semicolon after LIMIT
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     // Accept end of input
     if !input.trim().is_empty() {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Eof)));
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Eof,
+        )));
     }
     Ok((
         input,
@@ -469,31 +471,29 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
 
 /// Parse UPDATE statement
 fn parse_update(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("UPDATE"),
-        multispace1,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("UPDATE"), multispace1).parse(input)?;
+
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, _) = tag_no_case("SET").parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     let (input, assignments) = separated_list1(
         delimited(multispace0, char(','), multispace0),
         parse_assignment,
-    ).parse(input)?;
-    
+    )
+    .parse(input)?;
+
     // Parse optional WHERE clause
     let (input, where_clause) = opt(preceded(
         delimited(multispace0, tag_no_case("WHERE"), multispace1),
         parse_where_clause,
-    )).parse(input)?;
-    
+    ))
+    .parse(input)?;
+
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
-    
+
     Ok((
         input,
         Statement::Update(UpdateStatement {
@@ -506,26 +506,23 @@ fn parse_update(input: &str) -> IResult<&str, Statement> {
 
 /// Parse DELETE statement
 fn parse_delete(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("DELETE"),
-        multispace1,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("DELETE"), multispace1).parse(input)?;
+
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-    
+
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
-    
+
     // Parse optional WHERE clause
     let (input, where_clause) = opt(preceded(
         delimited(multispace0, tag_no_case("WHERE"), multispace1),
         parse_where_clause,
-    )).parse(input)?;
-    
+    ))
+    .parse(input)?;
+
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
-    
+
     Ok((
         input,
         Statement::Delete(DeleteStatement {
@@ -537,27 +534,24 @@ fn parse_delete(input: &str) -> IResult<&str, Statement> {
 
 /// Parse DROP TABLE statement
 fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("DROP"),
-        multispace1,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("DROP"), multispace1).parse(input)?;
+
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-    
+
     // Try to parse optional "IF EXISTS"
     let (input, if_exists) = opt((
         tag_no_case("IF"),
         multispace1,
         tag_no_case("EXISTS"),
         multispace1,
-    )).parse(input)?;
-    
+    ))
+    .parse(input)?;
+
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
-    
+
     Ok((
         input,
         Statement::DropTable(DropTableStatement {
@@ -571,17 +565,17 @@ fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
 fn parse_begin_transaction(input: &str) -> IResult<&str, Statement> {
     alt((
         map(
-            delimited(
-                multispace0,
-                tag_no_case("BEGIN"),
-                multispace0,
-            ),
+            delimited(multispace0, tag_no_case("BEGIN"), multispace0),
             |_| Statement::Begin,
         ),
         map(
             delimited(
                 multispace0,
-                (tag_no_case("START"), multispace1, tag_no_case("TRANSACTION")),
+                (
+                    tag_no_case("START"),
+                    multispace1,
+                    tag_no_case("TRANSACTION"),
+                ),
                 multispace0,
             ),
             |_| Statement::Begin,
@@ -592,27 +586,19 @@ fn parse_begin_transaction(input: &str) -> IResult<&str, Statement> {
 
 /// Parse COMMIT statement
 fn parse_commit(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("COMMIT"),
-        multispace0,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("COMMIT"), multispace0).parse(input)?;
+
     let (input, _) = opt(char(';')).parse(input)?;
-    
+
     Ok((input, Statement::Commit))
 }
 
 /// Parse ROLLBACK statement
 fn parse_rollback(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(
-        multispace0,
-        tag_no_case("ROLLBACK"),
-        multispace0,
-    ).parse(input)?;
-    
+    let (input, _) = delimited(multispace0, tag_no_case("ROLLBACK"), multispace0).parse(input)?;
+
     let (input, _) = opt(char(';')).parse(input)?;
-    
+
     Ok((input, Statement::Rollback))
 }
 
@@ -633,7 +619,8 @@ fn parse_or_condition(input: &str) -> IResult<&str, Condition> {
     let (input, rights) = many0(preceded(
         delimited(multispace1, tag_no_case("OR"), multispace1),
         parse_and_condition,
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     Ok((
         input,
@@ -648,7 +635,8 @@ fn parse_and_condition(input: &str) -> IResult<&str, Condition> {
     let (input, rights) = many0(preceded(
         delimited(multispace1, tag_no_case("AND"), multispace1),
         parse_primary_condition,
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     Ok((
         input,
@@ -668,7 +656,8 @@ fn parse_primary_condition(input: &str) -> IResult<&str, Condition> {
         ),
         // Simple comparisons
         parse_comparison,
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 fn parse_comparison(input: &str) -> IResult<&str, Condition> {
@@ -681,9 +670,13 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     // Convert expressions to string representation for compatibility
     let left_str = match &left {
         Expression::Column(name) => name.clone(),
-        Expression::Value(val) => format!("{:?}", val),
-        Expression::BinaryOp { left, operator, right } => {
-            format!("{:?} {:?} {:?}", left, operator, right)
+        Expression::Value(val) => format!("{val:?}"),
+        Expression::BinaryOp {
+            left,
+            operator,
+            right,
+        } => {
+            format!("{left:?} {operator:?} {right:?}")
         }
     };
 
@@ -691,9 +684,13 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     let right_value = match &right {
         Expression::Value(val) => val.clone(),
         Expression::Column(name) => SqlValue::Text(name.clone()),
-        Expression::BinaryOp { left, operator, right } => {
+        Expression::BinaryOp {
+            left,
+            operator,
+            right,
+        } => {
             // For complex expressions, create a string representation
-            SqlValue::Text(format!("{:?} {:?} {:?}", left, operator, right))
+            SqlValue::Text(format!("{left:?} {operator:?} {right:?}"))
         }
     };
 
@@ -722,7 +719,8 @@ fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
         map(tag("<"), |_| ComparisonOperator::LessThan),
         map(tag(">"), |_| ComparisonOperator::GreaterThan),
         map(tag("%"), |_| ComparisonOperator::Modulo),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // Remove parse_order_by and parse_order_by_column
@@ -752,7 +750,8 @@ fn parse_column_definition(input: &str) -> IResult<&str, ColumnDefinition> {
     let (input, name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, data_type) = parse_data_type.parse(input)?;
-    let (input, constraints) = many0(preceded(multispace1, parse_column_constraint)).parse(input)?;
+    let (input, constraints) =
+        many0(preceded(multispace1, parse_column_constraint)).parse(input)?;
 
     Ok((
         input,
@@ -774,7 +773,8 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
         map(tag_no_case("REAL"), |_| DataType::Real),
         map(tag_no_case("FLOAT"), |_| DataType::Real),
         map(tag_no_case("BLOB"), |_| DataType::Blob),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // Parse column constraints
@@ -789,7 +789,8 @@ fn parse_column_constraint(input: &str) -> IResult<&str, ColumnConstraint> {
             |_| ColumnConstraint::NotNull,
         ),
         map(tag_no_case("UNIQUE"), |_| ColumnConstraint::Unique),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // Parse SQL values
@@ -799,7 +800,8 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
         map(parse_string_literal, SqlValue::Text),
         map(parse_real, SqlValue::Real),
         map(parse_integer, SqlValue::Integer),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // Parse string literal - simplified version
@@ -808,13 +810,14 @@ fn parse_string_literal(input: &str) -> IResult<&str, String> {
         char('\''),
         map(take_while1(|c| c != '\''), |s: &str| s.to_string()),
         char('\''),
-    ).parse(input)
+    )
+    .parse(input)
 }
 
 // Parse integer - optimized version with error handling
 fn parse_integer(input: &str) -> IResult<&str, i64> {
     let (input, int_str) = recognize(pair(opt(char('-')), digit1)).parse(input)?;
-    
+
     // Fast path for small positive integers
     if int_str.len() <= 3 && !int_str.starts_with('-') {
         let mut result = 0i64;
@@ -823,8 +826,9 @@ fn parse_integer(input: &str) -> IResult<&str, i64> {
         }
         Ok((input, result))
     } else {
-        let value = int_str.parse::<i64>()
-            .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+        let value = int_str.parse::<i64>().map_err(|_| {
+            nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
+        })?;
         Ok((input, value))
     }
 }
@@ -848,7 +852,8 @@ fn parse_additive_expression(input: &str) -> IResult<&str, Expression> {
     let (input, rights) = many0((
         delimited(multispace0, parse_additive_operator, multispace0),
         parse_multiplicative_expression,
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     Ok((
         input,
@@ -868,7 +873,8 @@ fn parse_multiplicative_expression(input: &str) -> IResult<&str, Expression> {
     let (input, rights) = many0((
         delimited(multispace0, parse_multiplicative_operator, multispace0),
         parse_primary_expression,
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     Ok((
         input,
@@ -895,7 +901,8 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
         map(parse_identifier_optimized, Expression::Column),
         // Literal values
         map(parse_sql_value, Expression::Value),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // Parse additive operators (+ and -)
@@ -903,7 +910,8 @@ fn parse_additive_operator(input: &str) -> IResult<&str, ArithmeticOperator> {
     alt((
         map(char('+'), |_| ArithmeticOperator::Add),
         map(char('-'), |_| ArithmeticOperator::Subtract),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // Parse multiplicative operators (* and /)
@@ -912,5 +920,6 @@ fn parse_multiplicative_operator(input: &str) -> IResult<&str, ArithmeticOperato
         map(char('*'), |_| ArithmeticOperator::Multiply),
         map(char('/'), |_| ArithmeticOperator::Divide),
         map(char('%'), |_| ArithmeticOperator::Modulo),
-    )).parse(input)
+    ))
+    .parse(input)
 }

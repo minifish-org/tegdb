@@ -48,9 +48,7 @@ fn main() -> Result<()> {
 
     // Query the data to verify IOT works correctly
     println!("\n3. Querying data (IOT reconstruction in action):");
-    let result = db
-        .query("SELECT * FROM orders")
-        .unwrap();
+    let result = db.query("SELECT * FROM orders").unwrap();
 
     println!("   Columns: {:?}", result.columns());
     for (i, row) in result.rows().iter().enumerate() {

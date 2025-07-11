@@ -55,8 +55,9 @@ impl SchemaValidationCache {
             valid_columns.insert(col.name.clone());
             column_indices.insert(col.name.clone(), idx);
 
-            if col.constraints.contains(&ColumnConstraint::NotNull) 
-                || col.constraints.contains(&ColumnConstraint::PrimaryKey) {
+            if col.constraints.contains(&ColumnConstraint::NotNull)
+                || col.constraints.contains(&ColumnConstraint::PrimaryKey)
+            {
                 required_columns.insert(col.name.clone());
             }
 
@@ -261,10 +262,9 @@ impl<'a> QueryProcessor<'a> {
 
         // Pre-build validation caches for all schemas
         for (table_name, schema) in table_schemas {
-            processor.validation_caches.insert(
-                table_name.clone(),
-                SchemaValidationCache::new(&schema),
-            );
+            processor
+                .validation_caches
+                .insert(table_name.clone(), SchemaValidationCache::new(&schema));
         }
 
         // Load additional schemas from storage and merge
@@ -282,10 +282,8 @@ impl<'a> QueryProcessor<'a> {
     fn get_validation_cache(&mut self, table_name: &str) -> Result<&SchemaValidationCache> {
         if !self.validation_caches.contains_key(table_name) {
             let schema = self.get_table_schema(table_name)?;
-            self.validation_caches.insert(
-                table_name.to_string(),
-                SchemaValidationCache::new(&schema),
-            );
+            self.validation_caches
+                .insert(table_name.to_string(), SchemaValidationCache::new(&schema));
         }
         Ok(self.validation_caches.get(table_name).unwrap())
     }
@@ -365,10 +363,8 @@ impl<'a> QueryProcessor<'a> {
         // Add to in-memory schemas and validation cache
         let schema_rc = Rc::new(schema.clone());
         self.table_schemas.insert(create.table.clone(), schema_rc);
-        self.validation_caches.insert(
-            create.table.clone(),
-            SchemaValidationCache::new(&schema),
-        );
+        self.validation_caches
+            .insert(create.table.clone(), SchemaValidationCache::new(&schema));
 
         Ok(ResultSet::CreateTable)
     }
@@ -453,9 +449,9 @@ impl<'a> QueryProcessor<'a> {
 
         match plan {
             // For SELECT operations, use streaming execution and collect results
-            ExecutionPlan::PrimaryKeyLookup { .. } | ExecutionPlan::TableRangeScan { .. } | ExecutionPlan::TableScan { .. } => {
-                self.execute_select_plan_streaming(plan)
-            }
+            ExecutionPlan::PrimaryKeyLookup { .. }
+            | ExecutionPlan::TableRangeScan { .. }
+            | ExecutionPlan::TableScan { .. } => self.execute_select_plan_streaming(plan),
             // Non-SELECT operations remain the same
             ExecutionPlan::Insert {
                 table,
@@ -534,10 +530,10 @@ impl<'a> QueryProcessor<'a> {
                 limit,
             } => {
                 let schema = self.get_table_schema(&table)?;
-                
+
                 // Build range scan keys based on PK range
                 let (start_key, end_key) = self.build_pk_range_keys(&table, &pk_range, &schema)?;
-                
+
                 // Create streaming iterator for range scan
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
@@ -682,7 +678,7 @@ impl<'a> QueryProcessor<'a> {
                             "Primary key constraint violation for table '{table}'"
                         )));
                     }
-                    
+
                     // Validate other constraints (NOT NULL, etc.) but skip primary key validation
                     // since we already handled it above
                     let cache = self.get_validation_cache(table)?;
@@ -709,21 +705,19 @@ impl<'a> QueryProcessor<'a> {
                         }
                         if !row_data.contains_key(column_name) {
                             return Err(Error::Other(format!(
-                                "Missing required column '{}' for table '{}'",
-                                column_name, table
+                                "Missing required column '{column_name}' for table '{table}'"
                             )));
                         }
                         if row_data.get(column_name) == Some(&SqlValue::Null) {
                             return Err(Error::Other(format!(
-                                "Column '{}' cannot be NULL",
-                                column_name
+                                "Column '{column_name}' cannot be NULL"
                             )));
                         }
                     }
 
                     // Serialize and store the updated row
                     let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
-                    
+
                     // If primary key changed, we need to delete the old row and insert the new one
                     if new_key != key {
                         self.transaction.delete(key.as_bytes())?;
@@ -928,7 +922,8 @@ impl<'a> QueryProcessor<'a> {
                     if let Ok(schema_data) = String::from_utf8(value_rc.to_vec()) {
                         if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
                         {
-                            self.table_schemas.insert(table_name.to_string(), Rc::new(schema.clone()));
+                            self.table_schemas
+                                .insert(table_name.to_string(), Rc::new(schema.clone()));
                             self.validation_caches.insert(
                                 table_name.to_string(),
                                 SchemaValidationCache::new(&schema),
@@ -976,14 +971,12 @@ impl<'a> QueryProcessor<'a> {
         for column_name in &required_columns {
             if !row_data.contains_key(column_name) {
                 return Err(Error::Other(format!(
-                    "Missing required column '{}' for table '{}'",
-                    column_name, table_name
+                    "Missing required column '{column_name}' for table '{table_name}'"
                 )));
             }
             if row_data.get(column_name) == Some(&SqlValue::Null) {
                 return Err(Error::Other(format!(
-                    "Column '{}' cannot be NULL",
-                    column_name
+                    "Column '{column_name}' cannot be NULL"
                 )));
             }
         }
@@ -1031,14 +1024,12 @@ impl<'a> QueryProcessor<'a> {
         for column_name in &required_columns {
             if !row_data.contains_key(column_name) {
                 return Err(Error::Other(format!(
-                    "Missing required column '{}' for table '{}'",
-                    column_name, table_name
+                    "Missing required column '{column_name}' for table '{table_name}'"
                 )));
             }
             if row_data.get(column_name) == Some(&SqlValue::Null) {
                 return Err(Error::Other(format!(
-                    "Column '{}' cannot be NULL",
-                    column_name
+                    "Column '{column_name}' cannot be NULL"
                 )));
             }
         }
@@ -1085,8 +1076,7 @@ impl<'a> QueryProcessor<'a> {
                 ));
             } else {
                 return Err(Error::Other(format!(
-                    "Missing primary key value for column '{}'",
-                    pk_column
+                    "Missing primary key value for column '{pk_column}'"
                 )));
             }
         }
@@ -1139,10 +1129,10 @@ impl<'a> QueryProcessor<'a> {
         schema: &TableSchema,
     ) -> Result<(Vec<u8>, Vec<u8>)> {
         let table_prefix = format!("{table}:");
-        
+
         // For now, we'll implement a simple range scan that works with single-column PKs
         // This can be enhanced later to support composite PKs
-        
+
         let pk_columns: Vec<_> = schema
             .columns
             .iter()
@@ -1156,7 +1146,7 @@ impl<'a> QueryProcessor<'a> {
         }
 
         let pk_column = &pk_columns[0].name;
-        
+
         // Build start key
         let start_key = if let Some(start_bound) = &pk_range.start_bound {
             if let Some(value) = start_bound.values.get(pk_column) {

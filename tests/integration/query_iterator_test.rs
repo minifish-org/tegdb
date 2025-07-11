@@ -74,9 +74,7 @@ fn test_query_iterator_streaming() {
         }
 
         // Test streaming iteration
-        let query = db
-            .query("SELECT * FROM streaming_test")
-            .unwrap();
+        let query = db.query("SELECT * FROM streaming_test").unwrap();
 
         let mut count = 0;
         let mut collected_rows = Vec::new();

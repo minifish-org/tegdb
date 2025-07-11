@@ -103,7 +103,9 @@ impl Database {
     }
 
     /// Helper function to get schemas in Rc format (no conversion needed)
-    fn get_schemas_rc(schemas: &HashMap<String, Rc<TableSchema>>) -> HashMap<String, Rc<TableSchema>> {
+    fn get_schemas_rc(
+        schemas: &HashMap<String, Rc<TableSchema>>,
+    ) -> HashMap<String, Rc<TableSchema>> {
         schemas
             .iter()
             .map(|(k, v)| (k.clone(), Rc::clone(v)))
@@ -156,7 +158,8 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let statement =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Only SELECT statements make sense for queries
         match &statement {
@@ -170,7 +173,8 @@ impl Database {
                 match result {
                     crate::executor::ResultSet::Select { columns, rows } => {
                         // Collect all rows from the iterator
-                        let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
+                        let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> =
+                            rows.collect();
                         let final_rows = collected_rows?;
                         Ok(QueryResult {
                             columns,
@@ -193,7 +197,8 @@ impl Database {
 
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let statement =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Use a single transaction for this operation
         let transaction = self.storage.begin_transaction();
@@ -251,7 +256,8 @@ impl Database {
         let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
 
         // Use centralized query execution helper
-        let result = Self::execute_query_with_processor(processor, sql, self.catalog.get_all_schemas())?;
+        let result =
+            Self::execute_query_with_processor(processor, sql, self.catalog.get_all_schemas())?;
 
         Ok(result)
     }
@@ -268,8 +274,6 @@ impl Database {
         })
     }
 
-
-
     /// Get a reference to all cached table schemas (no cloning)
     /// Use this when you only need to read schema information
     pub fn get_table_schemas_ref(&self) -> &HashMap<String, Rc<TableSchema>> {
@@ -280,7 +284,11 @@ impl Database {
     /// Useful for debugging or introspection
     /// Note: This clones the entire schema HashMap - use sparingly
     pub fn get_table_schemas(&self) -> HashMap<String, TableSchema> {
-        self.catalog.get_all_schemas().iter().map(|(k, v)| (k.clone(), (**v).clone())).collect()
+        self.catalog
+            .get_all_schemas()
+            .iter()
+            .map(|(k, v)| (k.clone(), (**v).clone()))
+            .collect()
     }
 }
 
@@ -340,7 +348,8 @@ pub struct DatabaseTransaction<'a> {
 impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let statement =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
 
         // Get schemas from shared catalog and convert to Rc
         let schemas = Database::get_schemas_rc(self.catalog.get_all_schemas());

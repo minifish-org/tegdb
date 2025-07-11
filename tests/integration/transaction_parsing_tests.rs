@@ -145,7 +145,7 @@ fn test_invalid_transaction_statements() {
     for sql in invalid_statements {
         let result = parse_sql(sql);
         // These should either fail to parse or parse as something else
-        if let Ok(_) = result {
+        if result.is_ok() {
             // If it parses, that's unexpected for invalid statements
             panic!("Unexpected successful parse for: {sql}");
         }
