@@ -85,7 +85,7 @@ pub use parser::{
 };
 #[cfg(feature = "dev")]
 pub use planner::{
-    ColumnStatistics, Cost, ExecutionPlan, PlannerConfig, QueryPlanner, TableStatistics,
+    ExecutionPlan, QueryPlanner,
 };
 #[cfg(feature = "dev")]
 pub use executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
@@ -102,7 +102,7 @@ pub use parser::SqlValue;
 pub mod low_level {
     pub use crate::catalog::Catalog;
     pub use crate::parser::{parse_sql, SqlValue, Statement};
-    pub use crate::planner::{ExecutionPlan, PlannerConfig, QueryPlanner};
+    pub use crate::planner::{ExecutionPlan, QueryPlanner};
     pub use crate::executor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
     pub use crate::storage_engine::{
         EngineConfig, StorageEngine, Transaction as EngineTransaction,

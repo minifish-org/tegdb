@@ -1,8 +1,8 @@
 //! Query planner and optimizer for TegDB
 //!
-//! This module provides a query planner that takes parsed SQL statements and generates
-//! optimized execution plans. The planner sits between the parser and executor,
-//! similar to PostgreSQL and SQLite architectures.
+//! This module provides a simple rule-based query planner that takes parsed SQL statements 
+//! and generates optimized execution plans. The planner focuses on fast, predictable 
+//! optimizations without complex cost estimation.
 
 use crate::parser::{
     SqlValue, Condition, Statement, SelectStatement, InsertStatement, UpdateStatement,
@@ -23,13 +23,12 @@ pub enum ExecutionPlan {
         selected_columns: Vec<String>,
         additional_filter: Option<Condition>,
     },
-    /// Full table scan with optimizations
+    /// Full table scan
     TableScan {
         table: String,
         selected_columns: Vec<String>,
         filter: Option<Condition>,
         limit: Option<u64>,
-        early_termination: bool,
     },
     /// Insert operation plan
     Insert {
@@ -63,14 +62,6 @@ pub enum ExecutionPlan {
     Rollback,
 }
 
-/// Index condition for index scans
-#[derive(Debug, Clone)]
-pub struct IndexCondition {
-    pub column: String,
-    pub operator: ComparisonOperator,
-    pub value: SqlValue,
-}
-
 /// Assignment for update operations
 #[derive(Debug, Clone)]
 pub struct Assignment {
@@ -86,113 +77,16 @@ pub enum ConflictResolution {
     Replace, // Replace existing rows
 }
 
-/// Cost estimation for different plan types
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct Cost {
-    pub io_cost: f64,     // Estimated I/O operations
-    pub cpu_cost: f64,    // Estimated CPU operations
-    pub memory_cost: f64, // Estimated memory usage
-}
-
-impl Cost {
-    pub fn new(io_cost: f64, cpu_cost: f64, memory_cost: f64) -> Self {
-        Self {
-            io_cost,
-            cpu_cost,
-            memory_cost,
-        }
-    }
-
-    pub fn total(&self) -> f64 {
-        self.io_cost + self.cpu_cost + self.memory_cost
-    }
-
-    pub fn zero() -> Self {
-        Self::new(0.0, 0.0, 0.0)
-    }
-}
-
-/// Query planner that generates optimized execution plans
+/// Simple rule-based query planner
 pub struct QueryPlanner {
     /// Table schemas for optimization decisions
     table_schemas: HashMap<String, Rc<TableSchema>>,
-    /// Table statistics for cost estimation
-    table_stats: HashMap<String, TableStatistics>,
-    /// Configuration for optimization decisions
-    config: PlannerConfig,
-}
-
-/// Statistics about tables for cost-based optimization
-#[derive(Debug, Clone)]
-pub struct TableStatistics {
-    pub row_count: u64,
-    pub avg_row_size: usize,
-    pub column_stats: HashMap<String, ColumnStatistics>,
-}
-
-/// Statistics about individual columns
-#[derive(Debug, Clone)]
-pub struct ColumnStatistics {
-    pub distinct_values: u64,
-    pub null_ratio: f64,
-    pub most_common_values: Vec<(SqlValue, f64)>, // value, frequency
-}
-
-/// Configuration for the query planner
-#[derive(Debug, Clone)]
-pub struct PlannerConfig {
-    /// Cost weights for different operations
-    pub seq_scan_cost: f64,
-    pub index_scan_cost: f64,
-    pub pk_lookup_cost: f64,
-    pub cpu_tuple_cost: f64,
-    pub memory_page_cost: f64,
-
-    /// Optimization thresholds
-    pub enable_pk_optimization: bool,
-    pub enable_predicate_pushdown: bool,
-    pub enable_limit_pushdown: bool,
-    pub small_table_threshold: u64, // Rows below which we prefer table scan
-}
-
-impl Default for PlannerConfig {
-    fn default() -> Self {
-        Self {
-            seq_scan_cost: 1.0,
-            index_scan_cost: 0.1,
-            pk_lookup_cost: 0.01,
-            cpu_tuple_cost: 0.01,
-            memory_page_cost: 1.0,
-            enable_pk_optimization: true,
-            enable_predicate_pushdown: true,
-            enable_limit_pushdown: true,
-            small_table_threshold: 1000,
-        }
-    }
 }
 
 impl QueryPlanner {
     /// Create a new query planner with table schemas
     pub fn new(table_schemas: HashMap<String, Rc<TableSchema>>) -> Self {
-        Self {
-            table_schemas,
-            table_stats: HashMap::new(),
-            config: PlannerConfig::default(),
-        }
-    }
-
-    /// Create a planner with custom configuration
-    pub fn with_config(table_schemas: HashMap<String, Rc<TableSchema>>, config: PlannerConfig) -> Self {
-        Self {
-            table_schemas,
-            table_stats: HashMap::new(),
-            config,
-        }
-    }
-
-    /// Update table statistics for better cost estimation
-    pub fn update_table_stats(&mut self, table: String, stats: TableStatistics) {
-        self.table_stats.insert(table, stats);
+        Self { table_schemas }
     }
 
     /// Generate an optimized execution plan for a SQL statement
@@ -210,23 +104,19 @@ impl QueryPlanner {
         }
     }
 
-    /// Plan SELECT statement with optimizations
+    /// Plan SELECT statement with primary key optimization
     fn plan_select(&self, select: SelectStatement) -> Result<ExecutionPlan> {
         // Try primary key lookup first (most efficient)
         if let Some(pk_plan) = self.try_primary_key_lookup(&select)? {
             return Ok(pk_plan);
         }
 
-        // Fall back to table scan with optimizations
+        // Fall back to table scan
         self.plan_table_scan(&select)
     }
 
     /// Try to create a primary key lookup plan
     fn try_primary_key_lookup(&self, select: &SelectStatement) -> Result<Option<ExecutionPlan>> {
-        if !self.config.enable_pk_optimization {
-            return Ok(None);
-        }
-
         // Check if we have a WHERE clause that can be used for PK lookup
         if let Some(ref where_clause) = select.where_clause {
             if let Some(pk_values) =
@@ -253,24 +143,22 @@ impl QueryPlanner {
         Ok(None)
     }
 
-    /// Plan table scan with optimizations
+    /// Plan table scan
     fn plan_table_scan(&self, select: &SelectStatement) -> Result<ExecutionPlan> {
         let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
         let filter = select.where_clause.as_ref().map(|w| w.condition.clone());
-        let early_termination = Self::is_simple_filter(filter.as_ref());
 
         Ok(ExecutionPlan::TableScan {
             table: select.table.clone(),
             selected_columns,
             filter,
             limit: select.limit,
-            early_termination,
         })
     }
 
     /// Plan INSERT statement
     fn plan_insert(&self, insert: InsertStatement) -> Result<ExecutionPlan> {
-        // Convert values to HashMap format for better performance
+        // Convert values to HashMap format
         let mut rows = Vec::with_capacity(insert.values.len());
         for value_row in insert.values {
             let mut row_data = HashMap::with_capacity(insert.columns.len());
@@ -324,7 +212,6 @@ impl QueryPlanner {
                         selected_columns: all_columns.clone(),
                         filter: Some(where_clause.condition.clone()),
                         limit: None,
-                        early_termination: false,
                     }
                 }
             } else {
@@ -333,7 +220,6 @@ impl QueryPlanner {
                     selected_columns: all_columns.clone(),
                     filter: Some(where_clause.condition.clone()),
                     limit: None,
-                    early_termination: false,
                 }
             }
         } else {
@@ -343,7 +229,6 @@ impl QueryPlanner {
                 selected_columns: all_columns.clone(),
                 filter: None,
                 limit: None,
-                early_termination: false,
             }
         };
 
@@ -379,7 +264,6 @@ impl QueryPlanner {
                         selected_columns: all_columns.clone(),
                         filter: Some(where_clause.condition.clone()),
                         limit: None,
-                        early_termination: false,
                     }
                 }
             } else {
@@ -388,7 +272,6 @@ impl QueryPlanner {
                     selected_columns: all_columns.clone(),
                     filter: Some(where_clause.condition.clone()),
                     limit: None,
-                    early_termination: false,
                 }
             }
         } else {
@@ -398,7 +281,6 @@ impl QueryPlanner {
                 selected_columns: all_columns.clone(),
                 filter: None,
                 limit: None,
-                early_termination: false,
             }
         };
 
@@ -499,10 +381,10 @@ impl QueryPlanner {
             match condition {
                 Condition::Comparison {
                     left,
-                    operator,
+                    operator: _,
                     right: _,
                 } => {
-                    if pk_columns.contains(left) && matches!(operator, ComparisonOperator::Equal) {
+                    if pk_columns.contains(left) {
                         None // This is a PK condition, filter it out
                     } else {
                         Some(condition.clone()) // Keep non-PK conditions
@@ -556,18 +438,6 @@ impl QueryPlanner {
         }
     }
 
-    /// Check if a filter is simple enough for early termination optimization
-    fn is_simple_filter(filter: Option<&Condition>) -> bool {
-        match filter {
-            None => true,
-            Some(Condition::Comparison { .. }) => true,
-            Some(Condition::And(left, right)) => {
-                Self::is_simple_filter(Some(left)) && Self::is_simple_filter(Some(right))
-            }
-            Some(Condition::Or(_, _)) => false, // OR conditions are more complex
-        }
-    }
-
     /// Get primary key columns for a table
     fn get_primary_key_columns(&self, table_name: &str) -> Result<Vec<String>> {
         if let Some(schema) = self.table_schemas.get(table_name) {
@@ -596,22 +466,11 @@ impl QueryPlanner {
     /// Remove table schema (called when table is dropped)
     pub fn remove_table_schema(&mut self, table_name: &str) {
         self.table_schemas.remove(table_name);
-        self.table_stats.remove(table_name);
     }
 
     /// Get current table schemas
     pub fn table_schemas(&self) -> &HashMap<String, Rc<TableSchema>> {
         &self.table_schemas
-    }
-
-    /// Get configuration
-    pub fn config(&self) -> &PlannerConfig {
-        &self.config
-    }
-
-    /// Update configuration
-    pub fn update_config(&mut self, config: PlannerConfig) {
-        self.config = config;
     }
 }
 
@@ -653,16 +512,8 @@ impl ExecutionPlan {
                     pk_values.len()
                 )
             }
-            ExecutionPlan::TableScan {
-                table,
-                early_termination,
-                ..
-            } => {
-                if *early_termination {
-                    format!("Table Scan on {table} (with early termination)")
-                } else {
-                    format!("Table Scan on {table}")
-                }
+            ExecutionPlan::TableScan { table, .. } => {
+                format!("Table Scan on {table}")
             }
             ExecutionPlan::Insert { table, rows, .. } => {
                 format!("Insert into {} ({} rows)", table, rows.len())
@@ -784,12 +635,10 @@ mod tests {
             ExecutionPlan::TableScan {
                 table,
                 limit,
-                early_termination,
                 ..
             } => {
                 assert_eq!(table, "users");
                 assert_eq!(limit, Some(10));
-                assert!(early_termination);
             }
             _ => panic!("Expected TableScan plan"),
         }
