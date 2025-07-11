@@ -381,7 +381,7 @@ impl<'a> QueryProcessor<'a> {
 
         match plan {
             // For SELECT operations, use streaming execution and collect results
-            ExecutionPlan::PrimaryKeyLookup { .. } | ExecutionPlan::TableScan { .. } => {
+            ExecutionPlan::PrimaryKeyLookup { .. } | ExecutionPlan::TableRangeScan { .. } | ExecutionPlan::TableScan { .. } => {
                 self.execute_select_plan_streaming(plan)
             }
             // Non-SELECT operations remain the same
@@ -447,6 +447,33 @@ impl<'a> QueryProcessor<'a> {
                     selected_columns.clone(),
                     additional_filter,
                     Some(1), // PK lookup returns at most 1 row
+                );
+
+                Ok(ResultSet::Select {
+                    columns: selected_columns,
+                    rows: Box::new(row_iter),
+                })
+            }
+            ExecutionPlan::TableRangeScan {
+                table,
+                selected_columns,
+                pk_range,
+                additional_filter,
+                limit,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                
+                // Build range scan keys based on PK range
+                let (start_key, end_key) = self.build_pk_range_keys(&table, &pk_range, &schema)?;
+                
+                // Create streaming iterator for range scan
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    (*schema).clone(),
+                    selected_columns.clone(),
+                    additional_filter,
+                    limit,
                 );
 
                 Ok(ResultSet::Select {
@@ -534,6 +561,9 @@ impl<'a> QueryProcessor<'a> {
             // Extract columns before consuming the plan
             let columns = match &scan_plan {
                 crate::planner::ExecutionPlan::PrimaryKeyLookup {
+                    selected_columns, ..
+                } => selected_columns.clone(),
+                crate::planner::ExecutionPlan::TableRangeScan {
                     selected_columns, ..
                 } => selected_columns.clone(),
                 crate::planner::ExecutionPlan::TableScan {
@@ -677,6 +707,41 @@ impl<'a> QueryProcessor<'a> {
 
                     if matches {
                         keys.push(key);
+                    }
+                }
+            }
+            ExecutionPlan::TableRangeScan {
+                table,
+                pk_range,
+                additional_filter,
+                limit,
+                ..
+            } => {
+                let (start_key, end_key) = self.build_pk_range_keys(table, pk_range, schema)?;
+                let mut count = 0;
+
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+
+                for (key, value_rc) in scan_iter {
+                    if let Some(limit_val) = limit {
+                        if count >= *limit_val {
+                            break;
+                        }
+                    }
+
+                    let matches = if let Some(filter_cond) = additional_filter {
+                        self.storage_format
+                            .matches_condition(&value_rc, schema, filter_cond)
+                            .unwrap_or(false)
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        if let Ok(key_str) = String::from_utf8(key) {
+                            keys.push(key_str);
+                            count += 1;
+                        }
                     }
                 }
             }
@@ -1024,5 +1089,70 @@ impl<'a> QueryProcessor<'a> {
                 "Expected SELECT result for materialization".to_string(),
             )),
         }
+    }
+
+    /// Build primary key range scan keys based on PK range conditions
+    fn build_pk_range_keys(
+        &self,
+        table: &str,
+        pk_range: &crate::planner::PkRange,
+        schema: &TableSchema,
+    ) -> Result<(Vec<u8>, Vec<u8>)> {
+        let table_prefix = format!("{table}:");
+        
+        // For now, we'll implement a simple range scan that works with single-column PKs
+        // This can be enhanced later to support composite PKs
+        
+        let pk_columns: Vec<_> = schema
+            .columns
+            .iter()
+            .filter(|col| col.constraints.contains(&ColumnConstraint::PrimaryKey))
+            .collect();
+
+        if pk_columns.len() != 1 {
+            return Err(Error::Other(
+                "Range scan currently only supports single-column primary keys".to_string(),
+            ));
+        }
+
+        let pk_column = &pk_columns[0].name;
+        
+        // Build start key
+        let start_key = if let Some(start_bound) = &pk_range.start_bound {
+            if let Some(value) = start_bound.values.get(pk_column) {
+                let key_string = if start_bound.inclusive {
+                    format!("{}{}", table_prefix, self.value_to_key_string(value))
+                } else {
+                    // For exclusive bounds, we need to find the next key
+                    // This is a simplified implementation
+                    format!("{}{}", table_prefix, self.value_to_key_string(value))
+                };
+                key_string.as_bytes().to_vec()
+            } else {
+                table_prefix.as_bytes().to_vec()
+            }
+        } else {
+            table_prefix.as_bytes().to_vec()
+        };
+
+        // Build end key
+        let end_key = if let Some(end_bound) = &pk_range.end_bound {
+            if let Some(value) = end_bound.values.get(pk_column) {
+                let key_string = if end_bound.inclusive {
+                    // For inclusive bounds, we need to find the next key after this value
+                    // This is a simplified implementation
+                    format!("{}{}", table_prefix, self.value_to_key_string(value))
+                } else {
+                    format!("{}{}", table_prefix, self.value_to_key_string(value))
+                };
+                key_string.as_bytes().to_vec()
+            } else {
+                format!("{table}~").as_bytes().to_vec()
+            }
+        } else {
+            format!("{table}~").as_bytes().to_vec()
+        };
+
+        Ok((start_key, end_key))
     }
 }
