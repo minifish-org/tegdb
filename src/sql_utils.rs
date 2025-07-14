@@ -47,51 +47,10 @@ pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &Sq
             _ => false,
         },
         Like => {
-            // Optimized LIKE implementation with early exit
             match (left, right) {
-                (SqlValue::Text(a), SqlValue::Text(b)) => {
-                    // Simple pattern matching - convert SQL LIKE to contains for now
-                    // Avoid allocation by using string slices
-                    let pattern = if b.contains('%') {
-                        b.replace('%', "")
-                    } else {
-                        b.to_string()
-                    };
-                    a.contains(&pattern)
-                }
-                _ => false,
-            }
-        }
-        Modulo => {
-            // Handle modulo operation for WHERE clauses like 'value % 10 = 0'
-            match (left, right) {
-                (SqlValue::Integer(a), SqlValue::Integer(b)) => {
-                    if *b == 0 {
-                        false // Division by zero
-                    } else {
-                        a % b == 0
-                    }
-                }
-                (SqlValue::Real(a), SqlValue::Real(b)) => {
-                    if *b == 0.0 {
-                        false // Division by zero
-                    } else {
-                        (a % b) == 0.0
-                    }
-                }
-                (SqlValue::Integer(a), SqlValue::Real(b)) => {
-                    if *b == 0.0 {
-                        false // Division by zero
-                    } else {
-                        (*a as f64 % b) == 0.0
-                    }
-                }
-                (SqlValue::Real(a), SqlValue::Integer(b)) => {
-                    if *b == 0 {
-                        false // Division by zero
-                    } else {
-                        (a % *b as f64) == 0.0
-                    }
+                (SqlValue::Text(text), SqlValue::Text(pattern)) => {
+                    // Simple pattern matching - could be enhanced with regex
+                    text.contains(pattern)
                 }
                 _ => false,
             }

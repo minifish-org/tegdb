@@ -1054,6 +1054,11 @@ impl<'a> QueryProcessor<'a> {
             SqlValue::Real(r) => r.to_string(),
             SqlValue::Text(t) => t.clone(),
             SqlValue::Null => "NULL".to_string(),
+            SqlValue::Parameter(_) => {
+                // Parameter placeholders should not appear in key generation
+                // This indicates a bug in parameter binding
+                panic!("Parameter placeholder found in key generation - parameter binding failed")
+            }
         }
     }
 

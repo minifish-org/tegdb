@@ -5,29 +5,39 @@
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case, take_while1},
+    bytes::complete::{tag, tag_no_case, take_until, take_while1},
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
-    combinator::{map, opt, recognize},
-    multi::{many0, separated_list1},
-    sequence::{delimited, pair, preceded},
+    combinator::{map, opt, recognize, peek},
+    multi::{many0, separated_list0, separated_list1},
+    sequence::{delimited, pair, preceded, tuple},
     IResult, Parser,
 };
 use std::collections::HashMap;
 
-// String interning removed for simplicity
+// Global parameter counter for tracking parameter indices
+static mut PARAM_COUNTER: usize = 0;
 
-// Optimized identifier parsing
-fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
-    let (input, identifier) = recognize(pair(
-        alt((alpha1, tag("_"))),
-        many0(alt((alphanumeric1, tag("_")))),
-    ))
-    .parse(input)?;
-
-    Ok((input, identifier.to_string()))
+/// Reset the global parameter counter
+fn reset_param_counter() {
+    unsafe { PARAM_COUNTER = 0; }
 }
 
-// Optimized column list parsing
+/// Get and increment the global parameter counter
+fn get_next_param_index() -> usize {
+    unsafe {
+        let index = PARAM_COUNTER;
+        PARAM_COUNTER += 1;
+        index
+    }
+}
+
+fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
+    let (input, first_char) = alpha1.parse(input)?;
+    let (input, rest) = many0(alt((alphanumeric1, tag("_")))).parse(input)?;
+    let identifier = format!("{}{}", first_char, rest.join(""));
+    Ok((input, identifier))
+}
+
 fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
     let (input, _) = multispace0.parse(input)?;
     // Handle the special case of "*" (all columns)
@@ -43,15 +53,12 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
     Ok((input, columns))
 }
 
-// Safe integer parsing with error handling
 fn parse_u64_safe(s: &str) -> Result<u64, String> {
-    s.parse::<u64>()
-        .map_err(|e| format!("Invalid integer: {e}"))
+    s.parse::<u64>().map_err(|e| format!("Invalid u64: {}", e))
 }
 
-// Safe float parsing with error handling
 fn parse_f64_safe(s: &str) -> Result<f64, String> {
-    s.parse::<f64>().map_err(|e| format!("Invalid float: {e}"))
+    s.parse::<f64>().map_err(|e| format!("Invalid f64: {}", e))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,7 +151,7 @@ pub enum Condition {
     Or(Box<Condition>, Box<Condition>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum ComparisonOperator {
     Equal,
     NotEqual,
@@ -153,7 +160,6 @@ pub enum ComparisonOperator {
     GreaterThan,
     GreaterThanOrEqual,
     Like,
-    Modulo,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,14 +168,13 @@ pub struct Assignment {
     pub value: Expression,
 }
 
-// Remove OrderByClause and OrderDirection
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum SqlValue {
     Integer(i64),
     Real(f64),
     Text(String),
     Null,
+    Parameter(usize), // Parameter placeholder with index
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -183,16 +188,14 @@ pub enum Expression {
     },
 }
 
-// Expression evaluation
 impl Expression {
-    /// Evaluate an expression given a context (current row data)
     pub fn evaluate(&self, context: &HashMap<String, SqlValue>) -> Result<SqlValue, String> {
         match self {
             Expression::Value(value) => Ok(value.clone()),
-            Expression::Column(column_name) => context
-                .get(column_name)
+            Expression::Column(column) => context
+                .get(column)
                 .cloned()
-                .ok_or_else(|| format!("Column '{column_name}' not found")),
+                .ok_or_else(|| format!("Column '{}' not found in context", column)),
             Expression::BinaryOp {
                 left,
                 operator,
@@ -201,101 +204,106 @@ impl Expression {
                 let left_val = left.evaluate(context)?;
                 let right_val = right.evaluate(context)?;
 
-                match (left_val, right_val) {
-                    (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
-                        ArithmeticOperator::Add => Ok(SqlValue::Integer(l + r)),
-                        ArithmeticOperator::Subtract => Ok(SqlValue::Integer(l - r)),
-                        ArithmeticOperator::Multiply => Ok(SqlValue::Integer(l * r)),
-                        ArithmeticOperator::Divide => {
-                            if r == 0 {
-                                Err("Division by zero".to_string())
-                            } else {
-                                Ok(SqlValue::Integer(l / r))
-                            }
-                        }
-                        ArithmeticOperator::Modulo => {
-                            if r == 0 {
-                                Err("Modulo by zero".to_string())
-                            } else {
-                                Ok(SqlValue::Integer(l % r))
-                            }
-                        }
-                    },
-                    (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
-                        ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
-                        ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
-                        ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
-                        ArithmeticOperator::Divide => {
-                            if r == 0.0 {
-                                Err("Division by zero".to_string())
-                            } else {
-                                Ok(SqlValue::Real(l / r))
-                            }
-                        }
-                        ArithmeticOperator::Modulo => {
-                            if r == 0.0 {
-                                Err("Modulo by zero".to_string())
-                            } else {
-                                Ok(SqlValue::Real(l % r))
-                            }
-                        }
-                    },
-                    (SqlValue::Integer(l), SqlValue::Real(r)) => {
-                        let l = l as f64;
-                        match operator {
-                            ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
-                            ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
-                            ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
+                match (left_val.clone(), right_val.clone()) {
+                    (SqlValue::Integer(a), SqlValue::Integer(b)) => {
+                        let result = match operator {
+                            ArithmeticOperator::Add => a + b,
+                            ArithmeticOperator::Subtract => a - b,
+                            ArithmeticOperator::Multiply => a * b,
                             ArithmeticOperator::Divide => {
-                                if r == 0.0 {
-                                    Err("Division by zero".to_string())
-                                } else {
-                                    Ok(SqlValue::Real(l / r))
+                                if b == 0 {
+                                    return Err("Division by zero".to_string());
                                 }
+                                a / b
                             }
                             ArithmeticOperator::Modulo => {
-                                if r == 0.0 {
-                                    Err("Modulo by zero".to_string())
-                                } else {
-                                    Ok(SqlValue::Real(l % r))
+                                if b == 0 {
+                                    return Err("Modulo by zero".to_string());
                                 }
+                                a % b
                             }
-                        }
+                        };
+                        Ok(SqlValue::Integer(result))
                     }
-                    (SqlValue::Real(l), SqlValue::Integer(r)) => {
-                        let r = r as f64;
-                        match operator {
-                            ArithmeticOperator::Add => Ok(SqlValue::Real(l + r)),
-                            ArithmeticOperator::Subtract => Ok(SqlValue::Real(l - r)),
-                            ArithmeticOperator::Multiply => Ok(SqlValue::Real(l * r)),
+                    (SqlValue::Real(a), SqlValue::Real(b)) => {
+                        let result = match operator {
+                            ArithmeticOperator::Add => a + b,
+                            ArithmeticOperator::Subtract => a - b,
+                            ArithmeticOperator::Multiply => a * b,
                             ArithmeticOperator::Divide => {
-                                if r == 0.0 {
-                                    Err("Division by zero".to_string())
-                                } else {
-                                    Ok(SqlValue::Real(l / r))
+                                if b == 0.0 {
+                                    return Err("Division by zero".to_string());
                                 }
+                                a / b
                             }
                             ArithmeticOperator::Modulo => {
-                                if r == 0.0 {
-                                    Err("Modulo by zero".to_string())
-                                } else {
-                                    Ok(SqlValue::Real(l % r))
+                                if b == 0.0 {
+                                    return Err("Modulo by zero".to_string());
                                 }
+                                a % b
                             }
+                        };
+                        Ok(SqlValue::Real(result))
+                    }
+                    (SqlValue::Integer(a), SqlValue::Real(b)) => {
+                        let a_f64 = a as f64;
+                        let result = match operator {
+                            ArithmeticOperator::Add => a_f64 + b,
+                            ArithmeticOperator::Subtract => a_f64 - b,
+                            ArithmeticOperator::Multiply => a_f64 * b,
+                            ArithmeticOperator::Divide => {
+                                if b == 0.0 {
+                                    return Err("Division by zero".to_string());
+                                }
+                                a_f64 / b
+                            }
+                            ArithmeticOperator::Modulo => {
+                                if b == 0.0 {
+                                    return Err("Modulo by zero".to_string());
+                                }
+                                a_f64 % b
+                            }
+                        };
+                        Ok(SqlValue::Real(result))
+                    }
+                    (SqlValue::Real(a), SqlValue::Integer(b)) => {
+                        let b_f64 = b as f64;
+                        let result = match operator {
+                            ArithmeticOperator::Add => a + b_f64,
+                            ArithmeticOperator::Subtract => a - b_f64,
+                            ArithmeticOperator::Multiply => a * b_f64,
+                            ArithmeticOperator::Divide => {
+                                if b_f64 == 0.0 {
+                                    return Err("Division by zero".to_string());
+                                }
+                                a / b_f64
+                            }
+                            ArithmeticOperator::Modulo => {
+                                if b_f64 == 0.0 {
+                                    return Err("Modulo by zero".to_string());
+                                }
+                                a % b_f64
+                            }
+                        };
+                        Ok(SqlValue::Real(result))
+                    }
+                    (SqlValue::Text(a), SqlValue::Text(b)) => {
+                        match operator {
+                            ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{}{}", a, b))),
+                            _ => Err("Only addition (+) is supported for text values".to_string()),
                         }
                     }
-                    (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
-                        ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{l}{r}"))),
-                        _ => Err("Only addition (+) is supported for text values".to_string()),
-                    },
-                    _ => Err("Unsupported operand types for arithmetic operation".to_string()),
+                    _ => Err(format!(
+                        "Unsupported operation: {:?} {:?} {:?}",
+                        left_val, operator, right_val
+                    )),
                 }
             }
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum ArithmeticOperator {
     Add,
     Subtract,
@@ -304,12 +312,20 @@ pub enum ArithmeticOperator {
     Modulo,
 }
 
-/// Parse a complete SQL statement
+/// Parse SQL and assign unique parameter indices
 pub fn parse_sql(input: &str) -> Result<Statement, String> {
+    reset_param_counter();
     let (remaining, statement) = parse_statement
         .parse(input)
         .map_err(|e| format!("Parse error: {e:?}"))?;
 
+    // Allow trailing whitespace and optional semicolon(s)
+    let remaining = remaining.trim_start();
+    let remaining = if remaining.starts_with(';') {
+        &remaining[1..]
+    } else {
+        remaining
+    };
     if !remaining.trim().is_empty() {
         return Err(format!("Unexpected input after statement: '{remaining}'"));
     }
@@ -335,72 +351,85 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
     .parse(input)
 }
 
-/// Parse CREATE TABLE statement
+// Parse parameter placeholder (? or ?1, ?2, etc.)
+fn parse_parameter_placeholder(input: &str) -> IResult<&str, usize> {
+    let (input, _) = char('?').parse(input)?;
+    
+    // Try to parse a number after the ?
+    match digit1::<&str, nom::error::Error<&str>>.parse(input) {
+        Ok((remaining, num_str)) => {
+            // Parse the number as usize
+            match num_str.parse::<usize>() {
+                Ok(num) => Ok((remaining, num - 1)), // Convert to 0-based index
+                Err(_) => {
+                    // Fallback to auto-assigned index
+                    let index = get_next_param_index();
+                    Ok((input, index))
+                }
+            }
+        }
+        Err(_) => {
+            // Simple ? without number - assign next available index
+            let index = get_next_param_index();
+            Ok((input, index))
+        }
+    }
+}
+
+// Parse SQL values
+fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
+    alt((
+        map(tag_no_case("NULL"), |_| SqlValue::Null),
+        map(parse_string_literal, SqlValue::Text),
+        map(parse_real, SqlValue::Real),
+        map(parse_integer, SqlValue::Integer),
+        map(parse_parameter_placeholder, SqlValue::Parameter),
+    ))
+    .parse(input)
+}
+
+// Parse CREATE TABLE statement
 fn parse_create_table(input: &str) -> IResult<&str, Statement> {
     let (input, _) = delimited(multispace0, tag_no_case("CREATE"), multispace1).parse(input)?;
-
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-
-    // Try to parse optional "IF EXISTS"
-    let (input, _if_exists) = opt((
-        tag_no_case("IF"),
-        multispace1,
-        tag_no_case("EXISTS"),
-        multispace1,
-    ))
-    .parse(input)?;
-
-    let (input, table_name) = parse_identifier_optimized.parse(input)?;
+    let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('(').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
-
-    let (input, columns) = separated_list1(
+    let (input, columns) = separated_list0(
         delimited(multispace0, char(','), multispace0),
-        parse_column_definition,
+        delimited(multispace0, parse_column_definition, multispace0),
     )
     .parse(input)?;
-
-    let (input, _) = multispace0.parse(input)?;
     let (input, _) = char(')').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
-    let (input, _) = opt(char(';')).parse(input)?;
 
     Ok((
         input,
-        Statement::CreateTable(CreateTableStatement {
-            table: table_name.to_string(),
-            columns,
-        }),
+        Statement::CreateTable(CreateTableStatement { table, columns }),
     ))
 }
 
-/// Parse INSERT statement
+// Parse INSERT statement
 fn parse_insert(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("INSERT"), multispace1).parse(input)?;
+    let (input, _) = tag_no_case("INSERT").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
     let (input, _) = tag_no_case("INTO").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-    let (input, table_name) = parse_identifier_optimized.parse(input)?;
+    let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('(').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
-    let (input, columns) = separated_list1(
-        delimited(multispace0, char(','), multispace0),
-        parse_identifier_optimized,
-    )
-    .parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, columns) = parse_column_list_optimized.parse(input)?;
     let (input, _) = char(')').parse(input)?;
-    let (input, _) = multispace1.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
     let (input, _) = tag_no_case("VALUES").parse(input)?;
     let (input, _) = multispace0.parse(input)?;
+
     // Parse one or more value tuples
     let (input, values) = separated_list1(
         delimited(multispace0, char(','), multispace0),
         delimited(
             char('('),
-            separated_list1(
+            separated_list0(
                 delimited(multispace0, char(','), multispace0),
                 parse_sql_value,
             ),
@@ -408,202 +437,160 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
         ),
     )
     .parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
-    let (input, _) = opt(char(';')).parse(input)?;
-    Ok((
-        input,
-        Statement::Insert(InsertStatement {
-            table: table_name.to_string(),
-            columns: columns.into_iter().map(|s| s.to_string()).collect(),
-            values,
-        }),
-    ))
+
+    Ok((input, Statement::Insert(InsertStatement { table, columns, values })))
 }
 
-/// Parse SELECT statement
+// Parse SELECT statement
 fn parse_select(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("SELECT"), multispace1).parse(input)?;
-
+    let (input, _) = tag_no_case("SELECT").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
     let (input, columns) = parse_column_list_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-
-    let (input, table_name) = parse_identifier_optimized.parse(input)?;
-
-    // Parse optional WHERE clause
-    let (input, where_clause) = opt(preceded(
-        delimited(multispace0, tag_no_case("WHERE"), multispace1),
-        parse_where_clause,
-    ))
-    .parse(input)?;
-
-    // Remove ORDER BY clause parsing
-    // Parse optional LIMIT clause
-    let (input, limit) = opt(preceded(
-        delimited(multispace0, tag_no_case("LIMIT"), multispace1),
-        parse_limit,
-    ))
-    .parse(input)?;
-    // Accept any trailing whitespace and optional semicolon after LIMIT
+    let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, _) = opt(char(';')).parse(input)?;
+    let (input, where_clause) = opt(parse_where_clause).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    // Accept end of input
-    if !input.trim().is_empty() {
-        return Err(nom::Err::Error(nom::error::Error::new(
-            input,
-            nom::error::ErrorKind::Eof,
-        )));
-    }
+    let (input, limit) = opt(parse_limit).parse(input)?;
+
     Ok((
         input,
         Statement::Select(SelectStatement {
             columns,
-            table: table_name.to_string(),
+            table,
             where_clause,
             limit,
         }),
     ))
 }
 
-/// Parse UPDATE statement
+// Parse UPDATE statement
 fn parse_update(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("UPDATE"), multispace1).parse(input)?;
-
-    let (input, table_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = tag_no_case("UPDATE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-    let (input, _) = tag_no_case("SET").parse(input)?;
+    let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-
-    let (input, assignments) = separated_list1(
-        delimited(multispace0, char(','), multispace0),
-        parse_assignment,
-    )
-    .parse(input)?;
-
-    // Parse optional WHERE clause
-    let (input, where_clause) = opt(preceded(
-        delimited(multispace0, tag_no_case("WHERE"), multispace1),
-        parse_where_clause,
-    ))
-    .parse(input)?;
-
+    let (input, _) = tag_no_case("SET").parse(input)?;
+    let mut input = input; // Create a mutable input for the loop
+    let mut assignments = Vec::new();
+    loop {
+        // Manual check for WHERE keyword (case-insensitive)
+        if input.trim_start().to_ascii_uppercase().starts_with("WHERE") || input.trim_start().is_empty() {
+            break;
+        }
+        let (next_input, assignment) = parse_assignment(input)?;
+        assignments.push(assignment);
+        input = next_input;
+        // Try to parse comma, but allow trailing comma
+        let (next_input, _) = multispace0.parse(input)?;
+        if let Ok((after_comma, _)) = char::<&str, nom::error::Error<&str>>(',').parse(next_input) {
+            input = after_comma;
+        } else {
+            input = next_input;
+            // If no comma found, we're done with assignments
+            break;
+        }
+    }
+    let (input, _) = multispace0.parse(input)?;
+    // Try to parse WHERE clause if present (with leading whitespace)
+    let (input, where_clause) = if let Ok((input, clause)) = parse_where_clause(input) {
+        (input, Some(clause))
+    } else {
+        (input, None)
+    };
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
 
     Ok((
         input,
         Statement::Update(UpdateStatement {
-            table: table_name.to_string(),
+            table,
             assignments,
             where_clause,
         }),
     ))
 }
 
-/// Parse DELETE statement
+// Parse DELETE statement
 fn parse_delete(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("DELETE"), multispace1).parse(input)?;
-
+    let (input, _) = tag_no_case("DELETE").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-
-    let (input, table_name) = parse_identifier_optimized.parse(input)?;
-
-    // Parse optional WHERE clause
-    let (input, where_clause) = opt(preceded(
-        delimited(multispace0, tag_no_case("WHERE"), multispace1),
-        parse_where_clause,
-    ))
-    .parse(input)?;
-
+    let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, _) = opt(char(';')).parse(input)?;
+    let (input, where_clause) = opt(parse_where_clause).parse(input)?;
 
-    Ok((
-        input,
-        Statement::Delete(DeleteStatement {
-            table: table_name.to_string(),
-            where_clause,
-        }),
-    ))
+    Ok((input, Statement::Delete(DeleteStatement { table, where_clause })))
 }
 
-/// Parse DROP TABLE statement
+// Parse DROP TABLE statement
 fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("DROP"), multispace1).parse(input)?;
-
+    let (input, _) = tag_no_case("DROP").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
-
-    // Try to parse optional "IF EXISTS"
-    let (input, if_exists) = opt((
-        tag_no_case("IF"),
-        multispace1,
-        tag_no_case("EXISTS"),
-        multispace1,
-    ))
-    .parse(input)?;
-
-    let (input, table_name) = parse_identifier_optimized.parse(input)?;
+    let (input, if_exists) = opt(tag_no_case("IF EXISTS")).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, _) = opt(char(';')).parse(input)?;
+    let (input, table) = parse_identifier_optimized.parse(input)?;
 
     Ok((
         input,
         Statement::DropTable(DropTableStatement {
-            table: table_name.to_string(),
+            table,
             if_exists: if_exists.is_some(),
         }),
     ))
 }
 
-/// Parse BEGIN TRANSACTION statement
+// Parse BEGIN TRANSACTION
 fn parse_begin_transaction(input: &str) -> IResult<&str, Statement> {
     alt((
+        // BEGIN TRANSACTION
         map(
-            delimited(multispace0, tag_no_case("BEGIN"), multispace0),
-            |_| Statement::Begin,
-        ),
-        map(
-            delimited(
-                multispace0,
-                (
-                    tag_no_case("START"),
+            tuple((
+                tag_no_case("BEGIN"),
+                opt(delimited(
                     multispace1,
                     tag_no_case("TRANSACTION"),
-                ),
-                multispace0,
-            ),
+                    multispace0,
+                )),
+            )),
+            |_| Statement::Begin,
+        ),
+        // START TRANSACTION
+        map(
+            tuple((
+                tag_no_case("START"),
+                delimited(multispace1, tag_no_case("TRANSACTION"), multispace0),
+            )),
             |_| Statement::Begin,
         ),
     ))
     .parse(input)
 }
 
-/// Parse COMMIT statement
+// Parse COMMIT
 fn parse_commit(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("COMMIT"), multispace0).parse(input)?;
-
-    let (input, _) = opt(char(';')).parse(input)?;
-
+    let (input, _) = tag_no_case("COMMIT").parse(input)?;
     Ok((input, Statement::Commit))
 }
 
-/// Parse ROLLBACK statement
+// Parse ROLLBACK
 fn parse_rollback(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("ROLLBACK"), multispace0).parse(input)?;
-
-    let (input, _) = opt(char(';')).parse(input)?;
-
+    let (input, _) = tag_no_case("ROLLBACK").parse(input)?;
     Ok((input, Statement::Rollback))
 }
 
 // Parse WHERE clause
 fn parse_where_clause(input: &str) -> IResult<&str, WhereClause> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("WHERE").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
     let (input, condition) = parse_condition.parse(input)?;
-
     Ok((input, WhereClause { condition }))
 }
 
@@ -612,128 +599,109 @@ fn parse_condition(input: &str) -> IResult<&str, Condition> {
     parse_or_condition.parse(input)
 }
 
+// Parse OR condition
 fn parse_or_condition(input: &str) -> IResult<&str, Condition> {
     let (input, left) = parse_and_condition.parse(input)?;
-    let (input, rights) = many0(preceded(
-        delimited(multispace1, tag_no_case("OR"), multispace1),
+    let (input, rights) = many0((
+        delimited(multispace0, tag_no_case("OR"), multispace0),
         parse_and_condition,
     ))
     .parse(input)?;
 
     Ok((
         input,
-        rights.into_iter().fold(left, |acc, right| {
+        rights.into_iter().fold(left, |acc, (_, right)| {
             Condition::Or(Box::new(acc), Box::new(right))
         }),
     ))
 }
 
+// Parse AND condition
 fn parse_and_condition(input: &str) -> IResult<&str, Condition> {
     let (input, left) = parse_primary_condition.parse(input)?;
-    let (input, rights) = many0(preceded(
-        delimited(multispace1, tag_no_case("AND"), multispace1),
+    let (input, rights) = many0((
+        delimited(multispace0, tag_no_case("AND"), multispace0),
         parse_primary_condition,
     ))
     .parse(input)?;
 
     Ok((
         input,
-        rights.into_iter().fold(left, |acc, right| {
+        rights.into_iter().fold(left, |acc, (_, right)| {
             Condition::And(Box::new(acc), Box::new(right))
         }),
     ))
 }
 
+// Parse primary condition
 fn parse_primary_condition(input: &str) -> IResult<&str, Condition> {
     alt((
-        // Parenthesized conditions
         delimited(
             char('('),
             delimited(multispace0, parse_condition, multispace0),
             char(')'),
         ),
-        // Simple comparisons
         parse_comparison,
     ))
     .parse(input)
 }
 
+// Parse comparison
 fn parse_comparison(input: &str) -> IResult<&str, Condition> {
-    let (input, left) = parse_expression.parse(input)?;
+    let (input, left_expr) = parse_expression.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, operator) = parse_comparison_operator.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, right) = parse_expression.parse(input)?;
+    let (input, right) = parse_sql_value.parse(input)?;
 
-    // Convert expressions to string representation for compatibility
-    let left_str = match &left {
-        Expression::Column(name) => name.clone(),
-        Expression::Value(val) => format!("{val:?}"),
-        Expression::BinaryOp {
-            left,
-            operator,
-            right,
-        } => {
-            format!("{left:?} {operator:?} {right:?}")
-        }
-    };
-
-    // For the right side, try to evaluate it if it's a simple expression
-    let right_value = match &right {
-        Expression::Value(val) => val.clone(),
-        Expression::Column(name) => SqlValue::Text(name.clone()),
-        Expression::BinaryOp {
-            left,
-            operator,
-            right,
-        } => {
-            // For complex expressions, create a string representation
-            SqlValue::Text(format!("{left:?} {operator:?} {right:?}"))
+    // Convert the left expression to a string representation for the condition
+    let left = match left_expr {
+        Expression::Column(name) => name,
+        Expression::Value(value) => format!("{:?}", value),
+        Expression::BinaryOp { left, operator: op, right } => {
+            format!("{:?} {:?} {:?}", left, op, right)
         }
     };
 
     Ok((
         input,
         Condition::Comparison {
-            left: left_str,
+            left,
             operator,
-            right: right_value,
+            right,
         },
     ))
 }
 
-// Parse comparison operators - optimized order but multi-char first to avoid partial matches
+// Parse comparison operator
 fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
     alt((
-        // Multi-character operators first to avoid partial matches
-        map(tag("<="), |_| ComparisonOperator::LessThanOrEqual),
         map(tag(">="), |_| ComparisonOperator::GreaterThanOrEqual),
+        map(tag("<="), |_| ComparisonOperator::LessThanOrEqual),
         map(tag("!="), |_| ComparisonOperator::NotEqual),
         map(tag("<>"), |_| ComparisonOperator::NotEqual),
-        map(tag_no_case("LIKE"), |_| ComparisonOperator::Like),
-        map(tag_no_case("MOD"), |_| ComparisonOperator::Modulo),
-        // Single-character operators last
         map(tag("="), |_| ComparisonOperator::Equal),
         map(tag("<"), |_| ComparisonOperator::LessThan),
         map(tag(">"), |_| ComparisonOperator::GreaterThan),
-        map(tag("%"), |_| ComparisonOperator::Modulo),
+        map(tag_no_case("LIKE"), |_| ComparisonOperator::Like),
     ))
     .parse(input)
 }
 
-// Remove parse_order_by and parse_order_by_column
-
 // Parse LIMIT clause
 fn parse_limit(input: &str) -> IResult<&str, u64> {
     let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("LIMIT").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
     let (input, limit_str) = digit1.parse(input)?;
     let limit = parse_u64_safe(limit_str)
-        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+        .map_err(|e| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
     Ok((input, limit))
 }
 
-// Parse assignment (for UPDATE)
+// Parse assignment
 fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
+    let (input, _) = multispace0.parse(input)?;
     let (input, column) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('=').parse(input)?;
@@ -743,13 +711,16 @@ fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
     Ok((input, Assignment { column, value }))
 }
 
-// Parse column definition (for CREATE TABLE)
+// Parse column definition
 fn parse_column_definition(input: &str) -> IResult<&str, ColumnDefinition> {
     let (input, name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, data_type) = parse_data_type.parse(input)?;
-    let (input, constraints) =
-        many0(preceded(multispace1, parse_column_constraint)).parse(input)?;
+    let (input, constraints) = many0(preceded(
+        multispace1,
+        parse_column_constraint,
+    ))
+    .parse(input)?;
 
     Ok((
         input,
@@ -808,17 +779,6 @@ fn parse_column_constraint(input: &str) -> IResult<&str, ColumnConstraint> {
             |_| ColumnConstraint::NotNull,
         ),
         map(tag_no_case("UNIQUE"), |_| ColumnConstraint::Unique),
-    ))
-    .parse(input)
-}
-
-// Parse SQL values
-fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
-    alt((
-        map(tag_no_case("NULL"), |_| SqlValue::Null),
-        map(parse_string_literal, SqlValue::Text),
-        map(parse_real, SqlValue::Real),
-        map(parse_integer, SqlValue::Integer),
     ))
     .parse(input)
 }
