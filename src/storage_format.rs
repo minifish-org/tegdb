@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_round_trip() {
-        let mut schema = create_test_schema();
+        let schema = create_test_schema();
         let storage = StorageFormat::new();
         let mut row_data = HashMap::new();
         row_data.insert("id".to_string(), SqlValue::Integer(123));
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_partial_column_deserialization() {
-        let mut schema = create_test_schema();
+        let schema = create_test_schema();
         let storage = StorageFormat::new();
         let mut row_data = HashMap::new();
         row_data.insert("id".to_string(), SqlValue::Integer(456));

@@ -1049,15 +1049,6 @@ impl<'a> QueryProcessor<'a> {
         }
     }
 
-    /// Evaluate condition against row data
-    fn evaluate_condition(
-        &self,
-        condition: &Condition,
-        row_data: &HashMap<String, SqlValue>,
-    ) -> bool {
-        crate::sql_utils::evaluate_condition(condition, row_data)
-    }
-
     /// Execute a plan and immediately materialize SELECT results for internal use
     /// This is used by UPDATE/DELETE operations that need to collect keys
     fn execute_plan_materialized(
