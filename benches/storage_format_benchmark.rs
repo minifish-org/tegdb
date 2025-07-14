@@ -15,36 +15,53 @@ fn temp_db_path(prefix: &str) -> PathBuf {
 
 /// Create a test schema with various data types
 fn create_test_schema() -> TableSchema {
-    TableSchema {
+    let mut schema = TableSchema {
         name: "benchmark_table".to_string(),
         columns: vec![
             ColumnInfo {
                 name: "id".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "name".to_string(),
                 data_type: DataType::Text(Some(50)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "score".to_string(),
                 data_type: DataType::Real,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "description".to_string(),
                 data_type: DataType::Text(Some(100)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "metadata".to_string(),
                 data_type: DataType::Text(Some(200)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
-    }
+    };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+    schema
 }
 
 /// Create test row data
@@ -327,9 +344,15 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     c.bench_function("fixed_length_text_encoding", |b| {
         let short_text = "Hello, World!";
         b.iter(|| {
-            // Test serialization of short text (should use fixed-length encoding)
+            // Provide all required columns for the schema
             let mut row_data = HashMap::new();
-            row_data.insert("text".to_string(), SqlValue::Text(short_text.to_string()));
+            row_data.insert("id".to_string(), SqlValue::Integer(1));
+            row_data.insert("name".to_string(), SqlValue::Text(short_text.to_string()));
+            row_data.insert("email".to_string(), SqlValue::Text("a@b.com".to_string()));
+            row_data.insert("age".to_string(), SqlValue::Integer(42));
+            row_data.insert("score".to_string(), SqlValue::Real(3.14));
+            row_data.insert("description".to_string(), SqlValue::Text("desc".to_string()));
+            row_data.insert("metadata".to_string(), SqlValue::Text("meta".to_string()));
             let serialized = storage_format.serialize_row(&row_data, &schema).unwrap();
             black_box(serialized);
         })
@@ -338,9 +361,15 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     c.bench_function("variable_length_text_encoding", |b| {
         let long_text = "This is a very long text that will use variable-length encoding".repeat(100);
         b.iter(|| {
-            // Test serialization of long text (should use variable-length encoding)
+            // Provide all required columns for the schema
             let mut row_data = HashMap::new();
-            row_data.insert("text".to_string(), SqlValue::Text(long_text.clone()));
+            row_data.insert("id".to_string(), SqlValue::Integer(1));
+            row_data.insert("name".to_string(), SqlValue::Text("short".to_string()));
+            row_data.insert("email".to_string(), SqlValue::Text("a@b.com".to_string()));
+            row_data.insert("age".to_string(), SqlValue::Integer(42));
+            row_data.insert("score".to_string(), SqlValue::Real(3.14));
+            row_data.insert("description".to_string(), SqlValue::Text("desc".to_string()));
+            row_data.insert("metadata".to_string(), SqlValue::Text(long_text.clone()));
             let serialized = storage_format.serialize_row(&row_data, &schema).unwrap();
             black_box(serialized);
         })

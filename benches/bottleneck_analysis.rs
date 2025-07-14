@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::hint::black_box;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -34,24 +35,29 @@ fn bottleneck_analysis(c: &mut Criterion) {
     // Benchmark schema clone (simulate what Database.execute does)
     let schemas = {
         let mut dummy_schemas = HashMap::new();
-        dummy_schemas.insert(
-            "test".to_string(),
-            tegdb::executor::TableSchema {
-                name: "test".to_string(),
-                columns: vec![
-                    tegdb::executor::ColumnInfo {
-                        name: "id".to_string(),
-                        data_type: tegdb::parser::DataType::Integer,
-                        constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
-                    },
-                    tegdb::executor::ColumnInfo {
-                        name: "value".to_string(),
-                        data_type: tegdb::parser::DataType::Integer,
-                        constraints: vec![],
-                    },
-                ],
-            },
-        );
+        let mut schema = tegdb::executor::TableSchema {
+            name: "test".to_string(),
+            columns: vec![
+                tegdb::executor::ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: tegdb::parser::DataType::Integer,
+                    constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
+                },
+                tegdb::executor::ColumnInfo {
+                    name: "value".to_string(),
+                    data_type: tegdb::parser::DataType::Integer,
+                    constraints: vec![],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
+                },
+            ],
+        };
+        let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+        dummy_schemas.insert("test".to_string(), Rc::new(schema));
         dummy_schemas
     };
 
@@ -78,21 +84,28 @@ fn bottleneck_analysis(c: &mut Criterion) {
         row
     };
 
-    let test_schema = tegdb::executor::TableSchema {
+    let mut test_schema = tegdb::executor::TableSchema {
         name: "test".to_string(),
         columns: vec![
             tegdb::executor::ColumnInfo {
                 name: "id".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             tegdb::executor::ColumnInfo {
                 name: "value".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
     };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut test_schema);
 
     // Benchmark native row format serialization
     let storage_format = tegdb::storage_format::StorageFormat::new();
@@ -306,24 +319,29 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             // Simulate the overhead of creating a query processor
             let mut dummy_schemas = HashMap::new();
-            dummy_schemas.insert(
-                "test".to_string(),
-                std::rc::Rc::new(tegdb::executor::TableSchema {
-                    name: "test".to_string(),
-                    columns: vec![
-                        tegdb::executor::ColumnInfo {
-                            name: "id".to_string(),
-                            data_type: tegdb::parser::DataType::Integer,
-                            constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
-                        },
-                        tegdb::executor::ColumnInfo {
-                            name: "value".to_string(),
-                            data_type: tegdb::parser::DataType::Integer,
-                            constraints: vec![],
-                        },
-                    ],
-                }),
-            );
+            let mut schema = tegdb::executor::TableSchema {
+                name: "test".to_string(),
+                columns: vec![
+                    tegdb::executor::ColumnInfo {
+                        name: "id".to_string(),
+                        data_type: tegdb::parser::DataType::Integer,
+                        constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                        storage_offset: 0,
+                        storage_size: 0,
+                        storage_type_code: 0,
+                    },
+                    tegdb::executor::ColumnInfo {
+                        name: "value".to_string(),
+                        data_type: tegdb::parser::DataType::Integer,
+                        constraints: vec![],
+                        storage_offset: 0,
+                        storage_size: 0,
+                        storage_type_code: 0,
+                    },
+                ],
+            };
+            let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+            dummy_schemas.insert("test".to_string(), Rc::new(schema));
             let transaction = engine.begin_transaction();
             let _processor = tegdb::executor::QueryProcessor::new_with_rc_schemas(
                 transaction,

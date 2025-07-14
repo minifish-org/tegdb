@@ -3,10 +3,10 @@ use crate::parser::{DataType, SqlValue};
 use crate::Result;
 use std::collections::HashMap;
 
-/// Ultra-optimized storage format for TegDB with lazy evaluation
+/// Ultra-optimized storage format for TegDB with embedded metadata
 ///
 /// This format is designed for maximum performance with:
-/// - Lazy metadata computation (computed once per schema)
+/// - Embedded metadata in ColumnInfo (no separate computation)
 /// - Zero-copy column access
 /// - Direct offset-based operations
 /// - Minimal allocations
@@ -22,27 +22,9 @@ pub enum TypeCode {
     TextFixed = 3,  // Fixed-length text (padded with nulls)
 }
 
-/// Column metadata for ultra-fast access
-#[derive(Debug, Clone)]
-pub struct ColumnMetadata {
-    pub offset: usize,     // Byte offset in record
-    pub size: usize,       // Size in bytes
-    pub type_code: u8,     // Type code
-}
-
-/// Table metadata for ultra-fast operations
-#[derive(Debug, Clone)]
-pub struct TableMetadata {
-    pub record_size: usize,           // Total size of each record
-    pub column_metadata: Vec<ColumnMetadata>,
-    pub column_map: HashMap<String, usize>, // Column name to index mapping
-    pub column_names: Vec<String>,    // Column names in order for full deserialization
-}
-
 /// A zero-copy, lazy row view
 pub struct LazyRow<'a> {
     data: &'a [u8],
-    metadata: TableMetadata,
     schema: &'a TableSchema,
 }
 
@@ -58,38 +40,22 @@ impl StorageFormat {
         StorageFormat
     }
 
-    /// Create native storage format (for API compatibility)
-    pub fn native() -> Self {
-        StorageFormat
-    }
-
-    /// Compute table metadata for ultra-fast operations
-    pub fn compute_table_metadata(schema: &TableSchema) -> Result<TableMetadata> {
-        let mut column_metadata = Vec::with_capacity(schema.columns.len());
-        let mut column_map = HashMap::with_capacity(schema.columns.len());
+    /// Compute table metadata and embed it in columns
+    pub fn compute_table_metadata(schema: &mut TableSchema) -> Result<()> {
         let mut current_offset = 0;
 
-        for (index, column) in schema.columns.iter().enumerate() {
+        for column in schema.columns.iter_mut() {
             let (size, type_code) = Self::get_column_size_and_type(&column.data_type)?;
             
-            column_metadata.push(ColumnMetadata {
-                offset: current_offset,
-                size,
-                type_code,
-            });
+            // Embed storage metadata directly in the column
+            column.storage_offset = current_offset;
+            column.storage_size = size;
+            column.storage_type_code = type_code;
             
-            column_map.insert(column.name.clone(), index);
             current_offset += size;
         }
 
-        let column_names: Vec<String> = schema.columns.iter().map(|col| col.name.clone()).collect();
-        
-        Ok(TableMetadata {
-            record_size: current_offset,
-            column_metadata,
-            column_map,
-            column_names,
-        })
+        Ok(())
     }
 
     /// Get column size and type code for a data type
@@ -102,26 +68,26 @@ impl StorageFormat {
         }
     }
 
-    /// Ultra-fast row serialization
+    /// Ultra-fast row serialization using embedded metadata
     pub fn serialize_row(
         &self,
         row_data: &HashMap<String, SqlValue>,
         schema: &TableSchema,
     ) -> Result<Vec<u8>> {
-        let metadata = Self::compute_table_metadata(schema)?;
-        let mut buffer = vec![0u8; metadata.record_size]; // Pre-allocate exact size
+        // Compute record size from columns
+        let record_size = schema.columns.iter().map(|col| col.storage_size).sum();
+        let mut buffer = vec![0u8; record_size]; // Pre-allocate exact size
 
-        for (index, column) in schema.columns.iter().enumerate() {
+        for column in &schema.columns {
             let value = row_data.get(&column.name)
                 .ok_or_else(|| crate::Error::Other(format!("Missing required value for column '{}'", column.name)))?;
-            let column_meta = &metadata.column_metadata[index];
             
             Self::serialize_value_at_offset(
                 value,
                 &mut buffer,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column.storage_offset,
+                column.storage_size,
+                column.storage_type_code,
             )?;
         }
 
@@ -157,88 +123,68 @@ impl StorageFormat {
         Ok(())
     }
 
-    /// Create a lazy row view (zero-copy, no allocation)
+    /// Create a lazy row view (zero-copy, no allocation) using embedded metadata
     pub fn create_lazy_row<'a>(
         &self,
         data: &'a [u8],
         schema: &'a TableSchema,
     ) -> Result<LazyRow<'a>> {
-        let metadata = Self::compute_table_metadata(schema)?;
         Ok(LazyRow {
             data,
-            metadata,
             schema,
         })
     }
 
-    /// Get a single column value by name (zero-copy)
+    /// Get a single column value by name (zero-copy) using embedded metadata
     pub fn get_column_value(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_name: &str,
     ) -> Result<SqlValue> {
-        let metadata = Self::compute_table_metadata(schema)?;
-        
-        if let Some(&index) = metadata.column_map.get(column_name) {
-            let column_meta = &metadata.column_metadata[index];
+        if let Some((index, _)) = schema.columns.iter().enumerate().find(|(_, col)| &col.name == column_name) {
+            let column_info = &schema.columns[index];
             Self::deserialize_value_at_offset(
                 data,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column_info.storage_offset,
+                column_info.storage_size,
+                column_info.storage_type_code,
             )
         } else {
             Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
         }
     }
 
-    /// Get a single column value by index (zero-copy)
+    /// Get a single column value by index (zero-copy) using pre-computed metadata
     pub fn get_column_by_index(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_index: usize,
     ) -> Result<SqlValue> {
-        let metadata = Self::compute_table_metadata(schema)?;
-        if column_index >= metadata.column_metadata.len() {
+        if column_index >= schema.columns.len() {
             return Err(crate::Error::Other("Column index out of bounds".to_string()));
         }
-
-        let column_meta = &metadata.column_metadata[column_index];
+        let column_info = &schema.columns[column_index];
         Self::deserialize_value_at_offset(
             data,
-            column_meta.offset,
-            column_meta.size,
-            column_meta.type_code,
+            column_info.storage_offset,
+            column_info.storage_size,
+            column_info.storage_type_code,
         )
     }
 
-    /// Get multiple columns by name (zero-copy)
+    /// Get multiple columns by name (zero-copy) using pre-computed metadata
     pub fn get_columns(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_names: &[&str],
     ) -> Result<Vec<SqlValue>> {
-        let metadata = Self::compute_table_metadata(schema)?;
         let mut result = Vec::with_capacity(column_names.len());
-
         for &column_name in column_names {
-            if let Some(&index) = metadata.column_map.get(column_name) {
-                let column_meta = &metadata.column_metadata[index];
-                let value = Self::deserialize_value_at_offset(
-                    data,
-                    column_meta.offset,
-                    column_meta.size,
-                    column_meta.type_code,
-                )?;
-                result.push(value);
-            } else {
-                return Err(crate::Error::Other(format!("Column '{}' not found", column_name)));
-            }
+            result.push(self.get_column_value(data, schema, column_name)?);
         }
-
         Ok(result)
     }
 
@@ -294,26 +240,22 @@ impl StorageFormat {
         }
     }
 
-    /// Full row deserialization (only when needed)
+    /// Full row deserialization (only when needed) using pre-computed metadata
     pub fn deserialize_row_full(
         &self,
         data: &[u8],
         schema: &TableSchema,
     ) -> Result<HashMap<String, SqlValue>> {
-        let metadata = Self::compute_table_metadata(schema)?;
         let mut result = HashMap::with_capacity(schema.columns.len());
-
-        for (index, column) in schema.columns.iter().enumerate() {
-            let column_meta = &metadata.column_metadata[index];
+        for column in &schema.columns {
             let value = Self::deserialize_value_at_offset(
                 data,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column.storage_offset,
+                column.storage_size,
+                column.storage_type_code,
             )?;
             result.insert(column.name.clone(), value);
         }
-
         Ok(result)
     }
 
@@ -347,11 +289,12 @@ impl StorageFormat {
         }
     }
 
-    /// Get record size for a schema
+    /// Get record size from schema
     pub fn get_record_size(&self, schema: &TableSchema) -> Result<usize> {
-        let metadata = Self::compute_table_metadata(schema)?;
-        Ok(metadata.record_size)
+        Ok(schema.columns.iter().map(|col| col.storage_size).sum())
     }
+
+
 
     // Backward compatibility methods
     pub fn deserialize_row(
@@ -362,14 +305,18 @@ impl StorageFormat {
         self.deserialize_row_full(data, schema)
     }
 
+    /// Deserialize specific columns by name using embedded metadata
     pub fn deserialize_columns(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_names: &[String],
     ) -> Result<Vec<SqlValue>> {
-        let str_refs: Vec<&str> = column_names.iter().map(|s| s.as_str()).collect();
-        self.get_columns(data, schema, &str_refs)
+        let mut result = Vec::with_capacity(column_names.len());
+        for column_name in column_names {
+            result.push(self.get_column_value(data, schema, column_name)?);
+        }
+        Ok(result)
     }
 
     pub fn deserialize_column_by_index(
@@ -398,16 +345,16 @@ impl StorageFormat {
     pub fn get_column_value_with_metadata(
         &self,
         data: &[u8],
-        metadata: &TableMetadata,
+        schema: &TableSchema,
         column_name: &str,
     ) -> Result<SqlValue> {
-        if let Some(&index) = metadata.column_map.get(column_name) {
-            let column_meta = &metadata.column_metadata[index];
+        if let Some((index, _)) = schema.columns.iter().enumerate().find(|(_, col)| &col.name == column_name) {
+            let column_info = &schema.columns[index];
             Self::deserialize_value_at_offset(
                 data,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column_info.storage_offset,
+                column_info.storage_size,
+                column_info.storage_type_code,
             )
         } else {
             Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
@@ -418,19 +365,19 @@ impl StorageFormat {
     pub fn get_column_by_index_with_metadata(
         &self,
         data: &[u8],
-        metadata: &TableMetadata,
+        schema: &TableSchema,
         column_index: usize,
     ) -> Result<SqlValue> {
-        if column_index >= metadata.column_metadata.len() {
+        if column_index >= schema.columns.len() {
             return Err(crate::Error::Other("Column index out of bounds".to_string()));
         }
 
-        let column_meta = &metadata.column_metadata[column_index];
+        let column_info = &schema.columns[column_index];
         Self::deserialize_value_at_offset(
             data,
-            column_meta.offset,
-            column_meta.size,
-            column_meta.type_code,
+            column_info.storage_offset,
+            column_info.storage_size,
+            column_info.storage_type_code,
         )
     }
 
@@ -438,20 +385,20 @@ impl StorageFormat {
     pub fn get_columns_by_indices_with_metadata(
         &self,
         data: &[u8],
-        metadata: &TableMetadata,
+        schema: &TableSchema,
         column_indices: &[usize],
     ) -> Result<Vec<SqlValue>> {
         let mut result = Vec::with_capacity(column_indices.len());
         for &index in column_indices {
-            if index >= metadata.column_metadata.len() {
+            if index >= schema.columns.len() {
                 return Err(crate::Error::Other("Column index out of bounds".to_string()));
             }
-            let column_meta = &metadata.column_metadata[index];
+            let column_info = &schema.columns[index];
             let value = Self::deserialize_value_at_offset(
                 data,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column_info.storage_offset,
+                column_info.storage_size,
+                column_info.storage_type_code,
             )?;
             result.push(value);
         }
@@ -462,12 +409,12 @@ impl StorageFormat {
     pub fn matches_condition_with_metadata(
         &self,
         data: &[u8],
-        metadata: &TableMetadata,
+        schema: &TableSchema,
         condition: &crate::parser::Condition,
     ) -> Result<bool> {
         match condition {
             crate::parser::Condition::Comparison { left, operator, right } => {
-                if let Ok(left_val) = self.get_column_value_with_metadata(data, metadata, left) {
+                if let Ok(left_val) = self.get_column_value_with_metadata(data, schema, left) {
                     match (left_val, right) {
                         (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
                             crate::parser::ComparisonOperator::Equal => Ok(l == *r),
@@ -500,37 +447,34 @@ impl StorageFormat {
                     }
                 } else {
                     // Fallback to full deserialization for complex cases
-                    let row_data = self.deserialize_row_full_with_metadata(data, metadata)?;
+                    let row_data = self.deserialize_row_full_with_metadata(data, schema)?;
                     Ok(evaluate_condition_on_row(condition, &row_data))
                 }
             }
             _ => {
                 // For complex conditions, fall back to full deserialization
-                let row_data = self.deserialize_row_full_with_metadata(data, metadata)?;
+                let row_data = self.deserialize_row_full_with_metadata(data, schema)?;
                 Ok(evaluate_condition_on_row(condition, &row_data))
             }
         }
     }
 
-    /// Full row deserialization (only when needed) - with cached metadata
+    /// Deserialize full row using embedded metadata
     pub fn deserialize_row_full_with_metadata(
         &self,
         data: &[u8],
-        metadata: &TableMetadata,
+        schema: &TableSchema,
     ) -> Result<HashMap<String, SqlValue>> {
-        let mut result = HashMap::with_capacity(metadata.column_metadata.len());
-        
-        for (index, column_name) in metadata.column_names.iter().enumerate() {
-            let column_meta = &metadata.column_metadata[index];
+        let mut result = HashMap::with_capacity(schema.columns.len());
+        for column in &schema.columns {
             let value = Self::deserialize_value_at_offset(
                 data,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column.storage_offset,
+                column.storage_size,
+                column.storage_type_code,
             )?;
-            result.insert(column_name.clone(), value);
+            result.insert(column.name.clone(), value);
         }
-
         Ok(result)
     }
 }
@@ -538,13 +482,13 @@ impl StorageFormat {
 impl<'a> LazyRow<'a> {
     /// Get a single column value by name (zero-copy)
     pub fn get_column(&self, column_name: &str) -> Result<SqlValue> {
-        if let Some(&index) = self.metadata.column_map.get(column_name) {
-            let column_meta = &self.metadata.column_metadata[index];
+        if let Some((index, _)) = self.schema.columns.iter().enumerate().find(|(_, col)| &col.name == column_name) {
+            let column_info = &self.schema.columns[index];
             StorageFormat::deserialize_value_at_offset(
                 self.data,
-                column_meta.offset,
-                column_meta.size,
-                column_meta.type_code,
+                column_info.storage_offset,
+                column_info.storage_size,
+                column_info.storage_type_code,
             )
         } else {
             Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
@@ -553,15 +497,15 @@ impl<'a> LazyRow<'a> {
 
     /// Get a single column value by index (zero-copy)
     pub fn get_by_index(&self, index: usize) -> Result<SqlValue> {
-        if index >= self.metadata.column_metadata.len() {
+        if index >= self.schema.columns.len() {
             return Err(crate::Error::Other("Column index out of bounds".to_string()));
         }
-        let column_meta = &self.metadata.column_metadata[index];
+        let column_info = &self.schema.columns[index];
         StorageFormat::deserialize_value_at_offset(
             self.data,
-            column_meta.offset,
-            column_meta.size,
-            column_meta.type_code,
+            column_info.storage_offset,
+            column_info.storage_size,
+            column_info.storage_type_code,
         )
     }
 
@@ -645,31 +589,42 @@ mod tests {
     use std::collections::HashMap;
 
     fn create_test_schema() -> TableSchema {
-        TableSchema {
+        let mut schema = TableSchema {
             name: "test_table".to_string(),
             columns: vec![
                 ColumnInfo {
                     name: "id".to_string(),
                     data_type: DataType::Integer,
                     constraints: vec![],
+                    storage_offset: 0,
+                    storage_size: 8,
+                    storage_type_code: TypeCode::Integer as u8,
                 },
                 ColumnInfo {
                     name: "name".to_string(),
                     data_type: DataType::Text(Some(10)),
                     constraints: vec![],
+                    storage_offset: 8,
+                    storage_size: 10,
+                    storage_type_code: TypeCode::TextFixed as u8,
                 },
                 ColumnInfo {
                     name: "score".to_string(),
                     data_type: DataType::Real,
                     constraints: vec![],
+                    storage_offset: 18,
+                    storage_size: 8,
+                    storage_type_code: TypeCode::Real as u8,
                 },
             ],
-        }
+        };
+        let _ = StorageFormat::compute_table_metadata(&mut schema);
+        schema
     }
 
     #[test]
     fn test_serialize_deserialize_round_trip() {
-        let schema = create_test_schema();
+        let mut schema = create_test_schema();
         let storage = StorageFormat::new();
         let mut row_data = HashMap::new();
         row_data.insert("id".to_string(), SqlValue::Integer(123));
@@ -689,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_partial_column_deserialization() {
-        let schema = create_test_schema();
+        let mut schema = create_test_schema();
         let storage = StorageFormat::new();
         let mut row_data = HashMap::new();
         row_data.insert("id".to_string(), SqlValue::Integer(456));

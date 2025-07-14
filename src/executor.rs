@@ -16,12 +16,16 @@ use std::rc::Rc;
 /// Type alias for scan iterator to reduce complexity
 type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)> + 'a>;
 
-/// Column information for table schema
+/// Column information for table schema with embedded storage metadata
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
     pub name: String,
     pub data_type: DataType,
     pub constraints: Vec<ColumnConstraint>,
+    // Embedded storage metadata for ultra-fast access
+    pub storage_offset: usize,
+    pub storage_size: usize,
+    pub storage_type_code: u8,
 }
 
 /// Table schema definition
@@ -90,8 +94,6 @@ pub struct SelectRowIterator<'a> {
     filter: Option<Condition>,
     /// Storage format for deserialization
     storage_format: StorageFormat,
-    /// Cached table metadata for ultra-fast access
-    metadata: crate::storage_format::TableMetadata,
     /// Optional limit on number of rows
     limit: Option<u64>,
     /// Current count of yielded rows
@@ -116,9 +118,7 @@ impl<'a> SelectRowIterator<'a> {
             }
         }
 
-        // Cache table metadata for ultra-fast access
         let storage_format = StorageFormat::new();
-        let metadata = StorageFormat::compute_table_metadata(&schema).unwrap();
 
         Self {
             scan_iter,
@@ -127,7 +127,6 @@ impl<'a> SelectRowIterator<'a> {
             column_indices,
             filter,
             storage_format,
-            metadata,
             limit,
             count: 0,
         }
@@ -155,7 +154,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
             // Check if we need to apply a filter
             let matches = if let Some(ref filter) = self.filter {
                 // Use cached metadata for ultra-fast condition evaluation
-                match self.storage_format.matches_condition_with_metadata(&value, &self.metadata, filter) {
+                match self.storage_format.matches_condition_with_metadata(&value, &self.schema, filter) {
                     Ok(matches) => matches,
                     Err(_) => return Some(Err(Error::Other("Failed to evaluate condition".to_string()))),
                 }
@@ -167,7 +166,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                 // Use cached metadata for ultra-fast column access
                 let row_values_result = self.storage_format.get_columns_by_indices_with_metadata(
                     &value,
-                    &self.metadata,
+                    &self.schema,
                     &self.column_indices,
                 );
                 
@@ -227,6 +226,10 @@ pub enum ResultSet<'a> {
 
 impl<'a> ResultSet<'a> {
     // No methods needed - columns() is provided by QueryResult in database.rs
+}
+
+impl TableSchema {
+    // Storage metadata is now embedded in columns, no separate computation needed
 }
 
 /// SQL query processor with native row format support
@@ -317,13 +320,19 @@ impl<'a> QueryProcessor<'a> {
                 name: col.name.clone(),
                 data_type: col.data_type.clone(),
                 constraints: col.constraints.clone(),
+                storage_offset: 0, // Placeholder, will be set later
+                storage_size: 0,   // Placeholder, will be set later
+                storage_type_code: 0, // Placeholder, will be set later
             })
             .collect();
 
-        let schema = TableSchema {
+        let mut schema = TableSchema {
             name: create.table.clone(),
             columns,
         };
+
+        // Compute and store storage metadata for ultra-fast access
+        crate::storage_format::StorageFormat::compute_table_metadata(&mut schema)?;
 
         // Store schema metadata (use simple string serialization for now)
         let schema_key = format!("S:{}", create.table);
@@ -841,10 +850,9 @@ impl<'a> QueryProcessor<'a> {
                     }
 
                     let matches = if let Some(filter_cond) = additional_filter {
-                        // Compute metadata once for this scan
-                        let metadata = StorageFormat::compute_table_metadata(schema).unwrap();
+                        // Use pre-computed metadata from schema
                         self.storage_format
-                            .matches_condition_with_metadata(&value_rc, &metadata, filter_cond)
+                            .matches_condition_with_metadata(&value_rc, &schema, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -879,10 +887,9 @@ impl<'a> QueryProcessor<'a> {
                     }
 
                     let matches = if let Some(filter_cond) = filter {
-                        // Compute metadata once for this scan
-                        let metadata = StorageFormat::compute_table_metadata(schema).unwrap();
+                        // Use pre-computed metadata from schema
                         self.storage_format
-                            .matches_condition_with_metadata(&value_rc, &metadata, filter_cond)
+                            .matches_condition_with_metadata(&value_rc, &schema, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -920,8 +927,14 @@ impl<'a> QueryProcessor<'a> {
                 if !self.table_schemas.contains_key(table_name) {
                     // Parse the schema using centralized utility
                     if let Ok(schema_data) = String::from_utf8(value_rc.to_vec()) {
-                        if let Some(schema) = sql_utils::parse_schema_data(table_name, &schema_data)
+                        if let Some(mut schema) = sql_utils::parse_schema_data(table_name, &schema_data)
                         {
+                            // Compute and store storage metadata for ultra-fast access
+                            if let Err(_) = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema) {
+                                // If metadata computation fails, continue without it
+                                // (fallback to runtime computation)
+                            }
+                            
                             self.table_schemas
                                 .insert(table_name.to_string(), Rc::new(schema.clone()));
                             self.validation_caches.insert(

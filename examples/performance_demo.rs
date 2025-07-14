@@ -6,36 +6,52 @@ fn main() {
     println!("=== TegDB Fixed-Length Storage Format Performance Demo ===\n");
 
     // Create a test schema with fixed-length columns
-    let schema = TableSchema {
+    let mut schema = TableSchema {
         name: "users".to_string(),
         columns: vec![
             ColumnInfo {
                 name: "id".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![ColumnConstraint::PrimaryKey],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "name".to_string(),
                 data_type: DataType::Text(Some(50)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "email".to_string(),
                 data_type: DataType::Text(Some(100)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "age".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "score".to_string(),
                 data_type: DataType::Real,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
     };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
 
     let storage = StorageFormat::new();
     
@@ -106,36 +122,52 @@ fn main() {
 
     // Benchmark 5: Large Dataset Simulation
     println!("\n📊 Benchmarking Large Dataset...");
-    let large_schema = TableSchema {
+    let mut large_schema = TableSchema {
         name: "large_table".to_string(),
         columns: vec![
             ColumnInfo {
                 name: "id".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![ColumnConstraint::PrimaryKey],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "data1".to_string(),
                 data_type: DataType::Text(Some(200)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "data2".to_string(),
                 data_type: DataType::Text(Some(200)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "value1".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "value2".to_string(),
                 data_type: DataType::Real,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
     };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut large_schema);
 
     let large_row = {
         let mut row = HashMap::new();

@@ -181,6 +181,9 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
                 name: column_name,
                 data_type,
                 constraints,
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             });
         }
     }
@@ -188,10 +191,12 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
     if columns.is_empty() {
         None
     } else {
-        Some(TableSchema {
+        let mut schema = TableSchema {
             name: table_name.to_string(),
             columns,
-        })
+        };
+        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+        Some(schema)
     }
 }
 
@@ -225,10 +230,12 @@ pub fn deserialize_schema_from_bytes(data: &[u8]) -> crate::Result<TableSchema> 
         parse_column_part_from_bytes(column_part, &mut columns);
     }
 
-    Ok(TableSchema {
+    let mut schema = TableSchema {
         name: "unknown".to_string(), // Will be set by caller
         columns,
-    })
+    };
+    let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+    Ok(schema)
 }
 
 /// Helper to parse a single column entry from binary data
@@ -275,6 +282,9 @@ fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo
             name,
             data_type,
             constraints,
+            storage_offset: 0,
+            storage_size: 0,
+            storage_type_code: 0,
         });
     }
 }

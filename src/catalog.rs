@@ -73,7 +73,7 @@ impl Catalog {
 
     /// Create a table schema from CREATE TABLE statement
     pub fn create_table_schema(create_table: &crate::parser::CreateTableStatement) -> TableSchema {
-        TableSchema {
+        let mut schema = TableSchema {
             name: create_table.table.clone(),
             columns: create_table
                 .columns
@@ -82,9 +82,14 @@ impl Catalog {
                     name: col.name.clone(),
                     data_type: col.data_type.clone(),
                     constraints: col.constraints.clone(),
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
                 })
                 .collect(),
-        }
+        };
+        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+        schema
     }
 
     /// Load schemas from storage into the provided HashMap
@@ -172,21 +177,28 @@ mod tests {
         assert!(!catalog.table_exists("users"));
 
         // Create a test schema
-        let schema = TableSchema {
+        let mut schema = TableSchema {
             name: "users".to_string(),
             columns: vec![
                 ColumnInfo {
                     name: "id".to_string(),
                     data_type: DataType::Integer,
                     constraints: vec![ColumnConstraint::PrimaryKey],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
                 },
                 ColumnInfo {
                     name: "name".to_string(),
                     data_type: DataType::Text(None),
                     constraints: vec![],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
                 },
             ],
         };
+        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
 
         catalog.add_table_schema(schema);
         assert_eq!(catalog.table_count(), 1);

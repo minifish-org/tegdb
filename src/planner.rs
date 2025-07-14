@@ -398,7 +398,7 @@ impl QueryPlanner {
 
     /// Plan CREATE TABLE statement
     fn plan_create_table(&self, create: CreateTableStatement) -> Result<ExecutionPlan> {
-        let schema = TableSchema {
+        let mut schema = TableSchema {
             name: create.table.clone(),
             columns: create
                 .columns
@@ -407,9 +407,13 @@ impl QueryPlanner {
                     name: col.name.clone(),
                     data_type: col.data_type.clone(),
                     constraints: col.constraints.clone(),
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
                 })
                 .collect(),
         };
+        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
 
         Ok(ExecutionPlan::CreateTable {
             table: create.table,
@@ -773,29 +777,37 @@ mod tests {
         let mut schemas = HashMap::new();
 
         // Users table with single primary key
-        schemas.insert(
-            "users".to_string(),
-            Rc::new(TableSchema {
-                name: "users".to_string(),
-                columns: vec![
-                    ColumnInfo {
-                        name: "id".to_string(),
-                        data_type: DataType::Integer,
-                        constraints: vec![ColumnConstraint::PrimaryKey],
-                    },
-                    ColumnInfo {
-                        name: "name".to_string(),
-                        data_type: DataType::Text(None),
-                        constraints: vec![],
-                    },
-                    ColumnInfo {
-                        name: "email".to_string(),
-                        data_type: DataType::Text(None),
-                        constraints: vec![],
-                    },
-                ],
-            }),
-        );
+        let mut users_schema = TableSchema {
+            name: "users".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: DataType::Integer,
+                    constraints: vec![ColumnConstraint::PrimaryKey],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
+                },
+                ColumnInfo {
+                    name: "name".to_string(),
+                    data_type: DataType::Text(None),
+                    constraints: vec![],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
+                },
+                ColumnInfo {
+                    name: "email".to_string(),
+                    data_type: DataType::Text(None),
+                    constraints: vec![],
+                    storage_offset: 0,
+                    storage_size: 0,
+                    storage_type_code: 0,
+                },
+            ],
+        };
+        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut users_schema);
+        schemas.insert("users".to_string(), Rc::new(users_schema));
 
         schemas
     }

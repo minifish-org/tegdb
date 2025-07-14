@@ -7,41 +7,61 @@ use tegdb::storage_format::StorageFormat;
 
 /// Create a test schema with fixed-length columns
 fn create_fixed_length_schema() -> TableSchema {
-    TableSchema {
+    let mut schema = TableSchema {
         name: "users".to_string(),
         columns: vec![
             ColumnInfo {
                 name: "id".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "name".to_string(),
                 data_type: DataType::Text(Some(50)), // Fixed 50-byte text
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "email".to_string(),
                 data_type: DataType::Text(Some(100)), // Fixed 100-byte text
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "age".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "score".to_string(),
                 data_type: DataType::Real,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "avatar".to_string(),
                 data_type: DataType::Text(Some(256)), // Fixed 256-byte text
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
-    }
+    };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+    schema
 }
 
 /// Create test row data
@@ -71,7 +91,9 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     // Benchmark 2: Table metadata computation
     c.bench_function("table_metadata_computation", |b| {
         b.iter(|| {
-            let _metadata = StorageFormat::compute_table_metadata(black_box(&schema)).unwrap();
+            // Create a fresh schema for each iteration since compute_table_metadata modifies it
+            let mut test_schema = create_fixed_length_schema();
+            let _metadata = StorageFormat::compute_table_metadata(&mut test_schema).unwrap();
         })
     });
 
@@ -132,46 +154,68 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     });
 
     // Benchmark 8: Large dataset simulation
-    let large_schema = TableSchema {
+    let mut large_schema = TableSchema {
         name: "large_table".to_string(),
         columns: vec![
             ColumnInfo {
                 name: "id".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "data1".to_string(),
                 data_type: DataType::Text(Some(200)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "data2".to_string(),
                 data_type: DataType::Text(Some(200)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "data3".to_string(),
                 data_type: DataType::Text(Some(200)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "value1".to_string(),
                 data_type: DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "value2".to_string(),
                 data_type: DataType::Real,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             ColumnInfo {
                 name: "blob_data".to_string(),
                 data_type: DataType::Text(Some(500)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
     };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut large_schema);
 
     let large_row = {
         let mut row = HashMap::new();
@@ -235,12 +279,11 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     // Benchmark 11: Zero-copy access simulation
     c.bench_function("zero_copy_access_simulation", |b| {
         b.iter(|| {
-            let metadata = StorageFormat::compute_table_metadata(&schema).unwrap();
-            // Simulate direct memory access without deserialization
-            for column_meta in &metadata.column_metadata {
-                let _offset = column_meta.offset;
-                let _size = column_meta.size;
-                let _type_code = column_meta.type_code;
+            // Access the pre-computed metadata from the schema
+            for column in &schema.columns {
+                let _offset = column.storage_offset;
+                let _size = column.storage_size;
+                let _type_code = column.storage_type_code;
             }
         })
     });

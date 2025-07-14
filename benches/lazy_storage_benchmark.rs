@@ -35,26 +35,36 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     }
 
     let storage_format = tegdb::storage_format::StorageFormat::new();
-    let test_schema = tegdb::executor::TableSchema {
+    let mut test_schema = tegdb::executor::TableSchema {
         name: "test".to_string(),
         columns: vec![
             tegdb::executor::ColumnInfo {
                 name: "id".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             tegdb::executor::ColumnInfo {
                 name: "value".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
             tegdb::executor::ColumnInfo {
                 name: "name".to_string(),
                 data_type: tegdb::parser::DataType::Text(Some(10)),
                 constraints: vec![],
+                storage_offset: 0,
+                storage_size: 0,
+                storage_type_code: 0,
             },
         ],
     };
+    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut test_schema);
 
     // Create test row data
     let test_row_data = {
