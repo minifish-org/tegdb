@@ -98,6 +98,8 @@ impl StorageFormat {
         }
     }
 
+
+
     /// Serialize a row using the ultra-optimized fixed-length format
     pub fn serialize_row(
         &self,
