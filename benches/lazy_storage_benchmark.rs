@@ -1,0 +1,306 @@
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::hint::black_box;
+use std::path::PathBuf;
+
+/// Creates a unique temporary file path for benchmarks
+fn temp_db_path(prefix: &str) -> PathBuf {
+    let mut path = env::temp_dir();
+    path.push(format!("tegdb_lazy_bench_{}_{}", prefix, std::process::id()));
+    path
+}
+
+fn lazy_storage_benchmark(c: &mut Criterion) {
+    let path = temp_db_path("lazy_storage");
+    if path.exists() {
+        fs::remove_file(&path).expect("Failed to remove existing test file");
+    }
+
+    let mut db = tegdb::Database::open(format!("file://{}", path.display()))
+        .expect("Failed to create database");
+    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER, name TEXT(10))")
+        .unwrap();
+
+    // Add test data
+    for i in 1..=100 {
+        db.execute(&format!(
+            "INSERT INTO test (id, value, name) VALUES ({}, {}, 'user{}')",
+            i,
+            i * 2,
+            i
+        ))
+        .unwrap();
+    }
+
+    let storage_format = tegdb::storage_format::StorageFormat::new();
+    let test_schema = tegdb::executor::TableSchema {
+        name: "test".to_string(),
+        columns: vec![
+            tegdb::executor::ColumnInfo {
+                name: "id".to_string(),
+                data_type: tegdb::parser::DataType::Integer,
+                constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+            },
+            tegdb::executor::ColumnInfo {
+                name: "value".to_string(),
+                data_type: tegdb::parser::DataType::Integer,
+                constraints: vec![],
+            },
+            tegdb::executor::ColumnInfo {
+                name: "name".to_string(),
+                data_type: tegdb::parser::DataType::Text(Some(10)),
+                constraints: vec![],
+            },
+        ],
+    };
+
+    // Create test row data
+    let test_row_data = {
+        let mut row = HashMap::new();
+        row.insert("id".to_string(), tegdb::parser::SqlValue::Integer(123));
+        row.insert("value".to_string(), tegdb::parser::SqlValue::Integer(456));
+        row.insert("name".to_string(), tegdb::parser::SqlValue::Text("test".to_string()));
+        row
+    };
+
+    // Serialize test data
+    let serialized_data = storage_format
+        .serialize_row(&test_row_data, &test_schema)
+        .unwrap();
+
+    // ===== LAZY STORAGE BENCHMARKS =====
+
+    // 1. Single column access (zero-copy)
+    c.bench_function("lazy_single_column_access", |b| {
+        b.iter(|| {
+            let _value = storage_format
+                .get_column_value(black_box(&serialized_data), black_box(&test_schema), "id")
+                .unwrap();
+        })
+    });
+
+    // 2. Multiple column access (zero-copy)
+    c.bench_function("lazy_multiple_column_access", |b| {
+        b.iter(|| {
+            let _values = storage_format
+                .get_columns(black_box(&serialized_data), black_box(&test_schema), &["id", "value"])
+                .unwrap();
+        })
+    });
+
+    // 3. Column access by index (zero-copy)
+    c.bench_function("lazy_column_by_index", |b| {
+        b.iter(|| {
+            let _value = storage_format
+                .get_column_by_index(black_box(&serialized_data), black_box(&test_schema), 0)
+                .unwrap();
+        })
+    });
+
+    // 4. Lazy row creation
+    c.bench_function("lazy_row_creation", |b| {
+        b.iter(|| {
+            let _lazy_row = storage_format
+                .create_lazy_row(black_box(&serialized_data), black_box(&test_schema))
+                .unwrap();
+        })
+    });
+
+    // 5. Lazy row column access
+    c.bench_function("lazy_row_column_access", |b| {
+        let lazy_row = storage_format
+            .create_lazy_row(&serialized_data, &test_schema)
+            .unwrap();
+        b.iter(|| {
+            let _value = lazy_row.get_column("id").unwrap();
+        })
+    });
+
+    // 6. Lazy row multiple columns
+    c.bench_function("lazy_row_multiple_columns", |b| {
+        let lazy_row = storage_format
+            .create_lazy_row(&serialized_data, &test_schema)
+            .unwrap();
+        b.iter(|| {
+            let _values = lazy_row.get_columns(&["id", "value", "name"]).unwrap();
+        })
+    });
+
+    // 7. Condition evaluation (zero-copy)
+    let simple_condition = tegdb::parser::Condition::Comparison {
+        left: "id".to_string(),
+        operator: tegdb::parser::ComparisonOperator::Equal,
+        right: tegdb::parser::SqlValue::Integer(123),
+    };
+
+    c.bench_function("lazy_condition_evaluation", |b| {
+        b.iter(|| {
+            let _matches = storage_format
+                .matches_condition(black_box(&serialized_data), black_box(&test_schema), &simple_condition)
+                .unwrap();
+        })
+    });
+
+    // 8. Complex condition evaluation (fallback to full deserialization)
+    let complex_condition = tegdb::parser::Condition::And(
+        Box::new(tegdb::parser::Condition::Comparison {
+            left: "id".to_string(),
+            operator: tegdb::parser::ComparisonOperator::Equal,
+            right: tegdb::parser::SqlValue::Integer(123),
+        }),
+        Box::new(tegdb::parser::Condition::Comparison {
+            left: "value".to_string(),
+            operator: tegdb::parser::ComparisonOperator::GreaterThan,
+            right: tegdb::parser::SqlValue::Integer(100),
+        }),
+    );
+
+    c.bench_function("lazy_complex_condition_evaluation", |b| {
+        b.iter(|| {
+            let _matches = storage_format
+                .matches_condition(black_box(&serialized_data), black_box(&test_schema), &complex_condition)
+                .unwrap();
+        })
+    });
+
+    // 9. Full deserialization (only when needed)
+    c.bench_function("lazy_full_deserialization", |b| {
+        b.iter(|| {
+            let _row_data = storage_format
+                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
+                .unwrap();
+        })
+    });
+
+    // 10. Lazy row to HashMap conversion
+    c.bench_function("lazy_row_to_hashmap", |b| {
+        let lazy_row = storage_format
+            .create_lazy_row(&serialized_data, &test_schema)
+            .unwrap();
+        b.iter(|| {
+            let _hashmap = lazy_row.to_hashmap().unwrap();
+        })
+    });
+
+    // ===== COMPARISON WITH OLD APPROACH =====
+
+    // 11. Old approach: full deserialization every time
+    c.bench_function("old_full_deserialization", |b| {
+        b.iter(|| {
+            let _row_data = storage_format
+                .deserialize_row(black_box(&serialized_data), black_box(&test_schema))
+                .unwrap();
+        })
+    });
+
+    // 12. Old approach: deserialize columns
+    c.bench_function("old_deserialize_columns", |b| {
+        b.iter(|| {
+            let _values = storage_format
+                .deserialize_columns(black_box(&serialized_data), black_box(&test_schema), &["id".to_string(), "value".to_string()])
+                .unwrap();
+        })
+    });
+
+    // ===== REAL-WORLD SCENARIOS =====
+
+    // 13. Query with WHERE clause (using lazy evaluation)
+    c.bench_function("query_with_where_lazy", |b| {
+        b.iter(|| {
+            let result = db
+                .query(black_box("SELECT id, value FROM test WHERE id = 50"))
+                .unwrap();
+            black_box(result);
+        })
+    });
+
+    // 14. Query with LIMIT (using lazy evaluation)
+    c.bench_function("query_with_limit_lazy", |b| {
+        b.iter(|| {
+            let result = db
+                .query(black_box("SELECT id, value FROM test LIMIT 10"))
+                .unwrap();
+            black_box(result);
+        })
+    });
+
+    // 15. Query with multiple conditions
+    c.bench_function("query_with_multiple_conditions", |b| {
+        b.iter(|| {
+            let result = db
+                .query(black_box("SELECT id, value FROM test WHERE id > 10 AND value < 100"))
+                .unwrap();
+            black_box(result);
+        })
+    });
+
+    // 16. Memory allocation comparison
+    c.bench_function("lazy_memory_allocation", |b| {
+        b.iter(|| {
+            // Simulate lazy approach memory usage
+            let lazy_row = storage_format
+                .create_lazy_row(&serialized_data, &test_schema)
+                .unwrap();
+            let _value = lazy_row.get_column("id").unwrap();
+            black_box(lazy_row);
+        })
+    });
+
+    c.bench_function("old_memory_allocation", |b| {
+        b.iter(|| {
+            // Simulate old approach memory usage
+            let _row_data = storage_format
+                .deserialize_row(&serialized_data, &test_schema)
+                .unwrap();
+        })
+    });
+
+    // 17. String operations comparison
+    c.bench_function("lazy_string_operations", |b| {
+        b.iter(|| {
+            let lazy_row = storage_format
+                .create_lazy_row(&serialized_data, &test_schema)
+                .unwrap();
+            let _name = lazy_row.get_column("name").unwrap();
+        })
+    });
+
+    c.bench_function("old_string_operations", |b| {
+        b.iter(|| {
+            let row_data = storage_format
+                .deserialize_row(&serialized_data, &test_schema)
+                .unwrap();
+            let _name = row_data.get("name").unwrap();
+        })
+    });
+
+    // 18. HashMap operations comparison
+    c.bench_function("lazy_hashmap_avoidance", |b| {
+        b.iter(|| {
+            // Lazy approach: no HashMap created
+            let lazy_row = storage_format
+                .create_lazy_row(&serialized_data, &test_schema)
+                .unwrap();
+            let _id = lazy_row.get_column("id").unwrap();
+            let _value = lazy_row.get_column("value").unwrap();
+        })
+    });
+
+    c.bench_function("old_hashmap_creation", |b| {
+        b.iter(|| {
+            // Old approach: HashMap created every time
+            let _row_data = storage_format
+                .deserialize_row(&serialized_data, &test_schema)
+                .unwrap();
+        })
+    });
+
+    // Clean up
+    drop(db);
+    let _ = fs::remove_file(&path);
+}
+
+criterion_group!(benches, lazy_storage_benchmark);
+criterion_main!(benches); 

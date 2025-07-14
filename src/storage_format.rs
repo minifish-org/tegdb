@@ -3,35 +3,31 @@ use crate::parser::{DataType, SqlValue};
 use crate::Result;
 use std::collections::HashMap;
 
-/// Ultra-optimized storage format for TegDB
+/// Ultra-optimized storage format for TegDB with lazy evaluation
 ///
-/// This format is designed for maximum performance with fixed-length columns.
-/// All text and blob columns must have a specified length in the schema.
-/// This enables:
-/// - Direct offset-based column access
-/// - Zero-copy deserialization
-/// - Predictable record sizes
-/// - Maximum cache efficiency
+/// This format is designed for maximum performance with:
+/// - Lazy metadata computation (computed once per schema)
+/// - Zero-copy column access
+/// - Direct offset-based operations
+/// - Minimal allocations
 #[derive(Clone, Debug)]
 pub struct StorageFormat;
 
-/// Type codes for the new fixed-length format
+/// Type codes for the ultra-fast format
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TypeCode {
-    Null = 0,
     Integer = 1,    // 8-byte i64
     Real = 2,       // 8-byte f64
     TextFixed = 3,  // Fixed-length text (padded with nulls)
 }
 
-/// Column metadata for fast access
+/// Column metadata for ultra-fast access
 #[derive(Debug, Clone)]
 pub struct ColumnMetadata {
     pub offset: usize,     // Byte offset in record
     pub size: usize,       // Size in bytes
     pub type_code: u8,     // Type code
-    pub is_nullable: bool, // Whether column can be null
 }
 
 /// Table metadata for ultra-fast operations
@@ -40,9 +36,15 @@ pub struct TableMetadata {
     pub record_size: usize,           // Total size of each record
     pub column_metadata: Vec<ColumnMetadata>,
     pub column_map: HashMap<String, usize>, // Column name to index mapping
+    pub column_names: Vec<String>,    // Column names in order for full deserialization
 }
 
-
+/// A zero-copy, lazy row view
+pub struct LazyRow<'a> {
+    data: &'a [u8],
+    metadata: TableMetadata,
+    schema: &'a TableSchema,
+}
 
 impl Default for StorageFormat {
     fn default() -> Self {
@@ -64,7 +66,7 @@ impl StorageFormat {
     /// Compute table metadata for ultra-fast operations
     pub fn compute_table_metadata(schema: &TableSchema) -> Result<TableMetadata> {
         let mut column_metadata = Vec::with_capacity(schema.columns.len());
-        let mut column_map = HashMap::new();
+        let mut column_map = HashMap::with_capacity(schema.columns.len());
         let mut current_offset = 0;
 
         for (index, column) in schema.columns.iter().enumerate() {
@@ -74,17 +76,19 @@ impl StorageFormat {
                 offset: current_offset,
                 size,
                 type_code,
-                is_nullable: !column.constraints.contains(&crate::parser::ColumnConstraint::NotNull),
             });
             
             column_map.insert(column.name.clone(), index);
             current_offset += size;
         }
 
+        let column_names: Vec<String> = schema.columns.iter().map(|col| col.name.clone()).collect();
+        
         Ok(TableMetadata {
             record_size: current_offset,
             column_metadata,
             column_map,
+            column_names,
         })
     }
 
@@ -98,9 +102,7 @@ impl StorageFormat {
         }
     }
 
-
-
-    /// Serialize a row using the ultra-optimized fixed-length format
+    /// Ultra-fast row serialization
     pub fn serialize_row(
         &self,
         row_data: &HashMap<String, SqlValue>,
@@ -110,7 +112,8 @@ impl StorageFormat {
         let mut buffer = vec![0u8; metadata.record_size]; // Pre-allocate exact size
 
         for (index, column) in schema.columns.iter().enumerate() {
-            let value = row_data.get(&column.name).unwrap_or(&SqlValue::Null);
+            let value = row_data.get(&column.name)
+                .ok_or_else(|| crate::Error::Other(format!("Missing required value for column '{}'", column.name)))?;
             let column_meta = &metadata.column_metadata[index];
             
             Self::serialize_value_at_offset(
@@ -125,7 +128,7 @@ impl StorageFormat {
         Ok(buffer)
     }
 
-    /// Serialize a value at a specific offset
+    /// Serialize a value at a specific offset (zero-copy)
     fn serialize_value_at_offset(
         value: &SqlValue,
         buffer: &mut [u8],
@@ -134,11 +137,6 @@ impl StorageFormat {
         type_code: u8,
     ) -> Result<()> {
         match (value, type_code) {
-            (SqlValue::Null, _) => {
-                // For null values, we could use a null bitmap or just leave as zeros
-                // For now, we'll use zeros to indicate null
-                buffer[offset..offset + size].fill(0);
-            }
             (SqlValue::Integer(i), 1) => { // TypeCode::Integer
                 buffer[offset..offset + 8].copy_from_slice(&i.to_le_bytes());
             }
@@ -154,46 +152,79 @@ impl StorageFormat {
                     buffer[offset + copy_len..offset + size].fill(0);
                 }
             }
-
             _ => return Err(crate::Error::Other("Type mismatch during serialization".to_string())),
         }
         Ok(())
     }
 
-    /// Deserialize a row using ultra-fast direct access
-    pub fn deserialize_row(
+    /// Create a lazy row view (zero-copy, no allocation)
+    pub fn create_lazy_row<'a>(
+        &self,
+        data: &'a [u8],
+        schema: &'a TableSchema,
+    ) -> Result<LazyRow<'a>> {
+        let metadata = Self::compute_table_metadata(schema)?;
+        Ok(LazyRow {
+            data,
+            metadata,
+            schema,
+        })
+    }
+
+    /// Get a single column value by name (zero-copy)
+    pub fn get_column_value(
         &self,
         data: &[u8],
         schema: &TableSchema,
-    ) -> Result<HashMap<String, SqlValue>> {
+        column_name: &str,
+    ) -> Result<SqlValue> {
         let metadata = Self::compute_table_metadata(schema)?;
-        let mut result = HashMap::new();
-
-        for (index, column) in schema.columns.iter().enumerate() {
+        
+        if let Some(&index) = metadata.column_map.get(column_name) {
             let column_meta = &metadata.column_metadata[index];
-            let value = Self::deserialize_value_at_offset(
+            Self::deserialize_value_at_offset(
                 data,
                 column_meta.offset,
                 column_meta.size,
                 column_meta.type_code,
-            )?;
-            result.insert(column.name.clone(), value);
+            )
+        } else {
+            Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
         }
-
-        Ok(result)
     }
 
-    /// Deserialize specific columns (for LIMIT optimization)
-    pub fn deserialize_columns(
+    /// Get a single column value by index (zero-copy)
+    pub fn get_column_by_index(
         &self,
         data: &[u8],
         schema: &TableSchema,
-        column_names: &[String],
+        column_index: usize,
+    ) -> Result<SqlValue> {
+        let metadata = Self::compute_table_metadata(schema)?;
+        if column_index >= metadata.column_metadata.len() {
+            return Err(crate::Error::Other("Column index out of bounds".to_string()));
+        }
+
+        let column_meta = &metadata.column_metadata[column_index];
+        Self::deserialize_value_at_offset(
+            data,
+            column_meta.offset,
+            column_meta.size,
+            column_meta.type_code,
+        )
+    }
+
+    /// Get multiple columns by name (zero-copy)
+    pub fn get_columns(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+        column_names: &[&str],
     ) -> Result<Vec<SqlValue>> {
         let metadata = Self::compute_table_metadata(schema)?;
         let mut result = Vec::with_capacity(column_names.len());
 
-        for column_name in column_names {
+        for &column_name in column_names {
             if let Some(&index) = metadata.column_map.get(column_name) {
                 let column_meta = &metadata.column_metadata[index];
                 let value = Self::deserialize_value_at_offset(
@@ -211,7 +242,82 @@ impl StorageFormat {
         Ok(result)
     }
 
-    /// Ultra-fast deserialization at specific offset
+    /// Evaluate a condition (zero-copy where possible)
+    pub fn matches_condition(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+        condition: &crate::parser::Condition,
+    ) -> Result<bool> {
+        match condition {
+            crate::parser::Condition::Comparison { left, operator, right } => {
+                if let Ok(left_val) = self.get_column_value(data, schema, left) {
+                    match (left_val, right) {
+                        (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
+                            crate::parser::ComparisonOperator::Equal => Ok(l == *r),
+                            crate::parser::ComparisonOperator::NotEqual => Ok(l != *r),
+                            crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
+                            crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
+                            crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
+                            crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                            _ => Ok(false),
+                        },
+                        (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
+                            crate::parser::ComparisonOperator::Equal => Ok((l - *r).abs() < f64::EPSILON),
+                            crate::parser::ComparisonOperator::NotEqual => Ok((l - *r).abs() >= f64::EPSILON),
+                            crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
+                            crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
+                            crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
+                            crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                            _ => Ok(false),
+                        },
+                        (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
+                            crate::parser::ComparisonOperator::Equal => Ok(l == *r),
+                            crate::parser::ComparisonOperator::NotEqual => Ok(l != *r),
+                            crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
+                            crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
+                            crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
+                            crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                            _ => Ok(false),
+                        },
+                        _ => Ok(false),
+                    }
+                } else {
+                    let row_data = self.deserialize_row_full(data, schema)?;
+                    Ok(evaluate_condition_on_row(condition, &row_data))
+                }
+            }
+            _ => {
+                let row_data = self.deserialize_row_full(data, schema)?;
+                Ok(evaluate_condition_on_row(condition, &row_data))
+            }
+        }
+    }
+
+    /// Full row deserialization (only when needed)
+    pub fn deserialize_row_full(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+    ) -> Result<HashMap<String, SqlValue>> {
+        let metadata = Self::compute_table_metadata(schema)?;
+        let mut result = HashMap::with_capacity(schema.columns.len());
+
+        for (index, column) in schema.columns.iter().enumerate() {
+            let column_meta = &metadata.column_metadata[index];
+            let value = Self::deserialize_value_at_offset(
+                data,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )?;
+            result.insert(column.name.clone(), value);
+        }
+
+        Ok(result)
+    }
+
+    /// Ultra-fast deserialization at specific offset (zero-copy)
     fn deserialize_value_at_offset(
         data: &[u8],
         offset: usize,
@@ -237,19 +343,84 @@ impl StorageFormat {
                 let text = String::from_utf8_lossy(text_bytes).to_string();
                 Ok(SqlValue::Text(text))
             }
-
             _ => Err(crate::Error::Other("Invalid type code".to_string())),
         }
     }
 
-    /// Ultra-fast column access by index
+    /// Get record size for a schema
+    pub fn get_record_size(&self, schema: &TableSchema) -> Result<usize> {
+        let metadata = Self::compute_table_metadata(schema)?;
+        Ok(metadata.record_size)
+    }
+
+    // Backward compatibility methods
+    pub fn deserialize_row(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+    ) -> Result<HashMap<String, SqlValue>> {
+        self.deserialize_row_full(data, schema)
+    }
+
+    pub fn deserialize_columns(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+        column_names: &[String],
+    ) -> Result<Vec<SqlValue>> {
+        let str_refs: Vec<&str> = column_names.iter().map(|s| s.as_str()).collect();
+        self.get_columns(data, schema, &str_refs)
+    }
+
     pub fn deserialize_column_by_index(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_index: usize,
     ) -> Result<SqlValue> {
-        let metadata = Self::compute_table_metadata(schema)?;
+        self.get_column_by_index(data, schema, column_index)
+    }
+
+    pub fn deserialize_column_indices(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+        column_indices: &[usize],
+    ) -> Result<Vec<SqlValue>> {
+        let mut result = Vec::with_capacity(column_indices.len());
+        for &index in column_indices {
+            result.push(self.get_column_by_index(data, schema, index)?);
+        }
+        Ok(result)
+    }
+
+    /// Get a single column value by name (zero-copy) - with cached metadata
+    pub fn get_column_value_with_metadata(
+        &self,
+        data: &[u8],
+        metadata: &TableMetadata,
+        column_name: &str,
+    ) -> Result<SqlValue> {
+        if let Some(&index) = metadata.column_map.get(column_name) {
+            let column_meta = &metadata.column_metadata[index];
+            Self::deserialize_value_at_offset(
+                data,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )
+        } else {
+            Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
+        }
+    }
+
+    /// Get a single column value by index (zero-copy) - with cached metadata
+    pub fn get_column_by_index_with_metadata(
+        &self,
+        data: &[u8],
+        metadata: &TableMetadata,
+        column_index: usize,
+    ) -> Result<SqlValue> {
         if column_index >= metadata.column_metadata.len() {
             return Err(crate::Error::Other("Column index out of bounds".to_string()));
         }
@@ -263,22 +434,19 @@ impl StorageFormat {
         )
     }
 
-    /// Deserialize specific columns by index (for backward compatibility)
-    pub fn deserialize_column_indices(
+    /// Get multiple columns by index (zero-copy) - with cached metadata
+    pub fn get_columns_by_indices_with_metadata(
         &self,
         data: &[u8],
-        schema: &TableSchema,
+        metadata: &TableMetadata,
         column_indices: &[usize],
     ) -> Result<Vec<SqlValue>> {
-        let metadata = Self::compute_table_metadata(schema)?;
         let mut result = Vec::with_capacity(column_indices.len());
-
-        for &column_index in column_indices {
-            if column_index >= metadata.column_metadata.len() {
+        for &index in column_indices {
+            if index >= metadata.column_metadata.len() {
                 return Err(crate::Error::Other("Column index out of bounds".to_string()));
             }
-
-            let column_meta = &metadata.column_metadata[column_index];
+            let column_meta = &metadata.column_metadata[index];
             let value = Self::deserialize_value_at_offset(
                 data,
                 column_meta.offset,
@@ -287,31 +455,137 @@ impl StorageFormat {
             )?;
             result.push(value);
         }
-
         Ok(result)
     }
 
-    /// Get record size for a schema
-    pub fn get_record_size(schema: &TableSchema) -> Result<usize> {
-        let metadata = Self::compute_table_metadata(schema)?;
-        Ok(metadata.record_size)
-    }
-
-    /// Check if a value matches a condition (for WHERE clauses)
-    pub fn matches_condition(
+    /// Evaluate a condition (zero-copy where possible) - with cached metadata
+    pub fn matches_condition_with_metadata(
         &self,
         data: &[u8],
-        schema: &TableSchema,
+        metadata: &TableMetadata,
         condition: &crate::parser::Condition,
     ) -> Result<bool> {
-        // For now, deserialize the row and use the existing condition evaluation
-        // This could be optimized further with direct byte comparisons
-        let row_data = self.deserialize_row(data, schema)?;
-        Ok(evaluate_condition_on_row(condition, &row_data))
+        match condition {
+            crate::parser::Condition::Comparison { left, operator, right } => {
+                if let Ok(left_val) = self.get_column_value_with_metadata(data, metadata, left) {
+                    match (left_val, right) {
+                        (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
+                            crate::parser::ComparisonOperator::Equal => Ok(l == *r),
+                            crate::parser::ComparisonOperator::NotEqual => Ok(l != *r),
+                            crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
+                            crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
+                            crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
+                            crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                            _ => Ok(false),
+                        },
+                        (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
+                            crate::parser::ComparisonOperator::Equal => Ok((l - *r).abs() < f64::EPSILON),
+                            crate::parser::ComparisonOperator::NotEqual => Ok((l - *r).abs() >= f64::EPSILON),
+                            crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
+                            crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
+                            crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
+                            crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                            _ => Ok(false),
+                        },
+                        (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
+                            crate::parser::ComparisonOperator::Equal => Ok(l == *r),
+                            crate::parser::ComparisonOperator::NotEqual => Ok(l != *r),
+                            crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
+                            crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
+                            crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
+                            crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                            _ => Ok(false),
+                        },
+                        _ => Ok(false),
+                    }
+                } else {
+                    // Fallback to full deserialization for complex cases
+                    let row_data = self.deserialize_row_full_with_metadata(data, metadata)?;
+                    Ok(evaluate_condition_on_row(condition, &row_data))
+                }
+            }
+            _ => {
+                // For complex conditions, fall back to full deserialization
+                let row_data = self.deserialize_row_full_with_metadata(data, metadata)?;
+                Ok(evaluate_condition_on_row(condition, &row_data))
+            }
+        }
+    }
+
+    /// Full row deserialization (only when needed) - with cached metadata
+    pub fn deserialize_row_full_with_metadata(
+        &self,
+        data: &[u8],
+        metadata: &TableMetadata,
+    ) -> Result<HashMap<String, SqlValue>> {
+        let mut result = HashMap::with_capacity(metadata.column_metadata.len());
+        
+        for (index, column_name) in metadata.column_names.iter().enumerate() {
+            let column_meta = &metadata.column_metadata[index];
+            let value = Self::deserialize_value_at_offset(
+                data,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )?;
+            result.insert(column_name.clone(), value);
+        }
+
+        Ok(result)
     }
 }
 
-/// Evaluate a condition on row data
+impl<'a> LazyRow<'a> {
+    /// Get a single column value by name (zero-copy)
+    pub fn get_column(&self, column_name: &str) -> Result<SqlValue> {
+        if let Some(&index) = self.metadata.column_map.get(column_name) {
+            let column_meta = &self.metadata.column_metadata[index];
+            StorageFormat::deserialize_value_at_offset(
+                self.data,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )
+        } else {
+            Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
+        }
+    }
+
+    /// Get a single column value by index (zero-copy)
+    pub fn get_by_index(&self, index: usize) -> Result<SqlValue> {
+        if index >= self.metadata.column_metadata.len() {
+            return Err(crate::Error::Other("Column index out of bounds".to_string()));
+        }
+        let column_meta = &self.metadata.column_metadata[index];
+        StorageFormat::deserialize_value_at_offset(
+            self.data,
+            column_meta.offset,
+            column_meta.size,
+            column_meta.type_code,
+        )
+    }
+
+    /// Get multiple columns by name (zero-copy)
+    pub fn get_columns(&self, column_names: &[&str]) -> Result<Vec<SqlValue>> {
+        let mut result = Vec::with_capacity(column_names.len());
+        for &column_name in column_names {
+            result.push(self.get_column(column_name)?);
+        }
+        Ok(result)
+    }
+
+    /// Convert to full HashMap (only when needed)
+    pub fn to_hashmap(&self) -> Result<HashMap<String, SqlValue>> {
+        let mut result = HashMap::with_capacity(self.schema.columns.len());
+        for column in &self.schema.columns {
+            let value = self.get_column(&column.name)?;
+            result.insert(column.name.clone(), value);
+        }
+        Ok(result)
+    }
+}
+
+/// Evaluate a condition on row data (fallback for complex conditions)
 fn evaluate_condition_on_row(
     condition: &crate::parser::Condition,
     row_data: &HashMap<String, SqlValue>,
@@ -322,9 +596,9 @@ fn evaluate_condition_on_row(
             operator,
             right,
         } => {
-            let left_val = row_data.get(left);
+            let left_val = row_data.get(left).unwrap_or(&SqlValue::Integer(0));
             match (left_val, right) {
-                (Some(SqlValue::Integer(l)), SqlValue::Integer(r)) => match operator {
+                (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
                     crate::parser::ComparisonOperator::Equal => l == r,
                     crate::parser::ComparisonOperator::NotEqual => l != r,
                     crate::parser::ComparisonOperator::LessThan => l < r,
@@ -333,7 +607,7 @@ fn evaluate_condition_on_row(
                     crate::parser::ComparisonOperator::GreaterThanOrEqual => l >= r,
                     _ => false,
                 },
-                (Some(SqlValue::Real(l)), SqlValue::Real(r)) => match operator {
+                (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
                     crate::parser::ComparisonOperator::Equal => (l - r).abs() < f64::EPSILON,
                     crate::parser::ComparisonOperator::NotEqual => (l - r).abs() >= f64::EPSILON,
                     crate::parser::ComparisonOperator::LessThan => l < r,
@@ -342,7 +616,7 @@ fn evaluate_condition_on_row(
                     crate::parser::ComparisonOperator::GreaterThanOrEqual => l >= r,
                     _ => false,
                 },
-                (Some(SqlValue::Text(l)), SqlValue::Text(r)) => match operator {
+                (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
                     crate::parser::ComparisonOperator::Equal => l == r,
                     crate::parser::ComparisonOperator::NotEqual => l != r,
                     crate::parser::ComparisonOperator::LessThan => l < r,
@@ -435,3 +709,4 @@ mod tests {
         assert_eq!(values[1], SqlValue::Real(87.2));
     }
 }
+

@@ -40,7 +40,7 @@ fn main() {
     let storage = StorageFormat::new();
     
     // Calculate record size
-    let record_size = StorageFormat::get_record_size(&schema).unwrap();
+    let record_size = storage.get_record_size(&schema).unwrap();
     println!("📏 Record size: {} bytes (predictable!)", record_size);
     println!("📊 Layout: 3x Integer (24 bytes) + 2x Text (150 bytes) = 174 bytes\n");
 
@@ -147,7 +147,7 @@ fn main() {
         row
     };
 
-    let large_record_size = StorageFormat::get_record_size(&large_schema).unwrap();
+    let large_record_size = storage.get_record_size(&large_schema).unwrap();
     println!("   📏 Large record size: {} bytes", large_record_size);
 
     let large_iterations = 100_000;

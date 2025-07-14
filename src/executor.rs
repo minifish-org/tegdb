@@ -90,6 +90,8 @@ pub struct SelectRowIterator<'a> {
     filter: Option<Condition>,
     /// Storage format for deserialization
     storage_format: StorageFormat,
+    /// Cached table metadata for ultra-fast access
+    metadata: crate::storage_format::TableMetadata,
     /// Optional limit on number of rows
     limit: Option<u64>,
     /// Current count of yielded rows
@@ -114,13 +116,18 @@ impl<'a> SelectRowIterator<'a> {
             }
         }
 
+        // Cache table metadata for ultra-fast access
+        let storage_format = StorageFormat::new();
+        let metadata = StorageFormat::compute_table_metadata(&schema).unwrap();
+
         Self {
             scan_iter,
             schema,
             selected_columns,
             column_indices,
             filter,
-            storage_format: StorageFormat::new(),
+            storage_format,
+            metadata,
             limit,
             count: 0,
         }
@@ -147,23 +154,20 @@ impl<'a> Iterator for SelectRowIterator<'a> {
         for (_, value) in self.scan_iter.by_ref() {
             // Check if we need to apply a filter
             let matches = if let Some(ref filter) = self.filter {
-                // For filtering, we need to deserialize the full row to evaluate the condition
-                let row_data_result = self.storage_format.deserialize_row(&value, &self.schema);
-                match row_data_result {
-                    Ok(row_data) => {
-                        crate::sql_utils::evaluate_condition(filter, &row_data)
-                    }
-                    Err(e) => return Some(Err(e)),
+                // Use cached metadata for ultra-fast condition evaluation
+                match self.storage_format.matches_condition_with_metadata(&value, &self.metadata, filter) {
+                    Ok(matches) => matches,
+                    Err(_) => return Some(Err(Error::Other("Failed to evaluate condition".to_string()))),
                 }
             } else {
                 true // No filter, so it matches
             };
 
             if matches {
-                // Extract only the selected columns (ultra-fast path!)
-                let row_values_result = self.storage_format.deserialize_column_indices(
+                // Use cached metadata for ultra-fast column access
+                let row_values_result = self.storage_format.get_columns_by_indices_with_metadata(
                     &value,
-                    &self.schema,
+                    &self.metadata,
                     &self.column_indices,
                 );
                 
@@ -277,6 +281,8 @@ impl<'a> QueryProcessor<'a> {
         }
         Ok(self.validation_caches.get(table_name).unwrap())
     }
+
+
 
 
 
@@ -803,11 +809,9 @@ impl<'a> QueryProcessor<'a> {
                 let key = self.build_primary_key(table, pk_values)?;
                 if let Some(value) = self.transaction.get(key.as_bytes()) {
                     let matches = if let Some(filter) = additional_filter {
-                        if let Ok(row_data) = self.storage_format.deserialize_row(&value, schema) {
-                            self.evaluate_condition(filter, &row_data)
-                        } else {
-                            false
-                        }
+                        self.storage_format
+                            .matches_condition(&value, schema, filter)
+                            .unwrap_or(false)
                     } else {
                         true
                     };
@@ -837,8 +841,10 @@ impl<'a> QueryProcessor<'a> {
                     }
 
                     let matches = if let Some(filter_cond) = additional_filter {
+                        // Compute metadata once for this scan
+                        let metadata = StorageFormat::compute_table_metadata(schema).unwrap();
                         self.storage_format
-                            .matches_condition(&value_rc, schema, filter_cond)
+                            .matches_condition_with_metadata(&value_rc, &metadata, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -873,8 +879,10 @@ impl<'a> QueryProcessor<'a> {
                     }
 
                     let matches = if let Some(filter_cond) = filter {
+                        // Compute metadata once for this scan
+                        let metadata = StorageFormat::compute_table_metadata(schema).unwrap();
                         self.storage_format
-                            .matches_condition(&value_rc, schema, filter_cond)
+                            .matches_condition_with_metadata(&value_rc, &metadata, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true

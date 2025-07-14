@@ -64,7 +64,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     // Benchmark 1: Record size calculation
     c.bench_function("record_size_calculation", |b| {
         b.iter(|| {
-            let _size = StorageFormat::get_record_size(black_box(&schema)).unwrap();
+            let _size = storage.get_record_size(black_box(&schema)).unwrap();
         })
     });
 
@@ -222,7 +222,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     });
 
     // Benchmark 10: Record size comparison
-    let record_size = StorageFormat::get_record_size(&schema).unwrap();
+    let record_size = storage.get_record_size(&schema).unwrap();
     println!("Fixed-length record size: {} bytes", record_size);
     println!("Record layout:");
     println!("  - Integer columns: 8 bytes each");

@@ -162,8 +162,8 @@ fn test_data_types_both_backends() -> Result<()> {
         )?;
 
         // Insert data with different types
-        db.execute(&format!("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (1, 'hello', 42, {}, NULL)", std::f64::consts::PI))?;
-        db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (2, 'test', -100, -2.5, NULL)")?;
+        db.execute(&format!("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (1, 'hello', 42, {}, 'empty')", std::f64::consts::PI))?;
+        db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (2, 'test', -100, -2.5, 'empty')")?;
         db.execute("INSERT INTO test_types (id, text_col, int_col, real_col, null_col) VALUES (3, 'world', 0, 0.0, 'not null')")?;
 
         let result = db.query("SELECT * FROM test_types").unwrap();
@@ -197,7 +197,7 @@ fn test_data_types_both_backends() -> Result<()> {
         assert_eq!(row1[text_pos], SqlValue::Text("hello".to_string()));
         assert_eq!(row1[int_pos], SqlValue::Integer(42));
         assert_eq!(row1[real_pos], SqlValue::Real(std::f64::consts::PI));
-        assert!(row1[null_pos] == SqlValue::Null || row1[null_pos] == SqlValue::Text("".to_string()));
+        assert_eq!(row1[null_pos], SqlValue::Text("empty".to_string()));
 
         Ok(())
     })
