@@ -10,7 +10,7 @@ fn test_planner_integration_in_database() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create a test table
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER)")?;
 
         // Insert some test data
         db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
@@ -49,7 +49,7 @@ fn test_crud_operations_with_planner() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // CREATE
-        db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
+        db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)")?;
 
         // INSERT
         let affected =

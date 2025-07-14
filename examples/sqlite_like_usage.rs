@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     // Create table
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
     println!("Table created successfully");
 
     // Insert data

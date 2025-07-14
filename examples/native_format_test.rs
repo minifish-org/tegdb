@@ -17,7 +17,7 @@ fn main() -> tegdb::Result<()> {
 
     // Test 2: Create table
     println!("2. Creating test table...");
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, score REAL)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), email TEXT(32), score REAL)")?;
     println!("   ✓ Table created successfully");
 
     // Test 3: Insert data

@@ -11,7 +11,7 @@ fn main() -> Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS users");
 
     // Create table
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER)")?;
 
     // Insert some initial data
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;

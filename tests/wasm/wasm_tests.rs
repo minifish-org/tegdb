@@ -25,7 +25,7 @@ fn test_wasm_basic_functionality() -> Result<()> {
 
     // Test CREATE TABLE
     let affected =
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
     assert_eq!(affected, 0); // CREATE TABLE returns 0 affected rows
 
     // Test INSERT
@@ -65,10 +65,10 @@ fn test_wasm_data_types() -> Result<()> {
     db.execute(
         "CREATE TABLE test_types (
         id INTEGER PRIMARY KEY,
-        text_col TEXT,
+        text_col TEXT(32),
         int_col INTEGER,
         real_col REAL,
-        null_col TEXT
+        null_col TEXT(32)
     )",
     )?;
 
@@ -160,7 +160,7 @@ fn test_wasm_schema_persistence() -> Result<()> {
     // Create database and table in first session
     {
         let mut db = Database::open("browser://persistent_test")?;
-        db.execute("CREATE TABLE persistent_test (id INTEGER PRIMARY KEY, data TEXT)")?;
+        db.execute("CREATE TABLE persistent_test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
         db.execute("INSERT INTO persistent_test (id, data) VALUES (1, 'test data')")?;
     }
 
@@ -210,7 +210,7 @@ fn test_wasm_error_handling() -> Result<()> {
     assert!(result.is_err());
 
     // Test constraint violations
-    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")?;
+    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL)")?;
 
     // Test using execute() for SELECT - this should fail
     db.execute("INSERT INTO test (id, name) VALUES (1, 'Alice')")?;

@@ -32,7 +32,7 @@ fn test_schema_loading_performance() -> Result<()> {
             // Create several tables to make schema loading noticeable
             for i in 0..5 {
                 db.execute(&format!(
-                    "CREATE TABLE table_{i} (id INTEGER PRIMARY KEY, name TEXT NOT NULL, value INTEGER)"
+                    "CREATE TABLE table_{i} (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, value INTEGER)"
                 ))?;
 
                 // Add minimal data to each table
@@ -94,7 +94,7 @@ fn test_schema_sharing_across_operations() -> Result<()> {
             let mut db = Database::open(db_path)?;
 
             // Create a table
-            db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")?;
+            db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")?;
 
             // Insert data
             db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
@@ -104,7 +104,7 @@ fn test_schema_sharing_across_operations() -> Result<()> {
             assert_eq!(result.rows().len(), 1);
 
             // Create another table in the same database instance
-            db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
+            db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)")?;
 
             // Both tables should work
             let users_result = db.query("SELECT * FROM users").unwrap();

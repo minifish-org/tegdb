@@ -11,7 +11,7 @@ fn test_sql_integration_basic_operations() {
 
         // Create table
         let create_sql =
-            "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)";
+            "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, price REAL)";
         let result = db.execute(create_sql).unwrap();
         assert_eq!(result, 0); // CREATE TABLE returns 0 affected rows
 
@@ -111,7 +111,7 @@ fn test_sql_integration_constraints() {
 
         // Create table with constraints
         let create_sql =
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, age INTEGER)";
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT(32) UNIQUE NOT NULL, age INTEGER)";
         db.execute(create_sql).unwrap();
 
         // Insert valid data
@@ -135,7 +135,7 @@ fn test_sql_integration_complex_queries() {
 
         // Create table
         let create_sql =
-            "CREATE TABLE sales (id INTEGER PRIMARY KEY, product TEXT, amount REAL, date TEXT)";
+            "CREATE TABLE sales (id INTEGER PRIMARY KEY, product TEXT(32), amount REAL, date TEXT(32))";
         db.execute(create_sql).unwrap();
 
         // Insert test data
@@ -164,7 +164,7 @@ fn test_sql_drop_table() {
         let mut db = Database::open(db_path).unwrap();
 
         // Create table
-        let create_sql = "CREATE TABLE temp_table (id INTEGER PRIMARY KEY, data TEXT)";
+        let create_sql = "CREATE TABLE temp_table (id INTEGER PRIMARY KEY, data TEXT(32))";
         db.execute(create_sql).unwrap();
 
         // Drop table

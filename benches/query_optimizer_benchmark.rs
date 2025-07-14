@@ -13,11 +13,11 @@ fn setup_test_database() -> Result<Database> {
     db.execute("DROP TABLE IF EXISTS products")?;
     db.execute(
         "CREATE TABLE products (
-            category TEXT PRIMARY KEY,
+            category TEXT(32) PRIMARY KEY,
             product_id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
+            name TEXT(32) NOT NULL,
             price REAL,
-            description TEXT
+            description TEXT(32)
         )",
     )?;
 

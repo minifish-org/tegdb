@@ -182,7 +182,7 @@ mod tests {
                 },
                 ColumnInfo {
                     name: "name".to_string(),
-                    data_type: DataType::Text,
+                    data_type: DataType::Text(None),
                     constraints: vec![],
                 },
             ],

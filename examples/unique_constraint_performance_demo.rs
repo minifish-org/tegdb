@@ -15,7 +15,7 @@ fn main() -> Result<()> {
 
     // Create table with a unique column
     println!("1. Creating table with UNIQUE constraint...");
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, name TEXT)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT(32) UNIQUE, name TEXT(32))")?;
 
     // Insert test data
     println!("2. Inserting test data...");

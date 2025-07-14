@@ -32,8 +32,8 @@ fn focused_planner_benchmark(c: &mut Criterion) {
     // Create tables with same schema
     let create_table_sql = "CREATE TABLE products (
         id INTEGER PRIMARY KEY, 
-        name TEXT NOT NULL, 
-        category TEXT NOT NULL,
+        name TEXT(32) NOT NULL, 
+        category TEXT(32) NOT NULL,
         price REAL NOT NULL
     )";
 

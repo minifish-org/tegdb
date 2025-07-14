@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     println!("=== Setting up database ===");
 
     // Create table
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
     println!("✓ Table created");
 
     // Insert test data

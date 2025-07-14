@@ -10,7 +10,7 @@ fn test_drop_table_integration() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create a table first
-        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)")?;
+        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT(32))")?;
 
         // Insert some data to verify the table works
         db.execute("INSERT INTO test_table (id, name) VALUES (1, 'test')")?;

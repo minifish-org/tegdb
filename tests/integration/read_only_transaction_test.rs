@@ -10,7 +10,7 @@ fn test_read_only_transaction_optimization() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create a test table and populate with some data
-        db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+        db.execute("CREATE TABLE test_data (key TEXT(32) PRIMARY KEY, value TEXT(32))")?;
         db.execute("INSERT INTO test_data (key, value) VALUES ('key1', 'value1')")?;
         db.execute("INSERT INTO test_data (key, value) VALUES ('key2', 'value2')")?;
 
@@ -70,7 +70,7 @@ fn test_mixed_read_write_transaction() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create a test table and populate with some data
-        db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+        db.execute("CREATE TABLE test_data (key TEXT(32) PRIMARY KEY, value TEXT(32))")?;
         db.execute("INSERT INTO test_data (key, value) VALUES ('key1', 'value1')")?;
 
         // Perform a transaction that starts with reads but then does a write

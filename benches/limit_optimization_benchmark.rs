@@ -33,8 +33,8 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     // Create simple tables
     let create_table_sql = "CREATE TABLE items (
         id INTEGER PRIMARY KEY, 
-        name TEXT NOT NULL, 
-        category TEXT NOT NULL,
+        name TEXT(32) NOT NULL, 
+        category TEXT(32) NOT NULL,
         value INTEGER NOT NULL
     )";
 

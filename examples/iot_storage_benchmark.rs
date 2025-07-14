@@ -22,10 +22,10 @@ fn main() -> Result<()> {
         "CREATE TABLE user_sessions (
         user_id INTEGER PRIMARY KEY,
         session_id INTEGER PRIMARY KEY,
-        login_time TEXT,
-        last_activity TEXT,
-        ip_address TEXT,
-        user_agent TEXT,
+        login_time TEXT(32),
+        last_activity TEXT(32),
+        ip_address TEXT(32),
+        user_agent TEXT(32),
         is_active INTEGER
     )",
     )?;

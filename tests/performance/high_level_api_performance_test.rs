@@ -137,7 +137,7 @@ fn setup_test_table(
 
     // Create table
     let create_sql = format!(
-        "CREATE TABLE {table_name} (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data TEXT)"
+        "CREATE TABLE {table_name} (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER, data TEXT(32))"
     );
     db.execute(&create_sql)?;
 
@@ -175,7 +175,7 @@ fn test_basic_crud_performance() -> Result<()> {
 
     // Test table creation
     let start = Instant::now();
-    db.execute("CREATE TABLE perf_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")?;
+    db.execute("CREATE TABLE perf_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")?;
     metrics.push(PerformanceMetrics::new("CREATE TABLE", start.elapsed(), 1));
 
     // Test single insert performance
@@ -296,7 +296,7 @@ fn test_transaction_performance() -> Result<()> {
     let mut metrics = Vec::new();
 
     // Create test table
-    db.execute("CREATE TABLE tx_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")?;
+    db.execute("CREATE TABLE tx_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")?;
 
     // Test individual transactions (auto-commit)
     let start = Instant::now();
@@ -383,7 +383,7 @@ fn test_schema_operations_performance() -> Result<()> {
     let table_count = 50;
     for i in 0..table_count {
         let create_sql = format!(
-            "CREATE TABLE table_{i} (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data BLOB)"
+            "CREATE TABLE table_{i} (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER, data TEXT(32))"
         );
         db.execute(&create_sql)?;
     }
@@ -492,7 +492,7 @@ fn test_concurrent_schema_access_performance() -> Result<()> {
     let mut metrics = Vec::new();
 
     // Create base table
-    db.execute("CREATE TABLE concurrent_test (id INTEGER PRIMARY KEY, data TEXT)")?;
+    db.execute("CREATE TABLE concurrent_test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
 
     // Insert some data
     for i in 0..1000 {
@@ -520,7 +520,7 @@ fn test_concurrent_schema_access_performance() -> Result<()> {
     let table_ops = 20;
     for i in 0..table_ops {
         db.execute(&format!(
-            "CREATE TABLE temp_table_{i} (id INTEGER PRIMARY KEY, name TEXT)"
+            "CREATE TABLE temp_table_{i} (id INTEGER PRIMARY KEY, name TEXT(32))"
         ))?;
         db.execute(&format!("DROP TABLE temp_table_{i}"))?;
     }
@@ -814,7 +814,7 @@ fn test_detailed_sql_pipeline_performance() -> Result<()> {
     // Test CREATE TABLE pipeline
     let create_metrics = measure_sql_execution(
         &mut db,
-        "CREATE TABLE pipeline_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)",
+        "CREATE TABLE pipeline_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)",
         "CREATE TABLE",
     )?;
     detailed_metrics.push(create_metrics);
@@ -938,7 +938,7 @@ fn test_transaction_pipeline_performance() -> Result<()> {
     let mut detailed_metrics = Vec::new();
 
     // Setup base table
-    db.execute("CREATE TABLE tx_pipeline_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")?;
+    db.execute("CREATE TABLE tx_pipeline_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")?;
 
     // Test transaction-based operations
     let mut tx = db.begin_transaction()?;
@@ -991,7 +991,7 @@ fn test_parser_complexity_performance() -> Result<()> {
 
     // Setup test table
     db.execute(
-        "CREATE TABLE parse_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER, data TEXT)",
+        "CREATE TABLE parse_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER, data TEXT(32))",
     )?;
 
     // Test queries of increasing complexity

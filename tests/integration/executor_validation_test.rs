@@ -10,7 +10,7 @@ fn test_insert_validation() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create test table (TegDB only supports PRIMARY KEY constraints)
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, email TEXT(32))")?;
 
         // Test valid insert
         let result = db.execute(
@@ -47,7 +47,7 @@ fn test_update_validation() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create test table (TegDB only supports PRIMARY KEY constraints)
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, email TEXT(32))")?;
 
         // Insert test data
         db.execute("INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com')")?;
@@ -78,7 +78,7 @@ fn test_select_memory_optimization() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create test table (TegDB only supports PRIMARY KEY constraints)
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, email TEXT(32))")?;
 
         // Insert test data
         for i in 1..=100 {

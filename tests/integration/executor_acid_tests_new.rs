@@ -11,7 +11,7 @@ fn test_transaction_atomicity() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Setup initial data
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
         db.execute("INSERT INTO users (id, name, age) VALUES (1, 'John', 25)")?;
 
         // Verify initial state
@@ -103,7 +103,7 @@ fn test_transaction_isolation() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Setup test data
-        db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER)")?;
+        db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT(32), quantity INTEGER)")?;
         db.execute("INSERT INTO items (id, name, quantity) VALUES (1, 'Widget', 10)")?;
 
         // Test that uncommitted changes aren't visible to other transactions
@@ -139,7 +139,7 @@ fn test_transaction_durability() -> Result<()> {
         {
             let mut db = Database::open(db_path)?;
             let mut tx = db.begin_transaction()?;
-            tx.execute("CREATE TABLE persistent_data (id INTEGER PRIMARY KEY, value TEXT)")?;
+            tx.execute("CREATE TABLE persistent_data (id INTEGER PRIMARY KEY, value TEXT(32))")?;
 
             tx.execute("INSERT INTO persistent_data (id, value) VALUES (1, 'test')")?;
             tx.execute("INSERT INTO persistent_data (id, value) VALUES (2, 'data')")?;
@@ -180,7 +180,7 @@ fn test_transaction_rollback_scenarios() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Setup test data
-        db.execute("CREATE TABLE test_rollback (id INTEGER PRIMARY KEY, name TEXT)")?;
+        db.execute("CREATE TABLE test_rollback (id INTEGER PRIMARY KEY, name TEXT(32))")?;
         db.execute("INSERT INTO test_rollback (id, name) VALUES (1, 'original')")?;
 
         // Test explicit rollback

@@ -117,9 +117,8 @@ pub struct ColumnDefinition {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
     Integer,
-    Text,
+    Text(Option<usize>),  // None = variable length, Some(n) = fixed length n
     Real,
-    Blob,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -762,18 +761,40 @@ fn parse_column_definition(input: &str) -> IResult<&str, ColumnDefinition> {
     ))
 }
 
-// Parse data types
+// Parse data types with optional length specifications
 fn parse_data_type(input: &str) -> IResult<&str, DataType> {
     alt((
         map(tag_no_case("INTEGER"), |_| DataType::Integer),
         map(tag_no_case("INT"), |_| DataType::Integer),
-        map(tag_no_case("TEXT"), |_| DataType::Text),
-        map(tag_no_case("VARCHAR"), |_| DataType::Text),
         map(tag_no_case("REAL"), |_| DataType::Real),
         map(tag_no_case("FLOAT"), |_| DataType::Real),
-        map(tag_no_case("BLOB"), |_| DataType::Blob),
+        // Text with optional length: TEXT(10) or TEXT
+        map(
+            pair(
+                alt((tag_no_case("TEXT"), tag_no_case("VARCHAR"))),
+                opt(parse_length_specification),
+            ),
+            |(_, length)| DataType::Text(length),
+        ),
+
     ))
     .parse(input)
+}
+
+// Parse length specification: (10)
+fn parse_length_specification(input: &str) -> IResult<&str, usize> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = char('(').parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, length_str) = digit1.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = char(')').parse(input)?;
+    
+    let length = length_str.parse::<usize>().map_err(|_| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
+    })?;
+    
+    Ok((input, length))
 }
 
 // Parse column constraints

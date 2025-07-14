@@ -209,8 +209,7 @@ COMMIT;
 ### Supported Data Types
 - `INTEGER` - 64-bit signed integers
 - `REAL` - 64-bit floating point numbers  
-- `TEXT` - UTF-8 strings
-- `BLOB` - Binary data
+- `TEXT` - UTF-8 strings (requires length specification, e.g., TEXT(100))
 - `NULL` - Null values
 
 ## Performance Characteristics

@@ -11,7 +11,7 @@ fn test_query_iterator_basic_functionality() {
         let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
-        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")
+        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")
             .unwrap();
         db.execute("INSERT INTO test_table (id, name, value) VALUES (1, 'first', 100)")
             .unwrap();
@@ -64,7 +64,7 @@ fn test_query_iterator_streaming() {
         let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
-        db.execute("CREATE TABLE streaming_test (id INTEGER PRIMARY KEY, data TEXT)")
+        db.execute("CREATE TABLE streaming_test (id INTEGER PRIMARY KEY, data TEXT(32))")
             .unwrap();
         for i in 1..=5 {
             db.execute(&format!(
@@ -116,7 +116,7 @@ fn test_query_iterator_backward_compatibility() {
         let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
-        db.execute("CREATE TABLE compat_test (id INTEGER PRIMARY KEY, name TEXT)")
+        db.execute("CREATE TABLE compat_test (id INTEGER PRIMARY KEY, name TEXT(32))")
             .unwrap();
         db.execute("INSERT INTO compat_test (id, name) VALUES (1, 'Alice')")
             .unwrap();
@@ -150,7 +150,7 @@ fn test_query_iterator_empty_result() {
         let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
-        db.execute("CREATE TABLE empty_test (id INTEGER PRIMARY KEY, name TEXT)")
+        db.execute("CREATE TABLE empty_test (id INTEGER PRIMARY KEY, name TEXT(32))")
             .unwrap();
 
         // Query with no results

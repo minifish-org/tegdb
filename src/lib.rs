@@ -14,7 +14,7 @@
 //!     let mut db = Database::open("file://my_database.db")?;
 //!     
 //!     // Create table
-//!     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
+//!     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER)")?;
 //!     
 //!     // Insert data
 //!     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
@@ -251,7 +251,7 @@ fn test_wasm_database_creation() -> crate::Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS test_creation");
 
     // Test basic operations
-    db.execute("CREATE TABLE test_creation (id INTEGER PRIMARY KEY, name TEXT)")?;
+    db.execute("CREATE TABLE test_creation (id INTEGER PRIMARY KEY, name TEXT(32))")?;
     db.execute("INSERT INTO test_creation (id, name) VALUES (1, 'test')")?;
 
     let result = db.query("SELECT * FROM test_creation")?;
@@ -269,7 +269,7 @@ fn test_wasm_basic_crud() -> crate::Result<()> {
 
     // Create table
     db.execute(
-        "CREATE TABLE users_crud (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
+        "CREATE TABLE users_crud (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)",
     )?;
 
     // Insert data
@@ -339,7 +339,7 @@ fn test_wasm_data_types() -> crate::Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS test_types_dt");
 
     // Test all supported data types
-    db.execute("CREATE TABLE test_types_dt (id INTEGER PRIMARY KEY, text_col TEXT, int_col INTEGER, real_col REAL, null_col TEXT)")?;
+    db.execute("CREATE TABLE test_types_dt (id INTEGER PRIMARY KEY, text_col TEXT(32), int_col INTEGER, real_col REAL, null_col TEXT(32))")?;
 
     // Insert data with different types
     db.execute("INSERT INTO test_types_dt (id, text_col, int_col, real_col, null_col) VALUES (1, 'hello', 42, 3.14159, NULL)")?;
@@ -388,7 +388,7 @@ fn test_wasm_database_operations() -> crate::Result<()> {
 
     // Test CREATE TABLE
     let affected =
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
     assert_eq!(affected, 0);
 
     // Test INSERT
@@ -464,7 +464,7 @@ fn test_wasm_schema_operations() -> crate::Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS schema_test");
 
     // Test schema creation and persistence
-    db.execute("CREATE TABLE schema_test (id INTEGER PRIMARY KEY, data TEXT)")?;
+    db.execute("CREATE TABLE schema_test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
     db.execute("INSERT INTO schema_test (id, data) VALUES (1, 'test data')")?;
 
     // Verify schema and data
@@ -492,7 +492,7 @@ fn test_wasm_query_operations() -> crate::Result<()> {
 
     // Setup test data
     db.execute(
-        "CREATE TABLE query_test (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, city TEXT)",
+        "CREATE TABLE query_test (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER, city TEXT(32))",
     )?;
     db.execute("INSERT INTO query_test (id, name, age, city) VALUES (1, 'Alice', 30, 'New York')")?;
     db.execute("INSERT INTO query_test (id, name, age, city) VALUES (2, 'Bob', 25, 'Boston')")?;
@@ -529,7 +529,7 @@ fn test_wasm_error_scenarios() -> crate::Result<()> {
     assert!(result.is_err());
 
     // Test constraint violations
-    db.execute("CREATE TABLE error_test (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")?;
+    db.execute("CREATE TABLE error_test (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL)")?;
 
     // Test using execute() for SELECT - this should fail
     db.execute("INSERT INTO error_test (id, name) VALUES (1, 'Alice')")?;
@@ -570,7 +570,7 @@ fn test_wasm_advanced_database_tests() -> crate::Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS advanced_test");
 
     // Test complex table creation
-    db.execute("CREATE TABLE advanced_test (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER, salary REAL, active INTEGER)")?;
+    db.execute("CREATE TABLE advanced_test (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER, salary REAL, active INTEGER)")?;
 
     // Test multiple inserts
     db.execute("INSERT INTO advanced_test (id, name, age, salary, active) VALUES (1, 'Alice', 30, 50000.0, 1)")?;
@@ -635,7 +635,7 @@ fn test_wasm_transaction_integration_tests() -> crate::Result<()> {
 
     // Setup
     db.execute(
-        "CREATE TABLE tx_integration_test (id INTEGER PRIMARY KEY, step INTEGER, data TEXT)",
+        "CREATE TABLE tx_integration_test (id INTEGER PRIMARY KEY, step INTEGER, data TEXT(32))",
     )?;
 
     // Test auto-commit
@@ -673,7 +673,7 @@ fn test_wasm_schema_persistence_tests() -> crate::Result<()> {
     // First session: Create table
     {
         let mut db = Database::open(db_path)?;
-        db.execute("CREATE TABLE schema_persistence_test (id INTEGER PRIMARY KEY, description TEXT, value INTEGER)")?;
+        db.execute("CREATE TABLE schema_persistence_test (id INTEGER PRIMARY KEY, description TEXT(32), value INTEGER)")?;
         db.execute("INSERT INTO schema_persistence_test (id, description, value) VALUES (1, 'Critical Data', 9999)")?;
     }
 
@@ -713,7 +713,7 @@ fn test_wasm_query_iterator_tests() -> crate::Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS iterator_test");
 
     // Setup test data
-    db.execute("CREATE TABLE iterator_test (id INTEGER PRIMARY KEY, value TEXT)")?;
+    db.execute("CREATE TABLE iterator_test (id INTEGER PRIMARY KEY, value TEXT(32))")?;
     db.execute("INSERT INTO iterator_test (id, value) VALUES (1, 'first')")?;
     db.execute("INSERT INTO iterator_test (id, value) VALUES (2, 'second')")?;
     db.execute("INSERT INTO iterator_test (id, value) VALUES (3, 'third')")?;
@@ -771,7 +771,7 @@ mod tests {
         let _ = db.execute("DROP TABLE IF EXISTS test_creation");
 
         // Test basic operations
-        db.execute("CREATE TABLE test_creation (id INTEGER PRIMARY KEY, name TEXT)")?;
+        db.execute("CREATE TABLE test_creation (id INTEGER PRIMARY KEY, name TEXT(32))")?;
         db.execute("INSERT INTO test_creation (id, name) VALUES (1, 'test')")?;
 
         let result = db.query("SELECT * FROM test_creation")?;

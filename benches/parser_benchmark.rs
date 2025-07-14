@@ -13,7 +13,7 @@ fn simple_sql_statements() -> Vec<(&'static str, &'static str)> {
         ("simple_delete", "DELETE FROM users WHERE id = 1"),
         (
             "create_table",
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))",
         ),
         ("drop_table", "DROP TABLE users"),
         ("begin_transaction", "BEGIN"),
@@ -42,7 +42,7 @@ fn complex_sql_statements() -> Vec<(&'static str, &'static str)> {
         ),
         (
             "complex_create_table",
-            "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, order_date TEXT, total_amount REAL, status TEXT, shipping_address TEXT)"
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, order_date TEXT(32), total_amount REAL, status TEXT(32), shipping_address TEXT(32))"
         ),
         (
             "select_with_like",

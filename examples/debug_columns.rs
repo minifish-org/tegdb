@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     println!("Creating table...");
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
 
     println!("Inserting data...");
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;

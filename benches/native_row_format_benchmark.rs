@@ -92,7 +92,7 @@ fn test_native_format(
     let creation_time = start.elapsed().as_nanos();
 
     // Create table
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT, score REAL, active INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), email TEXT(32), score REAL, active INTEGER)")?;
 
     // Insert test data
     let insert_start = Instant::now();

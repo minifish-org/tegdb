@@ -39,8 +39,8 @@ fn setup_test_database() -> Result<()> {
     db.execute(
         "CREATE TABLE users (
         id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE,
+        name TEXT(32) NOT NULL,
+        email TEXT(32) UNIQUE,
         age INTEGER
     )",
     )?;
@@ -49,9 +49,9 @@ fn setup_test_database() -> Result<()> {
         "CREATE TABLE orders (
         order_id INTEGER PRIMARY KEY,
         user_id INTEGER NOT NULL,
-        product TEXT NOT NULL,
+        product TEXT(32) NOT NULL,
         amount REAL,
-        order_date TEXT
+        order_date TEXT(32)
     )",
     )?;
 

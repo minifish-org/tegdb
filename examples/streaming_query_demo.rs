@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut db = Database::open("file://streaming_demo.db")?;
 
     // Setup test data
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER)")?;
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
     db.execute("INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")?;
     db.execute("INSERT INTO users (id, name, age) VALUES (3, 'Charlie', 35)")?;

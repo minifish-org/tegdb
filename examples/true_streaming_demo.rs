@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut db = Database::open("file://streaming_demo.db")?;
 
     // Create a test table
-    db.execute("CREATE TABLE large_table (id INTEGER PRIMARY KEY, data TEXT, value INTEGER)")?;
+    db.execute("CREATE TABLE large_table (id INTEGER PRIMARY KEY, data TEXT(32), value INTEGER)")?;
 
     // Insert test data
     println!("Inserting 10,000 test rows...");

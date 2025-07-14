@@ -13,7 +13,7 @@ fn test_simplified_api() {
         let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Test DDL
-        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT, value REAL)")
+        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT(32), value REAL)")
             .expect("Failed to create table");
 
         // Test DML

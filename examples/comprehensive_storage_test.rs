@@ -27,7 +27,7 @@ fn test_file_log_backend() -> Result<()> {
         let mut db = Database::open("file://test_file_crud.db")?;
 
         // Create
-        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT, value REAL)")?;
+        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(32), value REAL)")?;
 
         // Insert
         db.execute("INSERT INTO test (id, name, value) VALUES (1, 'test1', 10.5)")?;
@@ -88,7 +88,7 @@ fn test_file_log_backend() -> Result<()> {
     {
         let mut db = Database::open("file://test_file_multiple.db")?;
 
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")?;
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")?;
         db.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL)")?;
 
         db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
@@ -115,7 +115,7 @@ fn test_browser_log_backend_simulation() -> Result<()> {
     {
         let mut db = Database::open("browser://test_app_data")?;
 
-        db.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY, token TEXT, expires INTEGER)")?;
+        db.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY, token TEXT(32), expires INTEGER)")?;
         db.execute("INSERT INTO sessions (id, token, expires) VALUES (1, 'abc123', 1640995200)")?;
         db.execute("INSERT INTO sessions (id, token, expires) VALUES (2, 'def456', 1640995300)")?;
 
@@ -130,7 +130,7 @@ fn test_browser_log_backend_simulation() -> Result<()> {
     {
         let mut db = Database::open("localstorage://user_preferences")?;
 
-        db.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")?;
+        db.execute("CREATE TABLE settings (key TEXT(32) PRIMARY KEY, value TEXT(32))")?;
         db.execute("INSERT INTO settings (key, value) VALUES ('theme', 'dark')")?;
         db.execute("INSERT INTO settings (key, value) VALUES ('language', 'en')")?;
 
@@ -149,7 +149,7 @@ fn test_edge_cases() -> Result<()> {
     // Test 1: Empty values
     {
         let mut db = Database::open("file://test_edge_empty.db")?;
-        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT)")?;
+        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
         db.execute("INSERT INTO test (id, data) VALUES (1, ' ')")?; // Use single space instead of empty string
 
         let results = db.query("SELECT data FROM test WHERE id = 1")?;
@@ -160,7 +160,7 @@ fn test_edge_cases() -> Result<()> {
     // Test 2: Special characters
     {
         let mut db = Database::open("file://test_edge_special.db")?;
-        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT)")?;
+        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
         db.execute("INSERT INTO test (id, data) VALUES (1, 'Hello World')")?;
 
         let results = db.query("SELECT data FROM test WHERE id = 1")?;
@@ -188,7 +188,7 @@ fn test_large_data() -> Result<()> {
 
     {
         let mut db = Database::open("file://test_large_data.db")?;
-        db.execute("CREATE TABLE large_test (id INTEGER PRIMARY KEY, data TEXT)")?;
+        db.execute("CREATE TABLE large_test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
 
         // Insert moderately large data
         for i in 1..=50 {

@@ -22,7 +22,7 @@ fn main() -> Result<()> {
     let create_sql = "CREATE TABLE orders (
         customer_id INTEGER,
         order_id INTEGER PRIMARY KEY,
-        product_name TEXT,
+        product_name TEXT(32),
         quantity INTEGER,
         price REAL
     )";

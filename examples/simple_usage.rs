@@ -22,7 +22,7 @@ fn main() -> tegdb::Result<()> {
 
     // 2. Create table
     println!("2. Creating table...");
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, score REAL)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), score REAL)")?;
     println!("   ✓ Table created");
 
     // 3. Insert data

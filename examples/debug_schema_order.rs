@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     println!("Creating table...");
     #[cfg(not(target_arch = "wasm32"))]
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
 
     // Check the debug information about schemas
     #[cfg(not(target_arch = "wasm32"))]

@@ -1,48 +1,48 @@
 use crate::executor::TableSchema;
-use crate::parser::SqlValue;
+use crate::parser::{DataType, SqlValue};
 use crate::Result;
 use std::collections::HashMap;
 
-/// Storage configuration for TegDB
+/// Ultra-optimized storage format for TegDB
 ///
-/// TegDB uses a SQLite-inspired native binary row format for optimal performance.
-/// This provides:
-/// - Direct column access without full deserialization
-/// - Compact variable-length encoding
-/// - Type information embedded in the record
-/// - Skip unused columns during scanning
+/// This format is designed for maximum performance with fixed-length columns.
+/// All text and blob columns must have a specified length in the schema.
+/// This enables:
+/// - Direct offset-based column access
+/// - Zero-copy deserialization
+/// - Predictable record sizes
+/// - Maximum cache efficiency
 #[derive(Clone, Debug)]
 pub struct StorageFormat;
 
-/// Compact type codes for column types (similar to SQLite's serial types)
+/// Type codes for the new fixed-length format
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TypeCode {
     Null = 0,
-    Integer1 = 1, // 1-byte integer
-    Integer2 = 2, // 2-byte integer
-    Integer4 = 3, // 4-byte integer
-    Integer8 = 4, // 8-byte integer
-    Real = 5,     // 8-byte float
-    Text0 = 12,   // Empty text (type codes 12+ are text with length = (code-12)/2)
-    Blob0 = 13,   // Empty blob (type codes 13+ with odd numbers are blobs)
+    Integer = 1,    // 8-byte i64
+    Real = 2,       // 8-byte f64
+    TextFixed = 3,  // Fixed-length text (padded with nulls)
 }
 
-/// Column access information for efficient lookups
+/// Column metadata for fast access
 #[derive(Debug, Clone)]
-pub struct ColumnInfo {
-    pub offset: usize, // Byte offset in the record
-    pub type_code: u8, // Type code from header
-    pub size: usize,   // Size in bytes
+pub struct ColumnMetadata {
+    pub offset: usize,     // Byte offset in record
+    pub size: usize,       // Size in bytes
+    pub type_code: u8,     // Type code
+    pub is_nullable: bool, // Whether column can be null
 }
 
-/// Parsed record header for efficient column access
+/// Table metadata for ultra-fast operations
 #[derive(Debug, Clone)]
-pub struct RecordHeader {
-    pub record_size: usize,
-    pub header_size: usize,
-    pub columns: Vec<ColumnInfo>,
+pub struct TableMetadata {
+    pub record_size: usize,           // Total size of each record
+    pub column_metadata: Vec<ColumnMetadata>,
+    pub column_map: HashMap<String, usize>, // Column name to index mapping
 }
+
+
 
 impl Default for StorageFormat {
     fn default() -> Self {
@@ -51,7 +51,7 @@ impl Default for StorageFormat {
 }
 
 impl StorageFormat {
-    /// Create a new storage format (always native)
+    /// Create a new storage format
     pub fn new() -> Self {
         StorageFormat
     }
@@ -61,571 +61,256 @@ impl StorageFormat {
         StorageFormat
     }
 
-    /// Serialize a row using the native binary format
+    /// Compute table metadata for ultra-fast operations
+    pub fn compute_table_metadata(schema: &TableSchema) -> Result<TableMetadata> {
+        let mut column_metadata = Vec::with_capacity(schema.columns.len());
+        let mut column_map = HashMap::new();
+        let mut current_offset = 0;
+
+        for (index, column) in schema.columns.iter().enumerate() {
+            let (size, type_code) = Self::get_column_size_and_type(&column.data_type)?;
+            
+            column_metadata.push(ColumnMetadata {
+                offset: current_offset,
+                size,
+                type_code,
+                is_nullable: !column.constraints.contains(&crate::parser::ColumnConstraint::NotNull),
+            });
+            
+            column_map.insert(column.name.clone(), index);
+            current_offset += size;
+        }
+
+        Ok(TableMetadata {
+            record_size: current_offset,
+            column_metadata,
+            column_map,
+        })
+    }
+
+    /// Get column size and type code for a data type
+    fn get_column_size_and_type(data_type: &DataType) -> Result<(usize, u8)> {
+        match data_type {
+            DataType::Integer => Ok((8, TypeCode::Integer as u8)),
+            DataType::Real => Ok((8, TypeCode::Real as u8)),
+            DataType::Text(Some(length)) => Ok((*length, TypeCode::TextFixed as u8)),
+            DataType::Text(None) => Err(crate::Error::Other("Text columns must specify a length (e.g., TEXT(10))".to_string())),
+        }
+    }
+
+    /// Serialize a row using the ultra-optimized fixed-length format
     pub fn serialize_row(
         &self,
         row_data: &HashMap<String, SqlValue>,
         schema: &TableSchema,
     ) -> Result<Vec<u8>> {
-        let mut buffer = Vec::with_capacity(256);
-        let mut header_buffer = Vec::with_capacity(64);
-        let mut data_buffer = Vec::with_capacity(192);
+        let metadata = Self::compute_table_metadata(schema)?;
+        let mut buffer = vec![0u8; metadata.record_size]; // Pre-allocate exact size
 
-        // Build data and collect type information
-        let mut type_codes = Vec::new();
-
-        for column in &schema.columns {
+        for (index, column) in schema.columns.iter().enumerate() {
             let value = row_data.get(&column.name).unwrap_or(&SqlValue::Null);
-            let type_code = Self::serialize_value(value, &mut data_buffer)?;
-            type_codes.push(type_code);
+            let column_meta = &metadata.column_metadata[index];
+            
+            Self::serialize_value_at_offset(
+                value,
+                &mut buffer,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )?;
         }
-
-        // Build header: header_size + type_codes
-        let header_size_bytes = Self::encode_varint(type_codes.len() + 1); // +1 for header_size itself
-        header_buffer.extend_from_slice(&header_size_bytes);
-        header_buffer.extend_from_slice(&type_codes);
-
-        // Calculate total record size
-        let record_size = header_buffer.len() + data_buffer.len();
-        let record_size_bytes = Self::encode_varint(record_size);
-
-        // Assemble final record: record_size + header + data
-        buffer.extend_from_slice(&record_size_bytes);
-        buffer.extend_from_slice(&header_buffer);
-        buffer.extend_from_slice(&data_buffer);
 
         Ok(buffer)
     }
 
-    /// Deserialize a complete row using the native binary format
+    /// Serialize a value at a specific offset
+    fn serialize_value_at_offset(
+        value: &SqlValue,
+        buffer: &mut [u8],
+        offset: usize,
+        size: usize,
+        type_code: u8,
+    ) -> Result<()> {
+        match (value, type_code) {
+            (SqlValue::Null, _) => {
+                // For null values, we could use a null bitmap or just leave as zeros
+                // For now, we'll use zeros to indicate null
+                buffer[offset..offset + size].fill(0);
+            }
+            (SqlValue::Integer(i), 1) => { // TypeCode::Integer
+                buffer[offset..offset + 8].copy_from_slice(&i.to_le_bytes());
+            }
+            (SqlValue::Real(r), 2) => { // TypeCode::Real
+                buffer[offset..offset + 8].copy_from_slice(&r.to_le_bytes());
+            }
+            (SqlValue::Text(s), 3) => { // TypeCode::TextFixed
+                let bytes = s.as_bytes();
+                let copy_len = bytes.len().min(size);
+                buffer[offset..offset + copy_len].copy_from_slice(&bytes[..copy_len]);
+                // Pad with nulls if needed
+                if copy_len < size {
+                    buffer[offset + copy_len..offset + size].fill(0);
+                }
+            }
+
+            _ => return Err(crate::Error::Other("Type mismatch during serialization".to_string())),
+        }
+        Ok(())
+    }
+
+    /// Deserialize a row using ultra-fast direct access
     pub fn deserialize_row(
         &self,
         data: &[u8],
         schema: &TableSchema,
     ) -> Result<HashMap<String, SqlValue>> {
-        let header = Self::parse_header(data, schema)?;
-        let mut row = HashMap::with_capacity(schema.columns.len());
+        let metadata = Self::compute_table_metadata(schema)?;
+        let mut result = HashMap::new();
 
-        for (i, column_info) in header.columns.iter().enumerate() {
-            let value = Self::deserialize_column_at_offset(data, column_info)?;
-            row.insert(schema.columns[i].name.clone(), value);
+        for (index, column) in schema.columns.iter().enumerate() {
+            let column_meta = &metadata.column_metadata[index];
+            let value = Self::deserialize_value_at_offset(
+                data,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )?;
+            result.insert(column.name.clone(), value);
         }
 
-        Ok(row)
+        Ok(result)
     }
 
-    /// Deserialize only specific columns (major optimization!)
+    /// Deserialize specific columns (for LIMIT optimization)
     pub fn deserialize_columns(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_names: &[String],
     ) -> Result<Vec<SqlValue>> {
-        let header = Self::parse_header(data, schema)?;
+        let metadata = Self::compute_table_metadata(schema)?;
         let mut result = Vec::with_capacity(column_names.len());
 
-        // Create a map from column name to index for faster lookups
-        let column_index_map: HashMap<_, _> = schema
-            .columns
-            .iter()
-            .enumerate()
-            .map(|(i, col)| (col.name.as_str(), i))
-            .collect();
-
-        for col_name in column_names {
-            if let Some(&column_index) = column_index_map.get(col_name.as_str()) {
-                if let Some(column_info) = header.columns.get(column_index) {
-                    let value = Self::deserialize_column_at_offset(data, column_info)?;
-                    result.push(value);
-                } else {
-                    result.push(SqlValue::Null);
-                }
+        for column_name in column_names {
+            if let Some(&index) = metadata.column_map.get(column_name) {
+                let column_meta = &metadata.column_metadata[index];
+                let value = Self::deserialize_value_at_offset(
+                    data,
+                    column_meta.offset,
+                    column_meta.size,
+                    column_meta.type_code,
+                )?;
+                result.push(value);
             } else {
-                result.push(SqlValue::Null);
+                return Err(crate::Error::Other(format!("Column '{}' not found", column_name)));
             }
         }
 
         Ok(result)
     }
 
-    /// Ultra-fast deserialize for specific column indices (no string lookups)
+    /// Ultra-fast deserialization at specific offset
+    fn deserialize_value_at_offset(
+        data: &[u8],
+        offset: usize,
+        size: usize,
+        type_code: u8,
+    ) -> Result<SqlValue> {
+        match type_code {
+            1 => { // TypeCode::Integer
+                let bytes = &data[offset..offset + 8];
+                let value = i64::from_le_bytes(bytes.try_into().unwrap());
+                Ok(SqlValue::Integer(value))
+            }
+            2 => { // TypeCode::Real
+                let bytes = &data[offset..offset + 8];
+                let value = f64::from_le_bytes(bytes.try_into().unwrap());
+                Ok(SqlValue::Real(value))
+            }
+            3 => { // TypeCode::TextFixed
+                let bytes = &data[offset..offset + size];
+                // Find the first null byte to determine actual string length
+                let actual_len = bytes.iter().position(|&b| b == 0).unwrap_or(size);
+                let text_bytes = &bytes[..actual_len];
+                let text = String::from_utf8_lossy(text_bytes).to_string();
+                Ok(SqlValue::Text(text))
+            }
+
+            _ => Err(crate::Error::Other("Invalid type code".to_string())),
+        }
+    }
+
+    /// Ultra-fast column access by index
+    pub fn deserialize_column_by_index(
+        &self,
+        data: &[u8],
+        schema: &TableSchema,
+        column_index: usize,
+    ) -> Result<SqlValue> {
+        let metadata = Self::compute_table_metadata(schema)?;
+        if column_index >= metadata.column_metadata.len() {
+            return Err(crate::Error::Other("Column index out of bounds".to_string()));
+        }
+
+        let column_meta = &metadata.column_metadata[column_index];
+        Self::deserialize_value_at_offset(
+            data,
+            column_meta.offset,
+            column_meta.size,
+            column_meta.type_code,
+        )
+    }
+
+    /// Deserialize specific columns by index (for backward compatibility)
     pub fn deserialize_column_indices(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_indices: &[usize],
     ) -> Result<Vec<SqlValue>> {
-        let header = Self::parse_header(data, schema)?;
+        let metadata = Self::compute_table_metadata(schema)?;
         let mut result = Vec::with_capacity(column_indices.len());
 
         for &column_index in column_indices {
-            if let Some(column_info) = header.columns.get(column_index) {
-                let value = Self::deserialize_column_at_offset(data, column_info)?;
-                result.push(value);
-            } else {
-                result.push(SqlValue::Null);
+            if column_index >= metadata.column_metadata.len() {
+                return Err(crate::Error::Other("Column index out of bounds".to_string()));
             }
-        }
 
-        Ok(result)
-    }
-
-    /// Ultra-fast deserialize with pre-computed header (zero allocation for header parsing)
-    pub fn deserialize_columns_fast(
-        &self,
-        data: &[u8],
-        column_offsets: &[usize],
-        column_types: &[u8],
-    ) -> Result<Vec<SqlValue>> {
-        let mut result = Vec::with_capacity(column_offsets.len());
-        
-        for (i, &offset) in column_offsets.iter().enumerate() {
-            let type_code = column_types[i];
-            let value = Self::deserialize_value_at_offset_fast(data, offset, type_code)?;
+            let column_meta = &metadata.column_metadata[column_index];
+            let value = Self::deserialize_value_at_offset(
+                data,
+                column_meta.offset,
+                column_meta.size,
+                column_meta.type_code,
+            )?;
             result.push(value);
         }
 
         Ok(result)
     }
 
-    /// Ultra-fast row extraction for selected columns (no HashMap, no string lookups)
-    pub fn deserialize_row_indices(
-        &self,
-        data: &[u8],
-        offsets: &[usize],
-        types: &[u8],
-    ) -> Result<Vec<SqlValue>> {
-        let mut result = Vec::with_capacity(offsets.len());
-        for (i, &offset) in offsets.iter().enumerate() {
-            let type_code = types[i];
-            // Fast path: direct memory access, no bounds checks (assume valid input)
-            let value = match type_code {
-                0 => SqlValue::Null,
-                1 => SqlValue::Integer(data[offset] as i64),
-                2 => SqlValue::Integer(i16::from_le_bytes([data[offset], data[offset + 1]]) as i64),
-                3 => SqlValue::Integer(i32::from_le_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ]) as i64),
-                4 => SqlValue::Integer(i64::from_le_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                    data[offset + 4],
-                    data[offset + 5],
-                    data[offset + 6],
-                    data[offset + 7],
-                ])),
-                5 => SqlValue::Real(f64::from_le_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                    data[offset + 4],
-                    data[offset + 5],
-                    data[offset + 6],
-                    data[offset + 7],
-                ])),
-                code if code >= 12 && code % 2 == 0 => {
-                    let size = (code - 12) as usize / 2;
-                    let text = std::str::from_utf8(&data[offset..offset + size])
-                        .unwrap_or("")
-                        .to_string();
-                    SqlValue::Text(text)
-                }
-                code if code >= 13 && code % 2 == 1 => {
-                    let size = (code - 13) as usize / 2;
-                    let text = std::str::from_utf8(&data[offset..offset + size])
-                        .unwrap_or("")
-                        .to_string();
-                    SqlValue::Text(text)
-                }
-                _ => return Err(crate::Error::Other(format!("Unknown type code: {}", type_code))),
-            };
-            result.push(value);
-        }
-        Ok(result)
+    /// Get record size for a schema
+    pub fn get_record_size(schema: &TableSchema) -> Result<usize> {
+        let metadata = Self::compute_table_metadata(schema)?;
+        Ok(metadata.record_size)
     }
 
-    /// Ultra-fast value deserialization at specific offset (no bounds checking for speed)
-    fn deserialize_value_at_offset_fast(
-        data: &[u8],
-        offset: usize,
-        type_code: u8,
-    ) -> Result<SqlValue> {
-        // Fast path: assume data is valid (caller responsibility)
-        match type_code {
-            0 => Ok(SqlValue::Null),
-            1 => Ok(SqlValue::Integer(data[offset] as i64)),
-            2 => Ok(SqlValue::Integer(
-                i16::from_le_bytes([data[offset], data[offset + 1]]) as i64,
-            )),
-            3 => Ok(SqlValue::Integer(i32::from_le_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-            ]) as i64)),
-            4 => Ok(SqlValue::Integer(i64::from_le_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-                data[offset + 4],
-                data[offset + 5],
-                data[offset + 6],
-                data[offset + 7],
-            ]))),
-            5 => Ok(SqlValue::Real(f64::from_le_bytes([
-                data[offset],
-                data[offset + 1],
-                data[offset + 2],
-                data[offset + 3],
-                data[offset + 4],
-                data[offset + 5],
-                data[offset + 6],
-                data[offset + 7],
-            ]))),
-            code if code >= 12 && code % 2 == 0 => {
-                // Text data - use from_utf8_lossy for speed (no validation)
-                let size = (code - 12) as usize / 2;
-                let text = std::str::from_utf8(&data[offset..offset + size])
-                    .unwrap_or("")
-                    .to_string();
-                Ok(SqlValue::Text(text))
-            }
-            code if code >= 13 && code % 2 == 1 => {
-                // Blob data (treat as text for now)
-                let size = (code - 13) as usize / 2;
-                let text = std::str::from_utf8(&data[offset..offset + size])
-                    .unwrap_or("")
-                    .to_string();
-                Ok(SqlValue::Text(text))
-            }
-            _ => Err(crate::Error::Other(format!("Unknown type code: {}", type_code))),
-        }
-    }
-
-    /// Check if row matches condition without full deserialization
+    /// Check if a value matches a condition (for WHERE clauses)
     pub fn matches_condition(
         &self,
         data: &[u8],
         schema: &TableSchema,
         condition: &crate::parser::Condition,
     ) -> Result<bool> {
-        // For now, we'll implement a simple version that deserializes only referenced columns
-        let referenced_columns = Self::extract_referenced_columns(condition);
-        let values = self.deserialize_columns(data, schema, &referenced_columns)?;
-
-        // Create a temporary map for condition evaluation
-        let mut row_map = HashMap::new();
-        for (i, col_name) in referenced_columns.iter().enumerate() {
-            if let Some(value) = values.get(i) {
-                row_map.insert(col_name.clone(), value.clone());
-            }
-        }
-
-        Ok(Self::evaluate_condition_on_map(condition, &row_map))
-    }
-
-    /// Parse record header for efficient column access
-    fn parse_header(data: &[u8], schema: &TableSchema) -> Result<RecordHeader> {
-        let mut cursor = 0;
-
-        // Read record size (optimized varint decoding)
-        let (record_size, consumed) = Self::decode_varint_fast(&data[cursor..])?;
-        cursor += consumed;
-
-        // Read header size (optimized varint decoding)
-        let (header_size, consumed) = Self::decode_varint_fast(&data[cursor..])?;
-        cursor += consumed;
-
-        // Read type codes (pre-allocate for better performance)
-        let mut columns = Vec::with_capacity(schema.columns.len());
-        let mut data_offset = cursor + schema.columns.len(); // Start of data section (after type codes)
-
-        // Validate that we have enough data for the header
-        let schema_len = schema.columns.len();
-        if cursor + schema_len > data.len() {
-            return Err(crate::Error::Other("Truncated record header".to_string()));
-        }
-
-        // Calculate total data size and validate
-        let mut total_data_size = 0;
-        for i in 0..schema_len {
-            let type_code = data[cursor + i];
-            let column_size = Self::get_column_size_fast(type_code);
-            total_data_size += column_size;
-        }
-
-        // Validate that we have enough data for all columns
-        if data_offset + total_data_size > data.len() {
-            return Err(crate::Error::Other("Truncated record data".to_string()));
-        }
-
-        // Build column info with validated offsets
-        for i in 0..schema_len {
-            let type_code = data[cursor + i];
-            let column_size = Self::get_column_size_fast(type_code);
-
-            columns.push(ColumnInfo {
-                offset: data_offset,
-                type_code,
-                size: column_size,
-            });
-
-            data_offset += column_size;
-        }
-
-        Ok(RecordHeader {
-            record_size,
-            header_size,
-            columns,
-        })
-    }
-
-    /// Deserialize a single column at a specific offset
-    fn deserialize_column_at_offset(data: &[u8], column_info: &ColumnInfo) -> Result<SqlValue> {
-        let start = column_info.offset;
-        let end = start + column_info.size;
-
-        if end > data.len() {
-            return Err(crate::Error::Other(
-                "Column data extends beyond record".to_string(),
-            ));
-        }
-
-        // Ultra-fast path: assume data is valid and use direct memory access
-        unsafe {
-            let column_data = data.get_unchecked(start..end);
-            
-            match column_info.type_code {
-                0 => Ok(SqlValue::Null),
-                1 => Ok(SqlValue::Integer(*column_data.get_unchecked(0) as i64)),
-                2 => Ok(SqlValue::Integer(
-                    i16::from_le_bytes([*column_data.get_unchecked(0), *column_data.get_unchecked(1)]) as i64,
-                )),
-                3 => Ok(SqlValue::Integer(i32::from_le_bytes([
-                    *column_data.get_unchecked(0),
-                    *column_data.get_unchecked(1),
-                    *column_data.get_unchecked(2),
-                    *column_data.get_unchecked(3),
-                ]) as i64)),
-                4 => Ok(SqlValue::Integer(i64::from_le_bytes([
-                    *column_data.get_unchecked(0),
-                    *column_data.get_unchecked(1),
-                    *column_data.get_unchecked(2),
-                    *column_data.get_unchecked(3),
-                    *column_data.get_unchecked(4),
-                    *column_data.get_unchecked(5),
-                    *column_data.get_unchecked(6),
-                    *column_data.get_unchecked(7),
-                ]))),
-                5 => Ok(SqlValue::Real(f64::from_le_bytes([
-                    *column_data.get_unchecked(0),
-                    *column_data.get_unchecked(1),
-                    *column_data.get_unchecked(2),
-                    *column_data.get_unchecked(3),
-                    *column_data.get_unchecked(4),
-                    *column_data.get_unchecked(5),
-                    *column_data.get_unchecked(6),
-                    *column_data.get_unchecked(7),
-                ]))),
-                code if code >= 12 && code % 2 == 0 => {
-                    // Text data - use from_utf8_lossy for speed
-                    let text = std::str::from_utf8(column_data)
-                        .unwrap_or("")
-                        .to_string();
-                    Ok(SqlValue::Text(text))
-                }
-                code if code >= 13 && code % 2 == 1 => {
-                    // Blob data (treat as text for now)
-                    let text = std::str::from_utf8(column_data)
-                        .unwrap_or("")
-                        .to_string();
-                    Ok(SqlValue::Text(text))
-                }
-                _ => Err(crate::Error::Other(format!(
-                    "Unknown type code: {}",
-                    column_info.type_code
-                ))),
-            }
-        }
-    }
-
-    /// Serialize a single value and return its type code
-    fn serialize_value(value: &SqlValue, buffer: &mut Vec<u8>) -> Result<u8> {
-        match value {
-            SqlValue::Null => Ok(0),
-            SqlValue::Integer(i) => {
-                // Choose the most compact representation
-                if *i >= 0 && *i <= 255 {
-                    buffer.push(*i as u8);
-                    Ok(1)
-                } else if *i >= i16::MIN as i64 && *i <= i16::MAX as i64 {
-                    buffer.extend_from_slice(&(*i as i16).to_le_bytes());
-                    Ok(2)
-                } else if *i >= i32::MIN as i64 && *i <= i32::MAX as i64 {
-                    buffer.extend_from_slice(&(*i as i32).to_le_bytes());
-                    Ok(3)
-                } else {
-                    buffer.extend_from_slice(&i.to_le_bytes());
-                    Ok(4)
-                }
-            }
-            SqlValue::Real(r) => {
-                buffer.extend_from_slice(&r.to_le_bytes());
-                Ok(5)
-            }
-            SqlValue::Text(t) => {
-                let bytes = t.as_bytes();
-                buffer.extend_from_slice(bytes);
-                // Type code for text: 12 + 2 * length
-                let type_code = std::cmp::min(255, 12 + 2 * bytes.len()) as u8;
-                Ok(type_code)
-            }
-        }
-    }
-
-    /// Get the size in bytes for a given type code
-    fn get_column_size(type_code: u8) -> usize {
-        match type_code {
-            0 => 0,                                                          // NULL
-            1 => 1,                                                          // 1-byte integer
-            2 => 2,                                                          // 2-byte integer
-            3 => 4,                                                          // 4-byte integer
-            4 => 8,                                                          // 8-byte integer
-            5 => 8,                                                          // 8-byte real
-            code if code >= 12 && code % 2 == 0 => (code - 12) as usize / 2, // Text
-            code if code >= 13 && code % 2 == 1 => (code - 13) as usize / 2, // Blob
-            _ => 0,
-        }
-    }
-
-    /// Encode a variable-length integer (similar to SQLite)
-    fn encode_varint(mut value: usize) -> Vec<u8> {
-        let mut result = Vec::new();
-
-        while value >= 128 {
-            result.push((value & 0x7F) as u8 | 0x80);
-            value >>= 7;
-        }
-        result.push(value as u8);
-
-        result
-    }
-
-    /// Decode a variable-length integer
-    fn decode_varint(data: &[u8]) -> Result<(usize, usize)> {
-        let mut result = 0;
-        let mut shift = 0;
-        let mut bytes_consumed = 0;
-
-        for &byte in data {
-            bytes_consumed += 1;
-            result |= ((byte & 0x7F) as usize) << shift;
-
-            if byte & 0x80 == 0 {
-                return Ok((result, bytes_consumed));
-            }
-
-            shift += 7;
-            if shift >= 64 {
-                return Err(crate::Error::Other("Varint too long".to_string()));
-            }
-        }
-
-        Err(crate::Error::Other("Incomplete varint".to_string()))
-    }
-
-    /// Fast varint decoding (optimized for common cases)
-    fn decode_varint_fast(data: &[u8]) -> Result<(usize, usize)> {
-        if data.is_empty() {
-            return Err(crate::Error::Other("Incomplete varint".to_string()));
-        }
-
-        let byte = data[0];
-        if byte & 0x80 == 0 {
-            // Single byte varint (most common case)
-            return Ok((byte as usize, 1));
-        }
-
-        // Fall back to regular decoding for multi-byte varints
-        Self::decode_varint(data)
-    }
-
-    /// Fast column size lookup (optimized for common types)
-    fn get_column_size_fast(type_code: u8) -> usize {
-        match type_code {
-            0 => 0,                                                          // NULL
-            1 => 1,                                                          // 1-byte integer
-            2 => 2,                                                          // 2-byte integer
-            3 => 4,                                                          // 4-byte integer
-            4 => 8,                                                          // 8-byte integer
-            5 => 8,                                                          // 8-byte real
-            code if code >= 12 && code % 2 == 0 => (code - 12) as usize / 2, // Text
-            code if code >= 13 && code % 2 == 1 => (code - 13) as usize / 2, // Blob
-            _ => 0,
-        }
-    }
-
-    /// Extract column names referenced in a condition
-    fn extract_referenced_columns(condition: &crate::parser::Condition) -> Vec<String> {
-        let mut columns = Vec::new();
-        Self::collect_referenced_columns(condition, &mut columns);
-        columns.sort();
-        columns.dedup();
-        columns
-    }
-
-    /// Recursively collect column names from a condition
-    fn collect_referenced_columns(condition: &crate::parser::Condition, columns: &mut Vec<String>) {
-        match condition {
-            crate::parser::Condition::Comparison { left, .. } => {
-                columns.push(left.clone());
-            }
-            crate::parser::Condition::And(left, right)
-            | crate::parser::Condition::Or(left, right) => {
-                Self::collect_referenced_columns(left, columns);
-                Self::collect_referenced_columns(right, columns);
-            }
-        }
-    }
-
-    /// Evaluate a condition on a column map
-    fn evaluate_condition_on_map(
-        condition: &crate::parser::Condition,
-        row_data: &HashMap<String, SqlValue>,
-    ) -> bool {
-        match condition {
-            crate::parser::Condition::Comparison {
-                left,
-                operator,
-                right,
-            } => {
-                if let Some(left_value) = row_data.get(left) {
-                    crate::sql_utils::compare_values(left_value, operator, right)
-                } else {
-                    false
-                }
-            }
-            crate::parser::Condition::And(left, right) => {
-                Self::evaluate_condition_on_map(left, row_data)
-                    && Self::evaluate_condition_on_map(right, row_data)
-            }
-            crate::parser::Condition::Or(left, right) => {
-                Self::evaluate_condition_on_map(left, row_data)
-                    || Self::evaluate_condition_on_map(right, row_data)
-            }
-        }
+        // For now, deserialize the row and use the existing condition evaluation
+        // This could be optimized further with direct byte comparisons
+        let row_data = self.deserialize_row(data, schema)?;
+        Ok(evaluate_condition_on_row(condition, &row_data))
     }
 }
 
-/// Utility function to evaluate a condition on a row HashMap
-pub fn evaluate_condition_on_row(
+/// Evaluate a condition on row data
+fn evaluate_condition_on_row(
     condition: &crate::parser::Condition,
     row_data: &HashMap<String, SqlValue>,
 ) -> bool {
@@ -635,10 +320,36 @@ pub fn evaluate_condition_on_row(
             operator,
             right,
         } => {
-            if let Some(left_value) = row_data.get(left) {
-                crate::sql_utils::compare_values(left_value, operator, right)
-            } else {
-                false
+            let left_val = row_data.get(left);
+            match (left_val, right) {
+                (Some(SqlValue::Integer(l)), SqlValue::Integer(r)) => match operator {
+                    crate::parser::ComparisonOperator::Equal => l == r,
+                    crate::parser::ComparisonOperator::NotEqual => l != r,
+                    crate::parser::ComparisonOperator::LessThan => l < r,
+                    crate::parser::ComparisonOperator::LessThanOrEqual => l <= r,
+                    crate::parser::ComparisonOperator::GreaterThan => l > r,
+                    crate::parser::ComparisonOperator::GreaterThanOrEqual => l >= r,
+                    _ => false,
+                },
+                (Some(SqlValue::Real(l)), SqlValue::Real(r)) => match operator {
+                    crate::parser::ComparisonOperator::Equal => (l - r).abs() < f64::EPSILON,
+                    crate::parser::ComparisonOperator::NotEqual => (l - r).abs() >= f64::EPSILON,
+                    crate::parser::ComparisonOperator::LessThan => l < r,
+                    crate::parser::ComparisonOperator::LessThanOrEqual => l <= r,
+                    crate::parser::ComparisonOperator::GreaterThan => l > r,
+                    crate::parser::ComparisonOperator::GreaterThanOrEqual => l >= r,
+                    _ => false,
+                },
+                (Some(SqlValue::Text(l)), SqlValue::Text(r)) => match operator {
+                    crate::parser::ComparisonOperator::Equal => l == r,
+                    crate::parser::ComparisonOperator::NotEqual => l != r,
+                    crate::parser::ComparisonOperator::LessThan => l < r,
+                    crate::parser::ComparisonOperator::LessThanOrEqual => l <= r,
+                    crate::parser::ComparisonOperator::GreaterThan => l > r,
+                    crate::parser::ComparisonOperator::GreaterThanOrEqual => l >= r,
+                    _ => false,
+                },
+                _ => false,
             }
         }
         crate::parser::Condition::And(left, right) => {
@@ -668,7 +379,7 @@ mod tests {
                 },
                 ColumnInfo {
                     name: "name".to_string(),
-                    data_type: DataType::Text,
+                    data_type: DataType::Text(Some(10)),
                     constraints: vec![],
                 },
                 ColumnInfo {

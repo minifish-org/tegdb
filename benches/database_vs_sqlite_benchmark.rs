@@ -22,7 +22,7 @@ fn database_benchmark(c: &mut Criterion) {
         .expect("Failed to create database");
 
     // Setup table for benchmarking
-    db.execute("CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)")
+    db.execute("CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")
         .expect("Failed to create table");
 
     // Insert some initial data for SELECT operations
@@ -142,7 +142,7 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
     conn.pragma_update(None, "journal_mode", "WAL").unwrap(); // Use WAL mode for better performance
 
     conn.execute(
-        "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)",
+        "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)",
         [],
     )
     .unwrap();

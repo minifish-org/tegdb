@@ -20,7 +20,7 @@ fn test_file_log_backend() -> Result<()> {
     let mut db = Database::open("file://demo_file_log_backend.db")?;
 
     println!("   Creating table and inserting data...");
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, score REAL)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), score REAL)")?;
     db.execute("INSERT INTO users (id, name, score) VALUES (1, 'Alice', 95.5)")?;
     db.execute("INSERT INTO users (id, name, score) VALUES (2, 'Bob', 87.2)")?;
 
@@ -47,7 +47,7 @@ fn test_browser_log_backend() -> Result<()> {
     let mut db = Database::open("localstorage://demo_browser_log_backend")?;
 
     println!("   Creating table and inserting data...");
-    db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")?;
+    db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)")?;
     db.execute("INSERT INTO products (id, name, price) VALUES (1, 'Widget', 19.99)")?;
     db.execute("INSERT INTO products (id, name, price) VALUES (2, 'Gadget', 29.99)")?;
 

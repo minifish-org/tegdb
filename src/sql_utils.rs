@@ -146,9 +146,20 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
 
             let data_type = match data_type_str {
                 "Integer" | "INTEGER" => DataType::Integer,
-                "Text" | "TEXT" => DataType::Text,
                 "Real" | "REAL" => DataType::Real,
-                "Blob" | "BLOB" => DataType::Blob,
+                text_type if text_type.starts_with("Text(") => {
+                    // Parse Text(Some(n)) format
+                    if let Some(length_str) = text_type.strip_prefix("Text(Some(").and_then(|s| s.strip_suffix("))")) {
+                        if let Ok(length) = length_str.parse::<usize>() {
+                            DataType::Text(Some(length))
+                        } else {
+                            DataType::Text(None)
+                        }
+                    } else {
+                        DataType::Text(None)
+                    }
+                }
+                "Text" | "TEXT" => DataType::Text(None), // Default to variable length
                 _ => continue, // Skip unknown types
             };
 
@@ -229,10 +240,21 @@ fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo
 
         let data_type = match type_str.as_ref() {
             "Integer" | "INTEGER" => DataType::Integer,
-            "Text" | "TEXT" => DataType::Text,
             "Real" | "REAL" => DataType::Real,
-            "Blob" | "BLOB" => DataType::Blob,
-            _ => DataType::Text, // Default fallback
+            text_type if text_type.starts_with("Text(") => {
+                // Parse Text(Some(n)) format
+                if let Some(length_str) = text_type.strip_prefix("Text(Some(").and_then(|s| s.strip_suffix("))")) {
+                    if let Ok(length) = length_str.parse::<usize>() {
+                        DataType::Text(Some(length))
+                    } else {
+                        DataType::Text(None)
+                    }
+                } else {
+                    DataType::Text(None)
+                }
+            }
+            "Text" | "TEXT" => DataType::Text(None), // Default to variable length
+            _ => DataType::Text(None), // Default fallback
         };
 
         let constraints = if let Some(constraints_bytes) = parts.next() {

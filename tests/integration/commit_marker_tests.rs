@@ -10,7 +10,7 @@ fn test_commit_marker_and_crash_recovery() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Create a test table
-        db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+        db.execute("CREATE TABLE test_data (key TEXT(32) PRIMARY KEY, value TEXT(32))")?;
 
         // Begin a transaction and commit it
         {
@@ -58,7 +58,7 @@ fn test_multiple_transactions_with_commit_markers() -> Result<()> {
             let mut db = Database::open(db_path)?;
 
             // Create a test table
-            db.execute("CREATE TABLE test_data (key TEXT PRIMARY KEY, value TEXT)")?;
+            db.execute("CREATE TABLE test_data (key TEXT(32) PRIMARY KEY, value TEXT(32))")?;
 
             // Transaction 1: committed
             {

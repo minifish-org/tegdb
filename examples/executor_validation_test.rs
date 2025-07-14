@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 1: Create table (Database handles transactions automatically)
     let result = db.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE)",
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, email TEXT(32) UNIQUE)",
     )?;
     println!("Create table result: {result} rows affected");
 

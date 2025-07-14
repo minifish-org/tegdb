@@ -28,7 +28,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 
                 // Create a table with specific schema
                 db.execute(
-                    "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
+                    "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)",
                 )?;
 
                 // Insert some data to verify the table works
@@ -69,7 +69,7 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 
                 // Create another table
                 db.execute(
-                    "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)",
+                    "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)",
                 )?;
                 db.execute("INSERT INTO products (id, name, price) VALUES (1, 'Widget', 9.99)")?;
 
@@ -124,7 +124,7 @@ fn test_schema_loading_on_executor_creation() -> Result<()> {
         // Create database and table
         {
             let mut db = Database::open(db_path).unwrap();
-            db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, description TEXT)")?;
+            db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, description TEXT(32))")?;
             db.execute("INSERT INTO items (id, description) VALUES (1, 'Test Item')")?;
         }
 

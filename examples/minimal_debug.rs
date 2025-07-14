@@ -9,7 +9,7 @@ fn main() -> Result<()> {
 
     // Create table
     println!("Creating table...");
-    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")?;
+    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(32))")?;
 
     // Insert one row
     println!("Inserting first row...");

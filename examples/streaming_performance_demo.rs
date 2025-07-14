@@ -14,7 +14,7 @@ fn main() -> tegdb::Result<()> {
 
     // Create test table
     println!("Creating test table...");
-    db.execute("CREATE TABLE sensor_data (id INTEGER PRIMARY KEY, sensor_id INTEGER, timestamp INTEGER, value REAL, location TEXT)")?;
+    db.execute("CREATE TABLE sensor_data (id INTEGER PRIMARY KEY, sensor_id INTEGER, timestamp INTEGER, value REAL, location TEXT(32))")?;
 
     // Insert a large dataset (simulating IoT sensor data)
     println!("Inserting 1,000 sensor readings...");

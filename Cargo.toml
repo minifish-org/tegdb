@@ -118,6 +118,16 @@ name = "bottleneck_analysis"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "storage_format_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "fixed_length_format_benchmark"
+harness = false
+required-features = ["dev"]
+
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []

@@ -12,10 +12,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.execute(
         "CREATE TABLE large_dataset (
         id INTEGER PRIMARY KEY,
-        name TEXT,
-        category TEXT,
+        name TEXT(32),
+        category TEXT(32),
         value REAL,
-        description TEXT
+        description TEXT(32)
     )",
     )?;
 

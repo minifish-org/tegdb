@@ -15,7 +15,7 @@ fn test_explicit_transaction_basic_workflow() -> Result<(), tegdb::Error> {
 
         // Create table
         let create_sql =
-            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)";
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)";
         let result = tx.execute(create_sql).unwrap();
         assert_eq!(result, 0); // CREATE TABLE returns 0 affected rows
 
@@ -43,7 +43,7 @@ fn test_explicit_transaction_rollback() -> Result<(), tegdb::Error> {
         let mut db = Database::open(db_path).unwrap();
 
         // Setup initial data
-        db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL)")
+        db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)")
             .unwrap();
         db.execute("INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 999.99)")
             .unwrap();
@@ -95,7 +95,7 @@ fn test_explicit_transaction_error_handling() -> Result<(), tegdb::Error> {
         // Test that operations work with explicit transactions
         let mut tx = db.begin_transaction().unwrap();
 
-        let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)";
+        let create_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))";
         let result = tx.execute(create_sql);
         assert!(result.is_ok());
 
@@ -122,7 +122,7 @@ fn test_explicit_transaction_complex_operations() -> Result<(), tegdb::Error> {
         let mut tx = db.begin_transaction().unwrap();
 
         // Create multiple tables
-        let create_users_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
+        let create_users_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL)";
         tx.execute(create_users_sql).unwrap();
 
         let create_orders_sql =

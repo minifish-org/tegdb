@@ -231,8 +231,7 @@ pub struct QueryProcessor<'a> {
     table_schemas: HashMap<String, Rc<TableSchema>>,
     /// Cached validation data for performance
     validation_caches: HashMap<String, SchemaValidationCache>,
-    /// Pre-computed storage format headers for ultra-fast access
-    storage_headers: HashMap<String, (Vec<usize>, Vec<u8>)>,
+
     storage_format: StorageFormat,
     transaction_active: bool,
 }
@@ -247,7 +246,6 @@ impl<'a> QueryProcessor<'a> {
             transaction,
             table_schemas: table_schemas.clone(),
             validation_caches: HashMap::new(),
-            storage_headers: HashMap::new(),
             storage_format: StorageFormat::new(), // Always use native format
             transaction_active: false,
         };
@@ -280,28 +278,7 @@ impl<'a> QueryProcessor<'a> {
         Ok(self.validation_caches.get(table_name).unwrap())
     }
 
-    /// Get or create pre-computed storage header for a table
-    fn get_storage_header(&mut self, table_name: &str) -> Result<&(Vec<usize>, Vec<u8>)> {
-        if !self.storage_headers.contains_key(table_name) {
-            let schema = self.get_table_schema(table_name)?;
-            
-            // Pre-compute the header information for this schema
-            let mut offsets = Vec::with_capacity(schema.columns.len());
-            let mut types = Vec::with_capacity(schema.columns.len());
-            
-            // For now, use a simple fixed layout (can be optimized further)
-            let mut current_offset = 0;
-            for _col in &schema.columns {
-                offsets.push(current_offset);
-                // Assume all columns are 8-byte integers for now (fastest path)
-                types.push(4); // 8-byte integer type code
-                current_offset += 8;
-            }
-            
-            self.storage_headers.insert(table_name.to_string(), (offsets, types));
-        }
-        Ok(self.storage_headers.get(table_name).unwrap())
-    }
+
 
     /// Execute CREATE TABLE statement
     pub fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet<'_>> {
@@ -606,10 +583,10 @@ impl<'a> QueryProcessor<'a> {
 
         for row_data in rows {
             // Validate row data
-            self.validate_row_data(table, row_data)?;
+            self.validate_row_data(table, &row_data)?;
 
             // Build primary key
-                            let key = self.build_primary_key(table, row_data)?;
+            let key = self.build_primary_key(table, &row_data)?;
 
             // Check for primary key conflicts
             if self.transaction.get(key.as_bytes()).is_some() {
@@ -619,7 +596,7 @@ impl<'a> QueryProcessor<'a> {
             }
 
             // Serialize and store row
-            let serialized = self.storage_format.serialize_row(row_data, &schema)?;
+            let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
             self.transaction.set(key.as_bytes(), serialized)?;
 
             rows_affected += 1;

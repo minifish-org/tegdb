@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     // Create table with primary key (required for IOT)
     println!("1. Creating table with PRIMARY KEY constraint...");
     #[cfg(not(target_arch = "wasm32"))]
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
 
     // Insert data - primary key becomes the row identifier
     println!("2. Inserting data (primary key becomes row identifier)...");
@@ -64,7 +64,7 @@ fn main() -> Result<()> {
     // Test table without primary key (should fail)
     println!("5. Testing table creation without PRIMARY KEY...");
     #[cfg(not(target_arch = "wasm32"))]
-    match db.execute("CREATE TABLE invalid_table (name TEXT, value TEXT)") {
+    match db.execute("CREATE TABLE invalid_table (name TEXT(32), value TEXT(32))") {
         Ok(_) => println!("ERROR: Table without primary key was allowed!"),
         Err(e) => println!("✓ Primary key requirement enforced: {e}"),
     }

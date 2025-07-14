@@ -29,7 +29,7 @@ fn simple_planner_test(c: &mut Criterion) {
     let sqlite = Connection::open(&sqlite_path).unwrap();
 
     // Create simple tables
-    let create_table_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)";
+    let create_table_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))";
 
     tegdb
         .execute(create_table_sql)

@@ -19,7 +19,7 @@ fn main() -> tegdb::Result<()> {
 
     // Create a products table
     println!("1. Creating products table...");
-    db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL, quantity INTEGER, discount REAL)")?;
+    db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL, quantity INTEGER, discount REAL)")?;
 
     // Insert sample data
     println!("2. Inserting sample products...");

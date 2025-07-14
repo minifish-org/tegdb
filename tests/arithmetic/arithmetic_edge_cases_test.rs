@@ -89,7 +89,7 @@ fn test_text_concatenation() {
         let mut db = Database::open(db_path).expect("Failed to open database");
 
         // Create test table
-        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, text1 TEXT, text2 TEXT)")
+        db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, text1 TEXT(32), text2 TEXT(32))")
             .expect("Failed to create table");
 
         db.execute("INSERT INTO test (id, text1, text2) VALUES (1, 'Hello', 'World')")
