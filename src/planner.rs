@@ -398,7 +398,7 @@ impl QueryPlanner {
 
     /// Plan CREATE TABLE statement
     fn plan_create_table(&self, create: CreateTableStatement) -> Result<ExecutionPlan> {
-        let mut schema = TableSchema {
+        let schema = TableSchema {
             name: create.table.clone(),
             columns: create
                 .columns
@@ -413,7 +413,6 @@ impl QueryPlanner {
                 })
                 .collect(),
         };
-        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
 
         Ok(ExecutionPlan::CreateTable {
             table: create.table,
@@ -806,7 +805,7 @@ mod tests {
                 },
             ],
         };
-        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut users_schema);
+        let _ = crate::catalog::Catalog::compute_table_metadata(&mut users_schema);
         schemas.insert("users".to_string(), Rc::new(users_schema));
 
         schemas

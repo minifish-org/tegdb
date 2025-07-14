@@ -339,9 +339,8 @@ impl<'a> QueryProcessor<'a> {
             name: create.table.clone(),
             columns,
         };
-
-        // Compute and store storage metadata for ultra-fast access
-        crate::storage_format::StorageFormat::compute_table_metadata(&mut schema)?;
+        // Compute storage metadata automatically when adding to catalog
+        let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
 
         // Store schema metadata (use simple string serialization for now)
         let schema_key = format!("S:{}", create.table);
@@ -381,6 +380,9 @@ impl<'a> QueryProcessor<'a> {
         self.table_schemas.insert(create.table.clone(), schema_rc);
         self.validation_caches
             .insert(create.table.clone(), SchemaValidationCache::new(&schema));
+
+        // Compute storage metadata automatically when adding to catalog
+        let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
 
         Ok(ResultSet::CreateTable)
     }
@@ -939,15 +941,8 @@ impl<'a> QueryProcessor<'a> {
                         if let Some(mut schema) =
                             sql_utils::parse_schema_data(table_name, &schema_data)
                         {
-                            // Compute and store storage metadata for ultra-fast access
-                            if crate::storage_format::StorageFormat::compute_table_metadata(
-                                    &mut schema,
-                                ).is_err()
-                            {
-                                // If metadata computation fails, continue without it
-                                // (fallback to runtime computation)
-                            }
-
+                            // Compute storage metadata automatically when loading from storage
+                            let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
                             self.table_schemas
                                 .insert(table_name.to_string(), Rc::new(schema.clone()));
                             self.validation_caches.insert(

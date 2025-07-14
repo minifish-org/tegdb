@@ -68,7 +68,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
             },
         ],
     };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut test_schema);
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut test_schema);
 
     // Create test row data
     let test_row_data = {

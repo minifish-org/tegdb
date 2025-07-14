@@ -51,7 +51,7 @@ fn main() {
             },
         ],
     };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
 
     let storage = StorageFormat::new();
 
@@ -188,7 +188,7 @@ fn main() {
             },
         ],
     };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut large_schema);
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut large_schema);
 
     let large_row = {
         let mut row = HashMap::new();

@@ -40,36 +40,6 @@ impl StorageFormat {
         StorageFormat
     }
 
-    /// Compute table metadata and embed it in columns
-    pub fn compute_table_metadata(schema: &mut TableSchema) -> Result<()> {
-        let mut current_offset = 0;
-
-        for column in schema.columns.iter_mut() {
-            let (size, type_code) = Self::get_column_size_and_type(&column.data_type)?;
-
-            // Embed storage metadata directly in the column
-            column.storage_offset = current_offset;
-            column.storage_size = size;
-            column.storage_type_code = type_code;
-
-            current_offset += size;
-        }
-
-        Ok(())
-    }
-
-    /// Get column size and type code for a data type
-    fn get_column_size_and_type(data_type: &DataType) -> Result<(usize, u8)> {
-        match data_type {
-            DataType::Integer => Ok((8, TypeCode::Integer as u8)),
-            DataType::Real => Ok((8, TypeCode::Real as u8)),
-            DataType::Text(Some(length)) => Ok((*length, TypeCode::TextFixed as u8)),
-            DataType::Text(None) => Err(crate::Error::Other(
-                "Text columns must specify a length (e.g., TEXT(10))".to_string(),
-            )),
-        }
-    }
-
     /// Ultra-fast row serialization using embedded metadata
     pub fn serialize_row(
         &self,
@@ -675,7 +645,7 @@ mod tests {
                 },
             ],
         };
-        let _ = StorageFormat::compute_table_metadata(&mut schema);
+        let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
         schema
     }
 

@@ -56,7 +56,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
                 },
             ],
         };
-        let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+        let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
         dummy_schemas.insert("test".to_string(), Rc::new(schema));
         dummy_schemas
     };
@@ -105,7 +105,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
             },
         ],
     };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut test_schema);
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut test_schema);
 
     // Benchmark native row format serialization
     let storage_format = tegdb::storage_format::StorageFormat::new();
@@ -340,7 +340,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
                     },
                 ],
             };
-            let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+            let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
             dummy_schemas.insert("test".to_string(), Rc::new(schema));
             let transaction = engine.begin_transaction();
             let _processor =

@@ -7,7 +7,7 @@ use tegdb::storage_format::StorageFormat;
 
 /// Create a test schema with fixed-length columns
 fn create_fixed_length_schema() -> TableSchema {
-    let mut schema = TableSchema {
+    TableSchema {
         name: "users".to_string(),
         columns: vec![
             ColumnInfo {
@@ -59,9 +59,7 @@ fn create_fixed_length_schema() -> TableSchema {
                 storage_type_code: 0,
             },
         ],
-    };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
-    schema
+    }
 }
 
 /// Create test row data
@@ -83,7 +81,9 @@ fn create_test_row() -> HashMap<String, SqlValue> {
 }
 
 fn fixed_length_format_benchmark(c: &mut Criterion) {
-    let schema = create_fixed_length_schema();
+    let mut schema = create_fixed_length_schema();
+    // Compute metadata once, outside of benchmarks
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
     let storage = StorageFormat::new();
     let test_row = create_test_row();
 
@@ -91,15 +91,6 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     c.bench_function("record_size_calculation", |b| {
         b.iter(|| {
             let _size = storage.get_record_size(black_box(&schema)).unwrap();
-        })
-    });
-
-    // Benchmark 2: Table metadata computation
-    c.bench_function("table_metadata_computation", |b| {
-        b.iter(|| {
-            // Create a fresh schema for each iteration since compute_table_metadata modifies it
-            let mut test_schema = create_fixed_length_schema();
-            StorageFormat::compute_table_metadata(&mut test_schema).unwrap();
         })
     });
 
@@ -221,7 +212,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
             },
         ],
     };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut large_schema);
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut large_schema);
 
     let large_row = {
         let mut row = HashMap::new();

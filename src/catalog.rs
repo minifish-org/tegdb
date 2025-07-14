@@ -52,7 +52,9 @@ impl Catalog {
     }
 
     /// Add or update a table schema in the catalog
-    pub fn add_table_schema(&mut self, schema: TableSchema) {
+    pub fn add_table_schema(&mut self, mut schema: TableSchema) {
+        // Compute storage metadata automatically when adding to catalog
+        let _ = Self::compute_table_metadata(&mut schema);
         self.schemas.insert(schema.name.clone(), Rc::new(schema));
     }
 
@@ -88,7 +90,7 @@ impl Catalog {
                 })
                 .collect(),
         };
-        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+        let _ = Self::compute_table_metadata(&mut schema);
         schema
     }
 
@@ -111,6 +113,8 @@ impl Catalog {
                 // Deserialize schema using centralized utility
                 if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value_rc) {
                     schema.name = table_name.to_string(); // Set the actual table name
+                    // Compute storage metadata automatically when loading from storage
+                    let _ = Self::compute_table_metadata(&mut schema);
                     schemas.insert(table_name.to_string(), Rc::new(schema));
                 }
             }
@@ -156,6 +160,29 @@ impl Catalog {
     pub fn get_schema_storage_key(table_name: &str) -> String {
         format!("{SCHEMA_KEY_PREFIX}{table_name}")
     }
+
+    /// Compute table metadata and embed it in columns
+    pub fn compute_table_metadata(schema: &mut TableSchema) -> crate::Result<()> {
+        let mut current_offset = 0;
+        for column in schema.columns.iter_mut() {
+            let (size, type_code) = Self::get_column_size_and_type(&column.data_type)?;
+            column.storage_offset = current_offset;
+            column.storage_size = size;
+            column.storage_type_code = type_code;
+            current_offset += size;
+        }
+        Ok(())
+    }
+
+    pub fn get_column_size_and_type(data_type: &crate::parser::DataType) -> crate::Result<(usize, u8)> {
+        use crate::storage_format::TypeCode;
+        match data_type {
+            crate::parser::DataType::Integer => Ok((8, TypeCode::Integer as u8)),
+            crate::parser::DataType::Real => Ok((8, TypeCode::Real as u8)),
+            crate::parser::DataType::Text(Some(len)) => Ok((*len, TypeCode::TextFixed as u8)),
+            crate::parser::DataType::Text(None) => Err(crate::Error::Other("Variable-length TEXT not supported in fixed-length format".to_string())),
+        }
+    }
 }
 
 impl Default for Catalog {
@@ -177,7 +204,7 @@ mod tests {
         assert!(!catalog.table_exists("users"));
 
         // Create a test schema
-        let mut schema = TableSchema {
+        let mut users_schema = TableSchema {
             name: "users".to_string(),
             columns: vec![
                 ColumnInfo {
@@ -198,9 +225,9 @@ mod tests {
                 },
             ],
         };
-        let _ = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema);
+        let _ = Catalog::compute_table_metadata(&mut users_schema);
 
-        catalog.add_table_schema(schema);
+        catalog.add_table_schema(users_schema);
         assert_eq!(catalog.table_count(), 1);
         assert!(catalog.table_exists("users"));
 

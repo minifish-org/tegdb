@@ -18,7 +18,7 @@ fn temp_db_path(prefix: &str) -> PathBuf {
 
 /// Create a test schema with various data types
 fn create_test_schema() -> TableSchema {
-    let mut schema = TableSchema {
+    TableSchema {
         name: "benchmark_table".to_string(),
         columns: vec![
             ColumnInfo {
@@ -62,9 +62,7 @@ fn create_test_schema() -> TableSchema {
                 storage_type_code: 0,
             },
         ],
-    };
-    let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
-    schema
+    }
 }
 
 /// Create test row data
@@ -103,7 +101,9 @@ fn create_test_row_with_long_text(id: i64) -> HashMap<String, SqlValue> {
 
 fn storage_format_benchmarks(c: &mut Criterion) {
     let storage_format = StorageFormat::new();
-    let schema = create_test_schema();
+    let mut schema = create_test_schema();
+    // Compute metadata once, outside of benchmarks
+    let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
 
     // ===== SERIALIZATION BENCHMARKS =====
 
