@@ -22,8 +22,10 @@ fn database_benchmark(c: &mut Criterion) {
         .expect("Failed to create database");
 
     // Setup table for benchmarking
-    db.execute("CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")
-        .expect("Failed to create table");
+    db.execute(
+        "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)",
+    )
+    .expect("Failed to create table");
 
     // Insert some initial data for SELECT operations
     db.execute("INSERT INTO benchmark_test (id, name, value) VALUES (1, 'test', 100)")

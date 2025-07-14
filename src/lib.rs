@@ -387,8 +387,9 @@ fn test_wasm_database_operations() -> crate::Result<()> {
     let _ = db.execute("DROP TABLE IF EXISTS users");
 
     // Test CREATE TABLE
-    let affected =
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
+    let affected = db.execute(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)",
+    )?;
     assert_eq!(affected, 0);
 
     // Test INSERT

@@ -69,10 +69,16 @@ fn create_test_row() -> HashMap<String, SqlValue> {
     let mut row = HashMap::new();
     row.insert("id".to_string(), SqlValue::Integer(12345));
     row.insert("name".to_string(), SqlValue::Text("John Doe".to_string()));
-    row.insert("email".to_string(), SqlValue::Text("john.doe@example.com".to_string()));
+    row.insert(
+        "email".to_string(),
+        SqlValue::Text("john.doe@example.com".to_string()),
+    );
     row.insert("age".to_string(), SqlValue::Integer(30));
     row.insert("score".to_string(), SqlValue::Real(95.5));
-    row.insert("avatar".to_string(), SqlValue::Text("binary_data_here".to_string()));
+    row.insert(
+        "avatar".to_string(),
+        SqlValue::Text("binary_data_here".to_string()),
+    );
     row
 }
 
@@ -93,7 +99,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
         b.iter(|| {
             // Create a fresh schema for each iteration since compute_table_metadata modifies it
             let mut test_schema = create_fixed_length_schema();
-            let _metadata = StorageFormat::compute_table_metadata(&mut test_schema).unwrap();
+            StorageFormat::compute_table_metadata(&mut test_schema).unwrap();
         })
     });
 
@@ -254,11 +260,17 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
             for i in 0..100 {
                 let mut row = HashMap::new();
                 row.insert("id".to_string(), SqlValue::Integer(i));
-                row.insert("name".to_string(), SqlValue::Text(format!("User{}", i)));
-                row.insert("email".to_string(), SqlValue::Text(format!("user{}@example.com", i)));
+                row.insert("name".to_string(), SqlValue::Text(format!("User{i}")));
+                row.insert(
+                    "email".to_string(),
+                    SqlValue::Text(format!("user{i}@example.com")),
+                );
                 row.insert("age".to_string(), SqlValue::Integer(20 + (i % 50)));
                 row.insert("score".to_string(), SqlValue::Real(50.0 + (i as f64 * 0.5)));
-                row.insert("avatar".to_string(), SqlValue::Text(format!("avatar_data_{}", i)));
+                row.insert(
+                    "avatar".to_string(),
+                    SqlValue::Text(format!("avatar_data_{i}")),
+                );
 
                 let _serialized = storage.serialize_row(&row, &schema).unwrap();
             }
@@ -267,14 +279,14 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
 
     // Benchmark 10: Record size comparison
     let record_size = storage.get_record_size(&schema).unwrap();
-    println!("Fixed-length record size: {} bytes", record_size);
+    println!("Fixed-length record size: {record_size} bytes");
     println!("Record layout:");
     println!("  - Integer columns: 8 bytes each");
     println!("  - Real columns: 8 bytes each");
     println!("  - Text(50): 50 bytes");
     println!("  - Text(100): 100 bytes");
     println!("  - Text(256): 256 bytes");
-    println!("  - Total: {} bytes (predictable!)", record_size);
+    println!("  - Total: {record_size} bytes (predictable!)");
 
     // Benchmark 11: Zero-copy access simulation
     c.bench_function("zero_copy_access_simulation", |b| {
@@ -290,4 +302,4 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
 }
 
 criterion_group!(benches, fixed_length_format_benchmark);
-criterion_main!(benches); 
+criterion_main!(benches);

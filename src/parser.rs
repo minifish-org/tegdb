@@ -117,7 +117,7 @@ pub struct ColumnDefinition {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
     Integer,
-    Text(Option<usize>),  // None = variable length, Some(n) = fixed length n
+    Text(Option<usize>), // None = variable length, Some(n) = fixed length n
     Real,
 }
 
@@ -776,7 +776,6 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
             ),
             |(_, length)| DataType::Text(length),
         ),
-
     ))
     .parse(input)
 }
@@ -789,11 +788,11 @@ fn parse_length_specification(input: &str) -> IResult<&str, usize> {
     let (input, length_str) = digit1.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char(')').parse(input)?;
-    
-    let length = length_str.parse::<usize>().map_err(|_| {
-        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
-    })?;
-    
+
+    let length = length_str
+        .parse::<usize>()
+        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+
     Ok((input, length))
 }
 

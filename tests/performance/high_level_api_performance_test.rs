@@ -938,7 +938,9 @@ fn test_transaction_pipeline_performance() -> Result<()> {
     let mut detailed_metrics = Vec::new();
 
     // Setup base table
-    db.execute("CREATE TABLE tx_pipeline_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")?;
+    db.execute(
+        "CREATE TABLE tx_pipeline_test (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)",
+    )?;
 
     // Test transaction-based operations
     let mut tx = db.begin_transaction()?;

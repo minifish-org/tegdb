@@ -104,7 +104,9 @@ fn test_schema_sharing_across_operations() -> Result<()> {
             assert_eq!(result.rows().len(), 1);
 
             // Create another table in the same database instance
-            db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)")?;
+            db.execute(
+                "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)",
+            )?;
 
             // Both tables should work
             let users_result = db.query("SELECT * FROM users").unwrap();

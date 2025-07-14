@@ -105,8 +105,11 @@ fn sled_benchmark(c: &mut Criterion) {
 
 fn sqlite_benchmark(c: &mut Criterion) {
     let conn = Connection::open_in_memory().unwrap();
-    conn.execute("CREATE TABLE test (key TEXT(32) PRIMARY KEY, value TEXT(32))", [])
-        .unwrap();
+    conn.execute(
+        "CREATE TABLE test (key TEXT(32) PRIMARY KEY, value TEXT(32))",
+        [],
+    )
+    .unwrap();
     let key = b"key";
     let value = b"value";
 

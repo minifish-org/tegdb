@@ -8,7 +8,11 @@ use std::path::PathBuf;
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = env::temp_dir();
-    path.push(format!("tegdb_lazy_bench_{}_{}", prefix, std::process::id()));
+    path.push(format!(
+        "tegdb_lazy_bench_{}_{}",
+        prefix,
+        std::process::id()
+    ));
     path
 }
 
@@ -71,7 +75,10 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
         let mut row = HashMap::new();
         row.insert("id".to_string(), tegdb::parser::SqlValue::Integer(123));
         row.insert("value".to_string(), tegdb::parser::SqlValue::Integer(456));
-        row.insert("name".to_string(), tegdb::parser::SqlValue::Text("test".to_string()));
+        row.insert(
+            "name".to_string(),
+            tegdb::parser::SqlValue::Text("test".to_string()),
+        );
         row
     };
 
@@ -95,7 +102,11 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("lazy_multiple_column_access", |b| {
         b.iter(|| {
             let _values = storage_format
-                .get_columns(black_box(&serialized_data), black_box(&test_schema), &["id", "value"])
+                .get_columns(
+                    black_box(&serialized_data),
+                    black_box(&test_schema),
+                    &["id", "value"],
+                )
                 .unwrap();
         })
     });
@@ -148,7 +159,11 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("lazy_condition_evaluation", |b| {
         b.iter(|| {
             let _matches = storage_format
-                .matches_condition(black_box(&serialized_data), black_box(&test_schema), &simple_condition)
+                .matches_condition(
+                    black_box(&serialized_data),
+                    black_box(&test_schema),
+                    &simple_condition,
+                )
                 .unwrap();
         })
     });
@@ -170,7 +185,11 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("lazy_complex_condition_evaluation", |b| {
         b.iter(|| {
             let _matches = storage_format
-                .matches_condition(black_box(&serialized_data), black_box(&test_schema), &complex_condition)
+                .matches_condition(
+                    black_box(&serialized_data),
+                    black_box(&test_schema),
+                    &complex_condition,
+                )
                 .unwrap();
         })
     });
@@ -209,7 +228,11 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("old_deserialize_columns", |b| {
         b.iter(|| {
             let _values = storage_format
-                .deserialize_columns(black_box(&serialized_data), black_box(&test_schema), &["id".to_string(), "value".to_string()])
+                .deserialize_columns(
+                    black_box(&serialized_data),
+                    black_box(&test_schema),
+                    &["id".to_string(), "value".to_string()],
+                )
                 .unwrap();
         })
     });
@@ -240,7 +263,9 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("query_with_multiple_conditions", |b| {
         b.iter(|| {
             let result = db
-                .query(black_box("SELECT id, value FROM test WHERE id > 10 AND value < 100"))
+                .query(black_box(
+                    "SELECT id, value FROM test WHERE id > 10 AND value < 100",
+                ))
                 .unwrap();
             black_box(result);
         })
@@ -313,4 +338,4 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
 }
 
 criterion_group!(benches, lazy_storage_benchmark);
-criterion_main!(benches); 
+criterion_main!(benches);

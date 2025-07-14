@@ -111,7 +111,12 @@ impl<'a> SelectRowIterator<'a> {
     ) -> Self {
         let mut column_indices = Vec::with_capacity(selected_columns.len());
         for col_name in &selected_columns {
-            if let Some((idx, _col)) = schema.columns.iter().enumerate().find(|(_, c)| &c.name == col_name) {
+            if let Some((idx, _col)) = schema
+                .columns
+                .iter()
+                .enumerate()
+                .find(|(_, c)| &c.name == col_name)
+            {
                 column_indices.push(idx);
             } else {
                 column_indices.push(usize::MAX);
@@ -154,9 +159,17 @@ impl<'a> Iterator for SelectRowIterator<'a> {
             // Check if we need to apply a filter
             let matches = if let Some(ref filter) = self.filter {
                 // Use cached metadata for ultra-fast condition evaluation
-                match self.storage_format.matches_condition_with_metadata(&value, &self.schema, filter) {
+                match self.storage_format.matches_condition_with_metadata(
+                    &value,
+                    &self.schema,
+                    filter,
+                ) {
                     Ok(matches) => matches,
-                    Err(_) => return Some(Err(Error::Other("Failed to evaluate condition".to_string()))),
+                    Err(_) => {
+                        return Some(Err(Error::Other(
+                            "Failed to evaluate condition".to_string(),
+                        )))
+                    }
                 }
             } else {
                 true // No filter, so it matches
@@ -169,7 +182,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                     &self.schema,
                     &self.column_indices,
                 );
-                
+
                 match row_values_result {
                     Ok(row_values) => {
                         self.count += 1;
@@ -285,10 +298,6 @@ impl<'a> QueryProcessor<'a> {
         Ok(self.validation_caches.get(table_name).unwrap())
     }
 
-
-
-
-
     /// Execute CREATE TABLE statement
     pub fn execute_create_table(&mut self, create: CreateTableStatement) -> Result<ResultSet<'_>> {
         // Validate that we don't have composite primary keys
@@ -320,8 +329,8 @@ impl<'a> QueryProcessor<'a> {
                 name: col.name.clone(),
                 data_type: col.data_type.clone(),
                 constraints: col.constraints.clone(),
-                storage_offset: 0, // Placeholder, will be set later
-                storage_size: 0,   // Placeholder, will be set later
+                storage_offset: 0,    // Placeholder, will be set later
+                storage_size: 0,      // Placeholder, will be set later
                 storage_type_code: 0, // Placeholder, will be set later
             })
             .collect();
@@ -501,7 +510,7 @@ impl<'a> QueryProcessor<'a> {
                 additional_filter,
             } => {
                 let schema = self.get_table_schema(&table)?;
-                                    let key = self.build_primary_key(&table, &pk_values)?;
+                let key = self.build_primary_key(&table, &pk_values)?;
 
                 // Create an iterator that returns at most one row if the key exists and matches
                 let key_bytes = key.as_bytes().to_vec();
@@ -598,10 +607,10 @@ impl<'a> QueryProcessor<'a> {
 
         for row_data in rows {
             // Validate row data
-            self.validate_row_data(table, &row_data)?;
+            self.validate_row_data(table, row_data)?;
 
             // Build primary key
-            let key = self.build_primary_key(table, &row_data)?;
+            let key = self.build_primary_key(table, row_data)?;
 
             // Check for primary key conflicts
             if self.transaction.get(key.as_bytes()).is_some() {
@@ -611,7 +620,7 @@ impl<'a> QueryProcessor<'a> {
             }
 
             // Serialize and store row
-            let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
+            let serialized = self.storage_format.serialize_row(row_data, &schema)?;
             self.transaction.set(key.as_bytes(), serialized)?;
 
             rows_affected += 1;
@@ -852,7 +861,7 @@ impl<'a> QueryProcessor<'a> {
                     let matches = if let Some(filter_cond) = additional_filter {
                         // Use pre-computed metadata from schema
                         self.storage_format
-                            .matches_condition_with_metadata(&value_rc, &schema, filter_cond)
+                            .matches_condition_with_metadata(&value_rc, schema, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -889,7 +898,7 @@ impl<'a> QueryProcessor<'a> {
                     let matches = if let Some(filter_cond) = filter {
                         // Use pre-computed metadata from schema
                         self.storage_format
-                            .matches_condition_with_metadata(&value_rc, &schema, filter_cond)
+                            .matches_condition_with_metadata(&value_rc, schema, filter_cond)
                             .unwrap_or(false)
                     } else {
                         true
@@ -927,14 +936,18 @@ impl<'a> QueryProcessor<'a> {
                 if !self.table_schemas.contains_key(table_name) {
                     // Parse the schema using centralized utility
                     if let Ok(schema_data) = String::from_utf8(value_rc.to_vec()) {
-                        if let Some(mut schema) = sql_utils::parse_schema_data(table_name, &schema_data)
+                        if let Some(mut schema) =
+                            sql_utils::parse_schema_data(table_name, &schema_data)
                         {
                             // Compute and store storage metadata for ultra-fast access
-                            if let Err(_) = crate::storage_format::StorageFormat::compute_table_metadata(&mut schema) {
+                            if crate::storage_format::StorageFormat::compute_table_metadata(
+                                    &mut schema,
+                                ).is_err()
+                            {
                                 // If metadata computation fails, continue without it
                                 // (fallback to runtime computation)
                             }
-                            
+
                             self.table_schemas
                                 .insert(table_name.to_string(), Rc::new(schema.clone()));
                             self.validation_caches.insert(

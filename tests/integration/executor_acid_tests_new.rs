@@ -11,7 +11,9 @@ fn test_transaction_atomicity() -> Result<()> {
         let mut db = Database::open(db_path)?;
 
         // Setup initial data
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
+        db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)",
+        )?;
         db.execute("INSERT INTO users (id, name, age) VALUES (1, 'John', 25)")?;
 
         // Verify initial state

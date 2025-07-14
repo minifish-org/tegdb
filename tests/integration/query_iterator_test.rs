@@ -11,8 +11,10 @@ fn test_query_iterator_basic_functionality() {
         let mut db = Database::open(db_path).unwrap();
 
         // Setup test data
-        db.execute("CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)")
-            .unwrap();
+        db.execute(
+            "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT(32), value INTEGER)",
+        )
+        .unwrap();
         db.execute("INSERT INTO test_table (id, name, value) VALUES (1, 'first', 100)")
             .unwrap();
         db.execute("INSERT INTO test_table (id, name, value) VALUES (2, 'second', 200)")

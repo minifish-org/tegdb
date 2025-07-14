@@ -1,7 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
 use std::env;
-use std::fs;
 use std::hint::black_box;
 use std::path::PathBuf;
 use tegdb::{ColumnInfo, DataType, SqlValue, StorageFormat, TableSchema};
@@ -9,7 +8,11 @@ use tegdb::{ColumnInfo, DataType, SqlValue, StorageFormat, TableSchema};
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = env::temp_dir();
-    path.push(format!("tegdb_storage_bench_{}_{}", prefix, std::process::id()));
+    path.push(format!(
+        "tegdb_storage_bench_{}_{}",
+        prefix,
+        std::process::id()
+    ));
     path
 }
 
@@ -68,10 +71,16 @@ fn create_test_schema() -> TableSchema {
 fn create_test_row(id: i64) -> HashMap<String, SqlValue> {
     let mut row = HashMap::new();
     row.insert("id".to_string(), SqlValue::Integer(id));
-    row.insert("name".to_string(), SqlValue::Text(format!("User_{}", id)));
+    row.insert("name".to_string(), SqlValue::Text(format!("User_{id}")));
     row.insert("score".to_string(), SqlValue::Real(id as f64 * 1.5));
-    row.insert("description".to_string(), SqlValue::Text(format!("Description for user {}", id)));
-    row.insert("metadata".to_string(), SqlValue::Text(format!("metadata_{}_long_string_for_testing", id)));
+    row.insert(
+        "description".to_string(),
+        SqlValue::Text(format!("Description for user {id}")),
+    );
+    row.insert(
+        "metadata".to_string(),
+        SqlValue::Text(format!("metadata_{id}_long_string_for_testing")),
+    );
     row
 }
 
@@ -79,10 +88,13 @@ fn create_test_row(id: i64) -> HashMap<String, SqlValue> {
 fn create_test_row_with_long_text(id: i64) -> HashMap<String, SqlValue> {
     let mut row = HashMap::new();
     row.insert("id".to_string(), SqlValue::Integer(id));
-    row.insert("name".to_string(), SqlValue::Text(format!("User_{}", id)));
+    row.insert("name".to_string(), SqlValue::Text(format!("User_{id}")));
     row.insert("score".to_string(), SqlValue::Real(id as f64 * 1.5));
-    row.insert("description".to_string(), SqlValue::Text(format!("Description for user {}", id)));
-    
+    row.insert(
+        "description".to_string(),
+        SqlValue::Text(format!("Description for user {id}")),
+    );
+
     // Create a very long string to test variable-length encoding
     let long_text = "This is a very long text field that will exceed the 65535 character limit for fixed-length encoding and will therefore use variable-length encoding with varint prefix. ".repeat(1000);
     row.insert("metadata".to_string(), SqlValue::Text(long_text));
@@ -94,7 +106,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     let schema = create_test_schema();
 
     // ===== SERIALIZATION BENCHMARKS =====
-    
+
     c.bench_function("serialize_row_small_text", |b| {
         let row_data = create_test_row(1);
         b.iter(|| {
@@ -128,11 +140,11 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== DESERIALIZATION BENCHMARKS =====
-    
+
     let serialized_small = storage_format
         .serialize_row(&create_test_row(1), &schema)
         .unwrap();
-    
+
     let serialized_large = storage_format
         .serialize_row(&create_test_row_with_long_text(1), &schema)
         .unwrap();
@@ -156,12 +168,16 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== PARTIAL DESERIALIZATION BENCHMARKS =====
-    
+
     c.bench_function("deserialize_columns_single", |b| {
         let columns = vec!["id".to_string()];
         b.iter(|| {
             let values = storage_format
-                .deserialize_columns(black_box(&serialized_small), black_box(&schema), black_box(&columns))
+                .deserialize_columns(
+                    black_box(&serialized_small),
+                    black_box(&schema),
+                    black_box(&columns),
+                )
                 .unwrap();
             black_box(values);
         })
@@ -171,7 +187,11 @@ fn storage_format_benchmarks(c: &mut Criterion) {
         let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
         b.iter(|| {
             let values = storage_format
-                .deserialize_columns(black_box(&serialized_small), black_box(&schema), black_box(&columns))
+                .deserialize_columns(
+                    black_box(&serialized_small),
+                    black_box(&schema),
+                    black_box(&columns),
+                )
                 .unwrap();
             black_box(values);
         })
@@ -181,16 +201,20 @@ fn storage_format_benchmarks(c: &mut Criterion) {
         let indices = vec![0, 1, 2]; // id, name, score
         b.iter(|| {
             let values = storage_format
-                .deserialize_column_indices(black_box(&serialized_small), black_box(&schema), black_box(&indices))
+                .deserialize_column_indices(
+                    black_box(&serialized_small),
+                    black_box(&schema),
+                    black_box(&indices),
+                )
                 .unwrap();
             black_box(values);
         })
     });
 
     // ===== ULTRA-FAST DESERIALIZATION BENCHMARKS =====
-    
+
     // ===== ULTRA-FAST DESERIALIZATION BENCHMARKS =====
-    
+
     // Note: We can't directly access private header parsing methods in benchmarks
     // So we'll focus on the public API performance
 
@@ -199,7 +223,11 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             // Use the public deserialize_columns method with pre-computed column names
             let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
             let values = storage_format
-                .deserialize_columns(black_box(&serialized_small), black_box(&schema), black_box(&columns))
+                .deserialize_columns(
+                    black_box(&serialized_small),
+                    black_box(&schema),
+                    black_box(&columns),
+                )
                 .unwrap();
             black_box(values);
         })
@@ -210,14 +238,18 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             // Use the public deserialize_column_indices method
             let indices = vec![0, 1, 2]; // id, name, score
             let values = storage_format
-                .deserialize_column_indices(black_box(&serialized_small), black_box(&schema), black_box(&indices))
+                .deserialize_column_indices(
+                    black_box(&serialized_small),
+                    black_box(&schema),
+                    black_box(&indices),
+                )
                 .unwrap();
             black_box(values);
         })
     });
 
     // ===== MICRO-BENCHMARKS FOR INDIVIDUAL OPERATIONS =====
-    
+
     c.bench_function("varint_encode_simulation", |b| {
         b.iter(|| {
             // Simulate varint encoding overhead
@@ -254,7 +286,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== COMPARISON WITH OLD FORMAT (SIMULATED) =====
-    
+
     // Simulate the overhead of the old format with HashMap lookups and string cloning
     c.bench_function("old_format_simulation", |b| {
         b.iter(|| {
@@ -263,7 +295,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             map.insert("id".to_string(), SqlValue::Integer(1));
             map.insert("name".to_string(), SqlValue::Text("test".to_string()));
             map.insert("score".to_string(), SqlValue::Real(1.5));
-            
+
             // Simulate string cloning overhead
             for _ in 0..10 {
                 let cloned_name = map.get("name").unwrap().clone();
@@ -273,14 +305,15 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== REAL-WORLD SCENARIO BENCHMARKS =====
-    
+
     c.bench_function("real_world_query_simulation", |b| {
         // Simulate a real-world scenario: query with WHERE clause on indexed column
         let rows: Vec<_> = (1..=50).map(create_test_row).collect();
-        let serialized_rows: Vec<_> = rows.iter()
+        let serialized_rows: Vec<_> = rows
+            .iter()
             .map(|row| storage_format.serialize_row(row, &schema).unwrap())
             .collect();
-        
+
         b.iter(|| {
             let mut results = Vec::new();
             for serialized_row in &serialized_rows {
@@ -289,7 +322,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
                 let values = storage_format
                     .deserialize_columns(serialized_row, &schema, &columns)
                     .unwrap();
-                
+
                 // Simulate condition check
                 if let SqlValue::Integer(id) = values[0] {
                     if id == 25 {
@@ -303,10 +336,11 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("bulk_processing_1000_rows", |b| {
         let rows: Vec<_> = (1..=1000).map(create_test_row).collect();
-        let serialized_rows: Vec<_> = rows.iter()
+        let serialized_rows: Vec<_> = rows
+            .iter()
             .map(|row| storage_format.serialize_row(row, &schema).unwrap())
             .collect();
-        
+
         b.iter(|| {
             let mut total_score = 0.0;
             for serialized_row in &serialized_rows {
@@ -315,7 +349,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
                 let values = storage_format
                     .deserialize_columns(serialized_row, &schema, &columns)
                     .unwrap();
-                
+
                 if let SqlValue::Real(score) = values[0] {
                     total_score += score;
                 }
@@ -325,11 +359,11 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== MEMORY ALLOCATION BENCHMARKS =====
-    
+
     c.bench_function("zero_allocation_column_access", |b| {
         // Use the public API to extract just the id column
         let columns = vec!["id".to_string()];
-        
+
         b.iter(|| {
             // Direct access using public API
             let values = storage_format
@@ -340,7 +374,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== STRING OPERATIONS BENCHMARKS =====
-    
+
     c.bench_function("fixed_length_text_encoding", |b| {
         let short_text = "Hello, World!";
         b.iter(|| {
@@ -351,7 +385,10 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             row_data.insert("email".to_string(), SqlValue::Text("a@b.com".to_string()));
             row_data.insert("age".to_string(), SqlValue::Integer(42));
             row_data.insert("score".to_string(), SqlValue::Real(3.14));
-            row_data.insert("description".to_string(), SqlValue::Text("desc".to_string()));
+            row_data.insert(
+                "description".to_string(),
+                SqlValue::Text("desc".to_string()),
+            );
             row_data.insert("metadata".to_string(), SqlValue::Text("meta".to_string()));
             let serialized = storage_format.serialize_row(&row_data, &schema).unwrap();
             black_box(serialized);
@@ -359,7 +396,8 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     c.bench_function("variable_length_text_encoding", |b| {
-        let long_text = "This is a very long text that will use variable-length encoding".repeat(100);
+        let long_text =
+            "This is a very long text that will use variable-length encoding".repeat(100);
         b.iter(|| {
             // Provide all required columns for the schema
             let mut row_data = HashMap::new();
@@ -368,7 +406,10 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             row_data.insert("email".to_string(), SqlValue::Text("a@b.com".to_string()));
             row_data.insert("age".to_string(), SqlValue::Integer(42));
             row_data.insert("score".to_string(), SqlValue::Real(3.14));
-            row_data.insert("description".to_string(), SqlValue::Text("desc".to_string()));
+            row_data.insert(
+                "description".to_string(),
+                SqlValue::Text("desc".to_string()),
+            );
             row_data.insert("metadata".to_string(), SqlValue::Text(long_text.clone()));
             let serialized = storage_format.serialize_row(&row_data, &schema).unwrap();
             black_box(serialized);
@@ -376,19 +417,19 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== LOOKUP TABLE BENCHMARKS =====
-    
+
     c.bench_function("type_size_lookup_simulation", |b| {
         b.iter(|| {
             // Simulate type size lookup overhead
             for type_code in 0..10 {
                 let size = match type_code {
-                    0 => 0,   // NULL
-                    1 => 1,   // Integer1
-                    2 => 2,   // Integer2
-                    3 => 4,   // Integer4
-                    4 => 8,   // Integer8
-                    5 => 8,   // Real
-                    6 => 4,   // TextFixed
+                    0 => 0, // NULL
+                    1 => 1, // Integer1
+                    2 => 2, // Integer2
+                    3 => 4, // Integer4
+                    4 => 8, // Integer8
+                    5 => 8, // Real
+                    6 => 4, // TextFixed
                     _ => 0,
                 };
                 black_box(size);
@@ -397,16 +438,17 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     // ===== COMPREHENSIVE PERFORMANCE TEST =====
-    
+
     c.bench_function("comprehensive_performance_test", |b| {
         let rows: Vec<_> = (1..=100).map(create_test_row).collect();
-        let serialized_rows: Vec<_> = rows.iter()
+        let serialized_rows: Vec<_> = rows
+            .iter()
             .map(|row| storage_format.serialize_row(row, &schema).unwrap())
             .collect();
-        
+
         b.iter(|| {
             let mut results = Vec::new();
-            
+
             // Simulate complex query processing using public API
             for serialized_row in &serialized_rows {
                 // Extract multiple columns efficiently using public API
@@ -414,9 +456,11 @@ fn storage_format_benchmarks(c: &mut Criterion) {
                 let values = storage_format
                     .deserialize_columns(serialized_row, &schema, &columns)
                     .unwrap();
-                
+
                 // Simulate filtering and transformation
-                if let (SqlValue::Integer(id_val), SqlValue::Real(score_val)) = (&values[0], &values[2]) {
+                if let (SqlValue::Integer(id_val), SqlValue::Real(score_val)) =
+                    (&values[0], &values[2])
+                {
                     if *id_val > 50 && *score_val > 75.0 {
                         results.push((values[0].clone(), values[1].clone(), values[2].clone()));
                     }
@@ -428,4 +472,4 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 }
 
 criterion_group!(benches, storage_format_benchmarks);
-criterion_main!(benches); 
+criterion_main!(benches);

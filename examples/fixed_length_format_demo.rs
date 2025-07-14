@@ -2,7 +2,7 @@ use tegdb::Database;
 use tegdb::SqlValue;
 
 /// Demonstrates the new fixed-length storage format
-/// 
+///
 /// This example shows how the new format provides:
 /// 1. Predictable record sizes
 /// 2. Ultra-fast column access
@@ -13,7 +13,7 @@ fn main() -> tegdb::Result<()> {
 
     // Create a database with fixed-length columns
     let mut db = Database::open("file:///tmp/fixed_length_demo.db")?;
-    
+
     // Clean up any existing data
     let _ = db.execute("DROP TABLE IF EXISTS users");
     let _ = db.execute("DROP TABLE IF EXISTS products");
@@ -33,7 +33,7 @@ fn main() -> tegdb::Result<()> {
             age INTEGER,
             score REAL,
             avatar TEXT(256)
-        )"
+        )",
     )?;
 
     db.execute(
@@ -44,17 +44,17 @@ fn main() -> tegdb::Result<()> {
             price REAL,
             category TEXT(50),
             image_data TEXT(512)
-        )"
+        )",
     )?;
 
     println!("2. Inserting sample data...");
-    
+
     // Insert users with fixed-length data
     for i in 1..=5 {
-        let name = format!("User{}", i);
-        let email = format!("user{}@example.com", i);
-        let avatar = format!("avatar_data_for_user_{}", i);
-        
+        let name = format!("User{i}");
+        let email = format!("user{i}@example.com");
+        let avatar = format!("avatar_data_for_user_{i}");
+
         db.execute(&format!(
             "INSERT INTO users (id, name, email, age, score, avatar) 
              VALUES ({}, '{}', '{}', {}, {}, '{}')",
@@ -69,11 +69,11 @@ fn main() -> tegdb::Result<()> {
 
     // Insert products with fixed-length data
     for i in 1..=3 {
-        let name = format!("Product{}", i);
-        let description = format!("This is a detailed description for product number {}", i);
-        let category = format!("Category{}", i);
-        let image_data = format!("binary_image_data_for_product_{}_with_some_padding", i);
-        
+        let name = format!("Product{i}");
+        let description = format!("This is a detailed description for product number {i}");
+        let category = format!("Category{i}");
+        let image_data = format!("binary_image_data_for_product_{i}_with_some_padding");
+
         db.execute(&format!(
             "INSERT INTO products (id, name, description, price, category, image_data) 
              VALUES ({}, '{}', '{}', {}, '{}', '{}')",
@@ -91,18 +91,21 @@ fn main() -> tegdb::Result<()> {
     // Query all users
     let users_result = db.query("SELECT * FROM users")?;
     println!("Users table:");
-    println!("{:<5} {:<10} {:<25} {:<5} {:<8} {:<20}", "ID", "Name", "Email", "Age", "Score", "Avatar");
+    println!(
+        "{:<5} {:<10} {:<25} {:<5} {:<8} {:<20}",
+        "ID", "Name", "Email", "Age", "Score", "Avatar"
+    );
     println!("{:-<80}", "");
-    
+
     for row in users_result.rows() {
         // Access columns by index: id=0, name=1, email=2, age=3, score=4, avatar=5
-        let id = row.get(0).unwrap_or(&SqlValue::Null);
+        let id = row.first().unwrap_or(&SqlValue::Null);
         let name = row.get(1).unwrap_or(&SqlValue::Null);
         let email = row.get(2).unwrap_or(&SqlValue::Null);
         let age = row.get(3).unwrap_or(&SqlValue::Null);
         let score = row.get(4).unwrap_or(&SqlValue::Null);
         let avatar = row.get(5).unwrap_or(&SqlValue::Null);
-        
+
         println!(
             "{:<5} {:<10} {:<25} {:<5} {:<8} {:<20}",
             format!("{:?}", id),
@@ -115,41 +118,41 @@ fn main() -> tegdb::Result<()> {
     }
 
     println!("\n4. Demonstrating partial column access (LIMIT optimization)...");
-    
+
     // Query only specific columns - this is much faster with fixed-length format
     let partial_result = db.query("SELECT id, name, score FROM users WHERE score > 60")?;
     println!("Users with score > 60 (partial columns):");
     for row in partial_result.rows() {
         // Access columns by index: id=0, name=1, score=2 (for SELECT id, name, score)
-        let id = row.get(0).unwrap_or(&SqlValue::Null);
+        let id = row.first().unwrap_or(&SqlValue::Null);
         let name = row.get(1).unwrap_or(&SqlValue::Null);
         let score = row.get(2).unwrap_or(&SqlValue::Null);
-        println!("  ID: {:?}, Name: {:?}, Score: {:?}", id, name, score);
+        println!("  ID: {id:?}, Name: {name:?}, Score: {score:?}");
     }
 
     println!("\n5. Performance comparison...");
-    
+
     // Benchmark the new format
     let start = std::time::Instant::now();
-    
+
     // Query all data multiple times to simulate real usage
     for _ in 0..100 {
         let _result = db.query("SELECT * FROM users")?;
     }
-    
+
     let duration = start.elapsed();
-    println!("   Query time for 100 full table scans: {:?}", duration);
+    println!("   Query time for 100 full table scans: {duration:?}");
     println!("   Average per query: {:?}", duration / 100);
 
     // Benchmark partial column access
     let start = std::time::Instant::now();
-    
+
     for _ in 0..100 {
         let _result = db.query("SELECT id, name FROM users")?;
     }
-    
+
     let duration = start.elapsed();
-    println!("   Query time for 100 partial column scans: {:?}", duration);
+    println!("   Query time for 100 partial column scans: {duration:?}");
     println!("   Average per query: {:?}", duration / 100);
 
     println!("\n6. Storage format benefits:");
@@ -178,4 +181,4 @@ fn main() -> tegdb::Result<()> {
     println!("• Cache-friendly data layout");
 
     Ok(())
-} 
+}

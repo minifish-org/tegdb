@@ -147,10 +147,10 @@ fn bottleneck_analysis(c: &mut Criterion) {
     });
 
     // ===== ENHANCED BOTTLENECK ANALYSIS =====
-    
+
     // Benchmark Database.query() breakdown
     let sql = "SELECT id, value FROM test";
-    
+
     // 1. Parse SQL
     c.bench_function("parse_sql", |b| {
         b.iter(|| {
@@ -216,11 +216,11 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             // Step 1: Parse
             let stmt = tegdb::parser::parse_sql(sql).unwrap();
-            
+
             // Step 2: Plan
             let planner = tegdb::planner::QueryPlanner::new(table_schemas.clone());
             let _plan = planner.plan(stmt).unwrap();
-            
+
             // Step 3: Execute (simulate with transaction)
             let mut tx = db.begin_transaction().unwrap();
             let _result = tx.query(sql).unwrap();
@@ -233,7 +233,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
             // Test various allocation patterns
             let mut vec = Vec::new();
             for i in 0..100 {
-                vec.push(format!("key_{}", i));
+                vec.push(format!("key_{i}"));
             }
             black_box(vec);
         })
@@ -244,7 +244,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             let mut map = HashMap::new();
             for i in 0..10 {
-                map.insert(format!("key_{}", i), format!("value_{}", i));
+                map.insert(format!("key_{i}"), format!("value_{i}"));
             }
             let _val = map.get("key_5");
             black_box(map);
@@ -256,7 +256,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
         b.iter(|| {
             let mut s = String::new();
             for i in 0..50 {
-                s.push_str(&format!("part_{}", i));
+                s.push_str(&format!("part_{i}"));
             }
             black_box(s);
         })
@@ -298,7 +298,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     });
 
     // ===== DRILL-DOWN INTO PLAN EXECUTION BOTTLENECK =====
-    
+
     // 17. Storage engine scan operations
     c.bench_function("storage_engine_scan_empty", |b| {
         b.iter(|| {
@@ -343,10 +343,8 @@ fn bottleneck_analysis(c: &mut Criterion) {
             let _ = tegdb::storage_format::StorageFormat::compute_table_metadata(&mut schema);
             dummy_schemas.insert("test".to_string(), Rc::new(schema));
             let transaction = engine.begin_transaction();
-            let _processor = tegdb::executor::QueryProcessor::new_with_rc_schemas(
-                transaction,
-                dummy_schemas,
-            );
+            let _processor =
+                tegdb::executor::QueryProcessor::new_with_rc_schemas(transaction, dummy_schemas);
         })
     });
 
@@ -425,11 +423,11 @@ fn bottleneck_analysis(c: &mut Criterion) {
             // Simulate memory allocation patterns in query processing
             let mut vec = Vec::with_capacity(10);
             for i in 0..10 {
-                vec.push(format!("column_{}", i));
+                vec.push(format!("column_{i}"));
             }
             let mut map = HashMap::new();
             for i in 0..5 {
-                map.insert(format!("key_{}", i), format!("value_{}", i));
+                map.insert(format!("key_{i}"), format!("value_{i}"));
             }
             black_box((vec, map));
         })
@@ -441,7 +439,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
             // Simulate string operations in query processing
             let table_name = "test";
             let column_name = "id";
-            let key = format!("{}:{}", table_name, column_name);
+            let key = format!("{table_name}:{column_name}");
             let _bytes = key.as_bytes();
         })
     });
@@ -452,7 +450,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
             let mut map = HashMap::new();
             map.insert("id".to_string(), "value".to_string());
             map.insert("name".to_string(), "test".to_string());
-            
+
             for _ in 0..10 {
                 let _val1 = map.get("id");
                 let _val2 = map.get("name");
@@ -478,10 +476,13 @@ fn bottleneck_analysis(c: &mut Criterion) {
         let mut row = HashMap::new();
         row.insert("id".to_string(), tegdb::parser::SqlValue::Integer(123));
         row.insert("value".to_string(), tegdb::parser::SqlValue::Integer(456));
-        row.insert("name".to_string(), tegdb::parser::SqlValue::Text("test".to_string()));
+        row.insert(
+            "name".to_string(),
+            tegdb::parser::SqlValue::Text("test".to_string()),
+        );
         row
     };
-    
+
     let serialized_data = storage_format
         .serialize_row(&test_data, &test_schema)
         .unwrap();
@@ -502,7 +503,8 @@ fn bottleneck_analysis(c: &mut Criterion) {
             // Simulate varint decoding overhead
             let mut result = 0;
             let mut shift = 0;
-            for &byte in &[0x89, 0x60] { // 12345 in varint format
+            for &byte in &[0x89, 0x60] {
+                // 12345 in varint format
                 result |= ((byte & 0x7F) as usize) << shift;
                 shift += 7;
             }
@@ -544,7 +546,11 @@ fn bottleneck_analysis(c: &mut Criterion) {
     c.bench_function("deserialize_columns_partial", |b| {
         b.iter(|| {
             let _result = storage_format
-                .deserialize_columns(black_box(&serialized_data), black_box(&test_schema), black_box(&column_names))
+                .deserialize_columns(
+                    black_box(&serialized_data),
+                    black_box(&test_schema),
+                    black_box(&column_names),
+                )
                 .unwrap();
         })
     });

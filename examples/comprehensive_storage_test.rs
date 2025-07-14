@@ -115,7 +115,9 @@ fn test_browser_log_backend_simulation() -> Result<()> {
     {
         let mut db = Database::open("browser://test_app_data")?;
 
-        db.execute("CREATE TABLE sessions (id INTEGER PRIMARY KEY, token TEXT(32), expires INTEGER)")?;
+        db.execute(
+            "CREATE TABLE sessions (id INTEGER PRIMARY KEY, token TEXT(32), expires INTEGER)",
+        )?;
         db.execute("INSERT INTO sessions (id, token, expires) VALUES (1, 'abc123', 1640995200)")?;
         db.execute("INSERT INTO sessions (id, token, expires) VALUES (2, 'def456', 1640995300)")?;
 

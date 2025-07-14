@@ -253,8 +253,8 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
                     // Limit the value size by using a small counter and truncating if needed
                     let base_value = String::from_utf8_lossy(&val);
                     let counter_mod = counter % 1000; // Keep counter small
-                    let suffix = format!("_modified_{}", counter_mod);
-                    
+                    let suffix = format!("_modified_{counter_mod}");
+
                     // Ensure the total value doesn't exceed a reasonable size (e.g., 1KB)
                     let max_base_size = 1024 - suffix.len();
                     let truncated_base = if base_value.len() > max_base_size {
@@ -262,8 +262,8 @@ fn transaction_conflict_scenarios(c: &mut Criterion) {
                     } else {
                         &base_value
                     };
-                    
-                    format!("{}{}", truncated_base, suffix)
+
+                    format!("{truncated_base}{suffix}")
                 } else {
                     format!("new_value_{}", counter % 1000)
                 };

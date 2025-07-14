@@ -24,8 +24,9 @@ fn test_wasm_basic_functionality() -> Result<()> {
     let mut db = Database::open("browser://test_db")?;
 
     // Test CREATE TABLE
-    let affected =
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)")?;
+    let affected = db.execute(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL, age INTEGER)",
+    )?;
     assert_eq!(affected, 0); // CREATE TABLE returns 0 affected rows
 
     // Test INSERT

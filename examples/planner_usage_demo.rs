@@ -22,7 +22,9 @@ fn main() -> Result<()> {
         println!("1. Creating test table and inserting data...");
 
         // Create table
-        db.execute("CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, value TEXT(32), score REAL)")?;
+        db.execute(
+            "CREATE TABLE benchmark_test (id INTEGER PRIMARY KEY, value TEXT(32), score REAL)",
+        )?;
 
         // Insert test data
         for i in 1..=10 {

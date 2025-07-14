@@ -122,7 +122,8 @@ fn test_explicit_transaction_complex_operations() -> Result<(), tegdb::Error> {
         let mut tx = db.begin_transaction().unwrap();
 
         // Create multiple tables
-        let create_users_sql = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL)";
+        let create_users_sql =
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32) NOT NULL)";
         tx.execute(create_users_sql).unwrap();
 
         let create_orders_sql =

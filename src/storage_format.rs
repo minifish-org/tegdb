@@ -17,9 +17,9 @@ pub struct StorageFormat;
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum TypeCode {
-    Integer = 1,    // 8-byte i64
-    Real = 2,       // 8-byte f64
-    TextFixed = 3,  // Fixed-length text (padded with nulls)
+    Integer = 1,   // 8-byte i64
+    Real = 2,      // 8-byte f64
+    TextFixed = 3, // Fixed-length text (padded with nulls)
 }
 
 /// A zero-copy, lazy row view
@@ -46,12 +46,12 @@ impl StorageFormat {
 
         for column in schema.columns.iter_mut() {
             let (size, type_code) = Self::get_column_size_and_type(&column.data_type)?;
-            
+
             // Embed storage metadata directly in the column
             column.storage_offset = current_offset;
             column.storage_size = size;
             column.storage_type_code = type_code;
-            
+
             current_offset += size;
         }
 
@@ -64,7 +64,9 @@ impl StorageFormat {
             DataType::Integer => Ok((8, TypeCode::Integer as u8)),
             DataType::Real => Ok((8, TypeCode::Real as u8)),
             DataType::Text(Some(length)) => Ok((*length, TypeCode::TextFixed as u8)),
-            DataType::Text(None) => Err(crate::Error::Other("Text columns must specify a length (e.g., TEXT(10))".to_string())),
+            DataType::Text(None) => Err(crate::Error::Other(
+                "Text columns must specify a length (e.g., TEXT(10))".to_string(),
+            )),
         }
     }
 
@@ -79,9 +81,13 @@ impl StorageFormat {
         let mut buffer = vec![0u8; record_size]; // Pre-allocate exact size
 
         for column in &schema.columns {
-            let value = row_data.get(&column.name)
-                .ok_or_else(|| crate::Error::Other(format!("Missing required value for column '{}'", column.name)))?;
-            
+            let value = row_data.get(&column.name).ok_or_else(|| {
+                crate::Error::Other(format!(
+                    "Missing required value for column '{}'",
+                    column.name
+                ))
+            })?;
+
             Self::serialize_value_at_offset(
                 value,
                 &mut buffer,
@@ -103,13 +109,16 @@ impl StorageFormat {
         type_code: u8,
     ) -> Result<()> {
         match (value, type_code) {
-            (SqlValue::Integer(i), 1) => { // TypeCode::Integer
+            (SqlValue::Integer(i), 1) => {
+                // TypeCode::Integer
                 buffer[offset..offset + 8].copy_from_slice(&i.to_le_bytes());
             }
-            (SqlValue::Real(r), 2) => { // TypeCode::Real
+            (SqlValue::Real(r), 2) => {
+                // TypeCode::Real
                 buffer[offset..offset + 8].copy_from_slice(&r.to_le_bytes());
             }
-            (SqlValue::Text(s), 3) => { // TypeCode::TextFixed
+            (SqlValue::Text(s), 3) => {
+                // TypeCode::TextFixed
                 let bytes = s.as_bytes();
                 let copy_len = bytes.len().min(size);
                 buffer[offset..offset + copy_len].copy_from_slice(&bytes[..copy_len]);
@@ -118,7 +127,11 @@ impl StorageFormat {
                     buffer[offset + copy_len..offset + size].fill(0);
                 }
             }
-            _ => return Err(crate::Error::Other("Type mismatch during serialization".to_string())),
+            _ => {
+                return Err(crate::Error::Other(
+                    "Type mismatch during serialization".to_string(),
+                ))
+            }
         }
         Ok(())
     }
@@ -129,10 +142,7 @@ impl StorageFormat {
         data: &'a [u8],
         schema: &'a TableSchema,
     ) -> Result<LazyRow<'a>> {
-        Ok(LazyRow {
-            data,
-            schema,
-        })
+        Ok(LazyRow { data, schema })
     }
 
     /// Get a single column value by name (zero-copy) using embedded metadata
@@ -142,7 +152,12 @@ impl StorageFormat {
         schema: &TableSchema,
         column_name: &str,
     ) -> Result<SqlValue> {
-        if let Some((index, _)) = schema.columns.iter().enumerate().find(|(_, col)| &col.name == column_name) {
+        if let Some((index, _)) = schema
+            .columns
+            .iter()
+            .enumerate()
+            .find(|(_, col)| col.name == column_name)
+        {
             let column_info = &schema.columns[index];
             Self::deserialize_value_at_offset(
                 data,
@@ -151,7 +166,9 @@ impl StorageFormat {
                 column_info.storage_type_code,
             )
         } else {
-            Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
+            Err(crate::Error::Other(format!(
+                "Column '{column_name}' not found"
+            )))
         }
     }
 
@@ -163,7 +180,9 @@ impl StorageFormat {
         column_index: usize,
     ) -> Result<SqlValue> {
         if column_index >= schema.columns.len() {
-            return Err(crate::Error::Other("Column index out of bounds".to_string()));
+            return Err(crate::Error::Other(
+                "Column index out of bounds".to_string(),
+            ));
         }
         let column_info = &schema.columns[column_index];
         Self::deserialize_value_at_offset(
@@ -196,7 +215,11 @@ impl StorageFormat {
         condition: &crate::parser::Condition,
     ) -> Result<bool> {
         match condition {
-            crate::parser::Condition::Comparison { left, operator, right } => {
+            crate::parser::Condition::Comparison {
+                left,
+                operator,
+                right,
+            } => {
                 if let Ok(left_val) = self.get_column_value(data, schema, left) {
                     match (left_val, right) {
                         (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
@@ -209,8 +232,12 @@ impl StorageFormat {
                             _ => Ok(false),
                         },
                         (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
-                            crate::parser::ComparisonOperator::Equal => Ok((l - *r).abs() < f64::EPSILON),
-                            crate::parser::ComparisonOperator::NotEqual => Ok((l - *r).abs() >= f64::EPSILON),
+                            crate::parser::ComparisonOperator::Equal => {
+                                Ok((l - *r).abs() < f64::EPSILON)
+                            }
+                            crate::parser::ComparisonOperator::NotEqual => {
+                                Ok((l - *r).abs() >= f64::EPSILON)
+                            }
                             crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
                             crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
                             crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
@@ -267,17 +294,20 @@ impl StorageFormat {
         type_code: u8,
     ) -> Result<SqlValue> {
         match type_code {
-            1 => { // TypeCode::Integer
+            1 => {
+                // TypeCode::Integer
                 let bytes = &data[offset..offset + 8];
                 let value = i64::from_le_bytes(bytes.try_into().unwrap());
                 Ok(SqlValue::Integer(value))
             }
-            2 => { // TypeCode::Real
+            2 => {
+                // TypeCode::Real
                 let bytes = &data[offset..offset + 8];
                 let value = f64::from_le_bytes(bytes.try_into().unwrap());
                 Ok(SqlValue::Real(value))
             }
-            3 => { // TypeCode::TextFixed
+            3 => {
+                // TypeCode::TextFixed
                 let bytes = &data[offset..offset + size];
                 // Find the first null byte to determine actual string length
                 let actual_len = bytes.iter().position(|&b| b == 0).unwrap_or(size);
@@ -293,8 +323,6 @@ impl StorageFormat {
     pub fn get_record_size(&self, schema: &TableSchema) -> Result<usize> {
         Ok(schema.columns.iter().map(|col| col.storage_size).sum())
     }
-
-
 
     // Backward compatibility methods
     pub fn deserialize_row(
@@ -348,7 +376,12 @@ impl StorageFormat {
         schema: &TableSchema,
         column_name: &str,
     ) -> Result<SqlValue> {
-        if let Some((index, _)) = schema.columns.iter().enumerate().find(|(_, col)| &col.name == column_name) {
+        if let Some((index, _)) = schema
+            .columns
+            .iter()
+            .enumerate()
+            .find(|(_, col)| col.name == column_name)
+        {
             let column_info = &schema.columns[index];
             Self::deserialize_value_at_offset(
                 data,
@@ -357,7 +390,9 @@ impl StorageFormat {
                 column_info.storage_type_code,
             )
         } else {
-            Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
+            Err(crate::Error::Other(format!(
+                "Column '{column_name}' not found"
+            )))
         }
     }
 
@@ -369,7 +404,9 @@ impl StorageFormat {
         column_index: usize,
     ) -> Result<SqlValue> {
         if column_index >= schema.columns.len() {
-            return Err(crate::Error::Other("Column index out of bounds".to_string()));
+            return Err(crate::Error::Other(
+                "Column index out of bounds".to_string(),
+            ));
         }
 
         let column_info = &schema.columns[column_index];
@@ -391,7 +428,9 @@ impl StorageFormat {
         let mut result = Vec::with_capacity(column_indices.len());
         for &index in column_indices {
             if index >= schema.columns.len() {
-                return Err(crate::Error::Other("Column index out of bounds".to_string()));
+                return Err(crate::Error::Other(
+                    "Column index out of bounds".to_string(),
+                ));
             }
             let column_info = &schema.columns[index];
             let value = Self::deserialize_value_at_offset(
@@ -413,7 +452,11 @@ impl StorageFormat {
         condition: &crate::parser::Condition,
     ) -> Result<bool> {
         match condition {
-            crate::parser::Condition::Comparison { left, operator, right } => {
+            crate::parser::Condition::Comparison {
+                left,
+                operator,
+                right,
+            } => {
                 if let Ok(left_val) = self.get_column_value_with_metadata(data, schema, left) {
                     match (left_val, right) {
                         (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
@@ -426,8 +469,12 @@ impl StorageFormat {
                             _ => Ok(false),
                         },
                         (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
-                            crate::parser::ComparisonOperator::Equal => Ok((l - *r).abs() < f64::EPSILON),
-                            crate::parser::ComparisonOperator::NotEqual => Ok((l - *r).abs() >= f64::EPSILON),
+                            crate::parser::ComparisonOperator::Equal => {
+                                Ok((l - *r).abs() < f64::EPSILON)
+                            }
+                            crate::parser::ComparisonOperator::NotEqual => {
+                                Ok((l - *r).abs() >= f64::EPSILON)
+                            }
                             crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
                             crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
                             crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
@@ -482,7 +529,13 @@ impl StorageFormat {
 impl<'a> LazyRow<'a> {
     /// Get a single column value by name (zero-copy)
     pub fn get_column(&self, column_name: &str) -> Result<SqlValue> {
-        if let Some((index, _)) = self.schema.columns.iter().enumerate().find(|(_, col)| &col.name == column_name) {
+        if let Some((index, _)) = self
+            .schema
+            .columns
+            .iter()
+            .enumerate()
+            .find(|(_, col)| col.name == column_name)
+        {
             let column_info = &self.schema.columns[index];
             StorageFormat::deserialize_value_at_offset(
                 self.data,
@@ -491,14 +544,18 @@ impl<'a> LazyRow<'a> {
                 column_info.storage_type_code,
             )
         } else {
-            Err(crate::Error::Other(format!("Column '{}' not found", column_name)))
+            Err(crate::Error::Other(format!(
+                "Column '{column_name}' not found"
+            )))
         }
     }
 
     /// Get a single column value by index (zero-copy)
     pub fn get_by_index(&self, index: usize) -> Result<SqlValue> {
         if index >= self.schema.columns.len() {
-            return Err(crate::Error::Other("Column index out of bounds".to_string()));
+            return Err(crate::Error::Other(
+                "Column index out of bounds".to_string(),
+            ));
         }
         let column_info = &self.schema.columns[index];
         StorageFormat::deserialize_value_at_offset(
@@ -664,4 +721,3 @@ mod tests {
         assert_eq!(values[1], SqlValue::Real(87.2));
     }
 }
-
