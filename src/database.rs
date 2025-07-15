@@ -40,10 +40,7 @@ impl PreparedStatement {
     fn count_parameters(statement: &Statement) -> usize {
         use crate::parser::Statement;
         match statement {
-            Statement::Select(select) => {
-                
-                Self::count_parameters_in_condition(&select.where_clause)
-            }
+            Statement::Select(select) => Self::count_parameters_in_condition(&select.where_clause),
             Statement::Insert(insert) => insert
                 .values
                 .iter()
@@ -496,7 +493,6 @@ impl Database {
 
     /// Bind parameters to an execution plan (recursively)
     fn bind_parameters_to_plan(plan: &ExecutionPlan, params: &[SqlValue]) -> Result<ExecutionPlan> {
-        
         let mut param_index = 0;
         Self::bind_parameters_to_plan_recursive(plan, params, &mut param_index)
     }

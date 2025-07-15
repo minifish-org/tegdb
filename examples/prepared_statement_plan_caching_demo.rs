@@ -94,9 +94,7 @@ fn main() -> Result<()> {
         let affected = db.execute_prepared(&insert_stmt, &params)?;
         let duration = start.elapsed();
 
-        println!(
-            "   → Insert {i}: {affected} rows affected in {duration:?}"
-        );
+        println!("   → Insert {i}: {affected} rows affected in {duration:?}");
     }
 
     println!("\n3. Testing plan caching with UPDATE statements...");
@@ -115,9 +113,7 @@ fn main() -> Result<()> {
         let affected = db.execute_prepared(&update_stmt, &params)?;
         let duration = start.elapsed();
 
-        println!(
-            "   → Update {i}: {affected} rows affected in {duration:?}"
-        );
+        println!("   → Update {i}: {affected} rows affected in {duration:?}");
     }
 
     println!("\n4. Testing plan caching with DELETE statements...");
@@ -133,9 +129,7 @@ fn main() -> Result<()> {
         let affected = db.execute_prepared(&delete_stmt, &params)?;
         let duration = start.elapsed();
 
-        println!(
-            "   → DELETE age < {age}: {affected} rows affected in {duration:?}"
-        );
+        println!("   → DELETE age < {age}: {affected} rows affected in {duration:?}");
     }
 
     println!("\n5. Final verification...");
