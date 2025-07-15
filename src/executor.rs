@@ -6,7 +6,7 @@
 use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
 };
-use crate::sql_utils;
+
 use crate::storage_engine::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
