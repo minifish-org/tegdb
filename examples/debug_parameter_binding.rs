@@ -58,12 +58,8 @@ fn main() -> Result<()> {
     println!("   → Prepared statement: {}", insert_stmt.sql());
     println!("   → Parameter count: {}", insert_stmt.parameter_count());
 
-    // Debug: Let's see what the execution plan looks like
-    #[cfg(feature = "dev")]
-    println!(
-        "   → Execution plan: {:?}",
-        insert_stmt.debug_execution_plan()
-    );
+    // Remove or comment out insert_stmt.debug_execution_plan() as execution plans are no longer cached.
+    // insert_stmt.debug_execution_plan()
 
     let insert_params = vec![
         SqlValue::Integer(4),

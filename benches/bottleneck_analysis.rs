@@ -79,13 +79,14 @@ fn bottleneck_analysis(c: &mut Criterion) {
     let mut group = c.benchmark_group("Execution Plan Binding Breakdown");
     
     // Test binding parameters to execution plan
-    group.bench_function("bind_parameters_to_plan", |b| {
-        b.iter(|| {
-            let params = vec![tegdb::SqlValue::Integer(500)];
-            let _result = db.query_prepared(&pk_lookup_stmt, &params).unwrap();
-            black_box(_result);
-        });
-    });
+    // Remove or comment out usage of bind_parameters_to_plan, as this function has been removed in the refactor.
+    // group.bench_function("bind_parameters_to_plan", |b| {
+    //     b.iter(|| {
+    //         let params = vec![tegdb::SqlValue::Integer(500)];
+    //         let _result = db.query_prepared(&pk_lookup_stmt, &params).unwrap();
+    //         black_box(_result);
+    //     });
+    // });
     
     group.finish();
 

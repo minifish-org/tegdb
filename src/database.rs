@@ -20,19 +20,16 @@ pub struct PreparedStatement {
     statement: Statement,
     /// Number of parameters expected
     parameter_count: usize,
-    /// Cached execution plan (with parameter placeholders)
-    execution_plan: ExecutionPlan,
 }
 
 impl PreparedStatement {
     /// Create a new prepared statement
-    fn new(sql: String, statement: Statement, plan: ExecutionPlan) -> Self {
+    fn new(sql: String, statement: Statement) -> Self {
         let parameter_count = Self::count_parameters(&statement);
         Self {
             sql,
             statement,
             parameter_count,
-            execution_plan: plan,
         }
     }
 
@@ -132,7 +129,12 @@ impl PreparedStatement {
     /// Debug method to inspect the execution plan (for debugging only)
     #[cfg(feature = "dev")]
     pub fn debug_execution_plan(&self) -> &ExecutionPlan {
-        &self.execution_plan
+        // This method is no longer applicable as execution plans are not cached
+        // and parameter binding is done at execution time.
+        // For now, we'll return a placeholder or remove it if not needed.
+        // Given the new_planner.plan(statement) call, we can't easily get the plan here.
+        // For now, we'll return a placeholder.
+        unimplemented!("debug_execution_plan is no longer applicable for prepared statements.");
     }
 }
 
@@ -420,14 +422,9 @@ impl Database {
     pub fn prepare(&self, sql: &str) -> Result<PreparedStatement> {
         let statement =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
-
-        let planner = QueryPlanner::new(self.catalog.get_all_schemas().clone());
-        let execution_plan = planner.plan(statement.clone())?;
-
         Ok(PreparedStatement::new(
             sql.to_string(),
             statement,
-            execution_plan,
         ))
     }
 
@@ -445,18 +442,13 @@ impl Database {
                 params.len()
             )));
         }
-
-        // Bind parameters to the cached execution plan
-        let bound_plan = Self::bind_parameters_to_plan(&stmt.execution_plan, params)?;
-
-        // Use a single transaction for this operation
-        let transaction = self.storage.begin_transaction();
+        let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+        let planner = QueryPlanner::new(schemas.clone());
+        let plan = planner.plan(bound_stmt.clone())?;
+        let transaction = self.storage.begin_transaction();
         let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
-
-        // Execute the bound plan
-        let result = processor.execute_plan(bound_plan)?;
-
+        let result = processor.execute_plan(plan)?;
         let final_result = match result {
             crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
             crate::executor::ResultSet::Update { rows_affected } => rows_affected,
@@ -474,8 +466,7 @@ impl Database {
             }
         };
         drop(result);
-        // DDL update
-        Self::update_schema_catalog_for_ddl(&mut self.catalog, &stmt.statement);
+        Self::update_schema_catalog_for_ddl(&mut self.catalog, &bound_stmt);
         processor.transaction_mut().commit()?;
         Ok(final_result)
     }
@@ -494,393 +485,14 @@ impl Database {
                 params.len()
             )));
         }
-        let bound_plan = Self::bind_parameters_to_plan(&stmt.execution_plan, params)?;
+        let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+        let planner = QueryPlanner::new(schemas.clone());
+        let plan = planner.plan(bound_stmt)?;
         let transaction = self.storage.begin_transaction();
-        let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-        Self::execute_query_with_bound_plan(processor, &bound_plan, self.catalog.get_all_schemas())
-    }
-
-    /// Bind parameters to an execution plan (recursively)
-    fn bind_parameters_to_plan(plan: &ExecutionPlan, params: &[SqlValue]) -> Result<ExecutionPlan> {
-        let mut param_index = 0;
-        Self::bind_parameters_to_plan_recursive(plan, params, &mut param_index)
-    }
-
-    /// Recursively bind parameters to an execution plan with proper index tracking
-    fn bind_parameters_to_plan_recursive(
-        plan: &ExecutionPlan,
-        params: &[SqlValue],
-        param_index: &mut usize,
-    ) -> Result<ExecutionPlan> {
-        match plan {
-            ExecutionPlan::PrimaryKeyLookup {
-                table,
-                pk_values,
-                selected_columns,
-                additional_filter,
-            } => {
-                let mut bound_pk_values = HashMap::new();
-                for (col, value) in pk_values {
-                    let bound_value = Self::bind_parameter_value(value, params, param_index)?;
-                    bound_pk_values.insert(col.clone(), bound_value);
-                }
-
-                let bound_filter = if let Some(filter) = additional_filter {
-                    Some(Self::bind_parameters_in_condition_recursive(
-                        filter,
-                        params,
-                        param_index,
-                    )?)
-                } else {
-                    None
-                };
-
-                Ok(ExecutionPlan::PrimaryKeyLookup {
-                    table: table.clone(),
-                    pk_values: bound_pk_values,
-                    selected_columns: selected_columns.clone(),
-                    additional_filter: bound_filter,
-                })
-            }
-
-            ExecutionPlan::TableRangeScan {
-                table,
-                selected_columns,
-                pk_range,
-                additional_filter,
-                limit,
-            } => {
-                let bound_pk_range =
-                    Self::bind_parameters_in_pk_range(pk_range, params, param_index)?;
-                let bound_filter = if let Some(filter) = additional_filter {
-                    Some(Self::bind_parameters_in_condition_recursive(
-                        filter,
-                        params,
-                        param_index,
-                    )?)
-                } else {
-                    None
-                };
-
-                // Use the limit as-is (no parameter binding for LIMIT in current implementation)
-                let bound_limit = *limit;
-
-                Ok(ExecutionPlan::TableRangeScan {
-                    table: table.clone(),
-                    selected_columns: selected_columns.clone(),
-                    pk_range: bound_pk_range,
-                    additional_filter: bound_filter,
-                    limit: bound_limit,
-                })
-            }
-
-            ExecutionPlan::TableScan {
-                table,
-                selected_columns,
-                filter,
-                limit,
-            } => {
-                let bound_filter = if let Some(filter) = filter {
-                    Some(Self::bind_parameters_in_condition_recursive(
-                        filter,
-                        params,
-                        param_index,
-                    )?)
-                } else {
-                    None
-                };
-
-                // Use the limit as-is (no parameter binding for LIMIT in current implementation)
-                let bound_limit = *limit;
-
-                Ok(ExecutionPlan::TableScan {
-                    table: table.clone(),
-                    selected_columns: selected_columns.clone(),
-                    filter: bound_filter,
-                    limit: bound_limit,
-                })
-            }
-
-            ExecutionPlan::Insert {
-                table,
-                rows,
-                conflict_resolution,
-            } => {
-                let mut bound_rows = Vec::new();
-                for row in rows {
-                    let mut bound_row = HashMap::new();
-                    for (col, value) in row {
-                        let bound_value = Self::bind_parameter_value(value, params, param_index)?;
-                        bound_row.insert(col.clone(), bound_value);
-                    }
-                    bound_rows.push(bound_row);
-                }
-
-                Ok(ExecutionPlan::Insert {
-                    table: table.clone(),
-                    rows: bound_rows,
-                    conflict_resolution: conflict_resolution.clone(),
-                })
-            }
-
-            ExecutionPlan::Update {
-                table,
-                assignments,
-                scan_plan,
-            } => {
-                let mut bound_assignments = Vec::new();
-                for assignment in assignments {
-                    let bound_value = Self::bind_parameters_in_expression(
-                        &assignment.value,
-                        params,
-                        param_index,
-                    )?;
-                    bound_assignments.push(crate::planner::Assignment {
-                        column: assignment.column.clone(),
-                        value: bound_value,
-                    });
-                }
-
-                let bound_scan_plan =
-                    Self::bind_parameters_to_plan_recursive(scan_plan, params, param_index)?;
-
-                Ok(ExecutionPlan::Update {
-                    table: table.clone(),
-                    assignments: bound_assignments,
-                    scan_plan: Box::new(bound_scan_plan),
-                })
-            }
-
-            ExecutionPlan::Delete { table, scan_plan } => {
-                let bound_scan_plan =
-                    Self::bind_parameters_to_plan_recursive(scan_plan, params, param_index)?;
-
-                Ok(ExecutionPlan::Delete {
-                    table: table.clone(),
-                    scan_plan: Box::new(bound_scan_plan),
-                })
-            }
-
-            // DDL operations don't have parameters
-            ExecutionPlan::CreateTable { table, schema } => Ok(ExecutionPlan::CreateTable {
-                table: table.clone(),
-                schema: schema.clone(),
-            }),
-
-            ExecutionPlan::DropTable { table, if_exists } => Ok(ExecutionPlan::DropTable {
-                table: table.clone(),
-                if_exists: *if_exists,
-            }),
-
-            // Transaction control operations don't have parameters
-            ExecutionPlan::Begin => Ok(ExecutionPlan::Begin),
-            ExecutionPlan::Commit => Ok(ExecutionPlan::Commit),
-            ExecutionPlan::Rollback => Ok(ExecutionPlan::Rollback),
-        }
-    }
-
-    /// Bind parameters in a PkRange
-    fn bind_parameters_in_pk_range(
-        pk_range: &crate::planner::PkRange,
-        params: &[SqlValue],
-        param_index: &mut usize,
-    ) -> Result<crate::planner::PkRange> {
-        let start_bound = if let Some(bound) = &pk_range.start_bound {
-            Some(Self::bind_parameters_in_pk_bound(
-                bound,
-                params,
-                param_index,
-            )?)
-        } else {
-            None
-        };
-
-        let end_bound = if let Some(bound) = &pk_range.end_bound {
-            Some(Self::bind_parameters_in_pk_bound(
-                bound,
-                params,
-                param_index,
-            )?)
-        } else {
-            None
-        };
-
-        Ok(crate::planner::PkRange {
-            start_bound,
-            end_bound,
-        })
-    }
-
-    /// Bind parameters in a PkBound
-    fn bind_parameters_in_pk_bound(
-        pk_bound: &crate::planner::PkBound,
-        params: &[SqlValue],
-        param_index: &mut usize,
-    ) -> Result<crate::planner::PkBound> {
-        let mut bound_values = HashMap::new();
-        for (col, value) in &pk_bound.values {
-            let bound_value = Self::bind_parameter_value(value, params, param_index)?;
-            bound_values.insert(col.clone(), bound_value);
-        }
-
-        Ok(crate::planner::PkBound {
-            values: bound_values,
-            inclusive: pk_bound.inclusive,
-        })
-    }
-
-    /// Bind a single parameter value
-    fn bind_parameter_value(
-        value: &SqlValue,
-        params: &[SqlValue],
-        param_index: &mut usize,
-    ) -> Result<SqlValue> {
-        match value {
-            SqlValue::Parameter(_) => {
-                if *param_index >= params.len() {
-                    return Err(crate::Error::Other(
-                        "Not enough parameters provided".to_string(),
-                    ));
-                }
-                let bound_value = params[*param_index].clone();
-                *param_index += 1;
-                Ok(bound_value)
-            }
-            _ => Ok(value.clone()),
-        }
-    }
-
-    /// Recursively bind parameters in a condition with proper index tracking
-    fn bind_parameters_in_condition_recursive(
-        condition: &crate::parser::Condition,
-        params: &[SqlValue],
-        param_index: &mut usize,
-    ) -> Result<crate::parser::Condition> {
-        use crate::parser::Condition;
-        match condition {
-            Condition::Comparison {
-                left,
-                operator,
-                right,
-            } => {
-                let mut bound_right = right.clone();
-                if let SqlValue::Parameter(_) = bound_right {
-                    if *param_index >= params.len() {
-                        return Err(crate::Error::Other(
-                            "Not enough parameters provided".to_string(),
-                        ));
-                    }
-                    bound_right = params[*param_index].clone();
-                    *param_index += 1;
-                }
-                Ok(Condition::Comparison {
-                    left: left.clone(),
-                    operator: *operator,
-                    right: bound_right,
-                })
-            }
-            Condition::Between { column, low, high } => {
-                let mut bound_low = low.clone();
-                let mut bound_high = high.clone();
-                if let SqlValue::Parameter(_) = bound_low {
-                    if *param_index >= params.len() {
-                        return Err(crate::Error::Other(
-                            "Not enough parameters provided".to_string(),
-                        ));
-                    }
-                    bound_low = params[*param_index].clone();
-                    *param_index += 1;
-                }
-                if let SqlValue::Parameter(_) = bound_high {
-                    if *param_index >= params.len() {
-                        return Err(crate::Error::Other(
-                            "Not enough parameters provided".to_string(),
-                        ));
-                    }
-                    bound_high = params[*param_index].clone();
-                    *param_index += 1;
-                }
-                Ok(Condition::Between {
-                    column: column.clone(),
-                    low: bound_low,
-                    high: bound_high,
-                })
-            }
-            Condition::And(left, right) => Ok(Condition::And(
-                Box::new(Self::bind_parameters_in_condition_recursive(
-                    left,
-                    params,
-                    param_index,
-                )?),
-                Box::new(Self::bind_parameters_in_condition_recursive(
-                    right,
-                    params,
-                    param_index,
-                )?),
-            )),
-            Condition::Or(left, right) => Ok(Condition::Or(
-                Box::new(Self::bind_parameters_in_condition_recursive(
-                    left,
-                    params,
-                    param_index,
-                )?),
-                Box::new(Self::bind_parameters_in_condition_recursive(
-                    right,
-                    params,
-                    param_index,
-                )?),
-            )),
-        }
-    }
-
-    /// Bind parameters in an expression
-    fn bind_parameters_in_expression(
-        expression: &crate::parser::Expression,
-        params: &[SqlValue],
-        param_index: &mut usize,
-    ) -> Result<crate::parser::Expression> {
-        use crate::parser::Expression;
-        match expression {
-            Expression::Value(SqlValue::Parameter(_)) => {
-                if *param_index >= params.len() {
-                    return Err(crate::Error::Other(
-                        "Not enough parameters provided".to_string(),
-                    ));
-                }
-                let value = params[*param_index].clone();
-                *param_index += 1;
-                Ok(Expression::Value(value))
-            }
-            Expression::Value(value) => Ok(Expression::Value(value.clone())),
-            Expression::Column(column) => Ok(Expression::Column(column.clone())),
-            Expression::BinaryOp {
-                left,
-                operator,
-                right,
-            } => Ok(Expression::BinaryOp {
-                left: Box::new(Self::bind_parameters_in_expression(
-                    left,
-                    params,
-                    param_index,
-                )?),
-                operator: *operator,
-                right: Box::new(Self::bind_parameters_in_expression(
-                    right,
-                    params,
-                    param_index,
-                )?),
-            }),
-        }
-    }
-
-    /// Execute query with a bound execution plan
-    fn execute_query_with_bound_plan(
-        mut processor: QueryProcessor<'_>,
-        plan: &ExecutionPlan,
-        _schemas: &HashMap<String, Rc<TableSchema>>,
-    ) -> Result<QueryResult> {
-        let result = processor.execute_plan(plan.clone())?;
+        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
+        // Use the same logic as query()
+        let result = processor.execute_plan(plan)?;
         match result {
             crate::executor::ResultSet::Select { columns, rows } => {
                 let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
@@ -893,6 +505,124 @@ impl Database {
             _ => Err(crate::Error::Other(
                 "Expected SELECT result but got something else".to_string(),
             )),
+        }
+    }
+
+    /// Helper: Bind parameters into a Statement AST (recursively)
+    fn bind_parameters_to_statement(statement: &Statement, params: &[SqlValue]) -> Result<Statement> {
+        let mut param_index = 0;
+        fn bind_value(value: &SqlValue, params: &[SqlValue], param_index: &mut usize) -> Result<SqlValue> {
+            match value {
+                SqlValue::Parameter(_) => {
+                    if *param_index >= params.len() {
+                        return Err(crate::Error::Other("Not enough parameters provided".to_string()));
+                    }
+                    let v = params[*param_index].clone();
+                    *param_index += 1;
+                    Ok(v)
+                }
+                _ => Ok(value.clone()),
+            }
+        }
+        fn bind_expr(expr: &crate::parser::Expression, params: &[SqlValue], param_index: &mut usize) -> Result<crate::parser::Expression> {
+            use crate::parser::Expression;
+            match expr {
+                Expression::Value(v) => Ok(Expression::Value(bind_value(v, params, param_index)?)),
+                Expression::Column(c) => Ok(Expression::Column(c.clone())),
+                Expression::BinaryOp { left, operator, right } => Ok(Expression::BinaryOp {
+                    left: Box::new(bind_expr(left, params, param_index)?),
+                    operator: *operator,
+                    right: Box::new(bind_expr(right, params, param_index)?),
+                }),
+            }
+        }
+        fn bind_condition(cond: &crate::parser::Condition, params: &[SqlValue], param_index: &mut usize) -> Result<crate::parser::Condition> {
+            use crate::parser::Condition;
+            match cond {
+                Condition::Comparison { left, operator, right } => Ok(Condition::Comparison {
+                    left: left.clone(),
+                    operator: *operator,
+                    right: bind_value(right, params, param_index)?,
+                }),
+                Condition::Between { column, low, high } => Ok(Condition::Between {
+                    column: column.clone(),
+                    low: bind_value(low, params, param_index)?,
+                    high: bind_value(high, params, param_index)?,
+                }),
+                Condition::And(l, r) => Ok(Condition::And(
+                    Box::new(bind_condition(l, params, param_index)?),
+                    Box::new(bind_condition(r, params, param_index)?),
+                )),
+                Condition::Or(l, r) => Ok(Condition::Or(
+                    Box::new(bind_condition(l, params, param_index)?),
+                    Box::new(bind_condition(r, params, param_index)?),
+                )),
+            }
+        }
+        use crate::parser::Statement;
+        match statement {
+            Statement::Select(s) => {
+                let where_clause = if let Some(wc) = &s.where_clause {
+                    Some(crate::parser::WhereClause {
+                        condition: bind_condition(&wc.condition, params, &mut param_index)?,
+                    })
+                } else { None };
+                Ok(Statement::Select(crate::parser::SelectStatement {
+                    columns: s.columns.clone(),
+                    table: s.table.clone(),
+                    where_clause,
+                    limit: s.limit,
+                }))
+            }
+            Statement::Insert(s) => {
+                let mut values = Vec::new();
+                for row in &s.values {
+                    let mut new_row = Vec::new();
+                    for v in row {
+                        new_row.push(bind_value(v, params, &mut param_index)?);
+                    }
+                    values.push(new_row);
+                }
+                Ok(Statement::Insert(crate::parser::InsertStatement {
+                    table: s.table.clone(),
+                    columns: s.columns.clone(),
+                    values,
+                }))
+            }
+            Statement::Update(s) => {
+                let assignments = s.assignments.iter().map(|a| {
+                    Ok(crate::parser::Assignment {
+                        column: a.column.clone(),
+                        value: bind_expr(&a.value, params, &mut param_index)?,
+                    })
+                }).collect::<Result<Vec<_>>>()?;
+                let where_clause = if let Some(wc) = &s.where_clause {
+                    Some(crate::parser::WhereClause {
+                        condition: bind_condition(&wc.condition, params, &mut param_index)?,
+                    })
+                } else { None };
+                Ok(Statement::Update(crate::parser::UpdateStatement {
+                    table: s.table.clone(),
+                    assignments,
+                    where_clause,
+                }))
+            }
+            Statement::Delete(s) => {
+                let where_clause = if let Some(wc) = &s.where_clause {
+                    Some(crate::parser::WhereClause {
+                        condition: bind_condition(&wc.condition, params, &mut param_index)?,
+                    })
+                } else { None };
+                Ok(Statement::Delete(crate::parser::DeleteStatement {
+                    table: s.table.clone(),
+                    where_clause,
+                }))
+            }
+            Statement::CreateTable(s) => Ok(Statement::CreateTable(s.clone())),
+            Statement::DropTable(s) => Ok(Statement::DropTable(s.clone())),
+            Statement::Begin => Ok(Statement::Begin),
+            Statement::Commit => Ok(Statement::Commit),
+            Statement::Rollback => Ok(Statement::Rollback),
         }
     }
 }
