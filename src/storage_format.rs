@@ -230,6 +230,16 @@ impl StorageFormat {
                     Ok(evaluate_condition_on_row(condition, &row_data))
                 }
             }
+            crate::parser::Condition::Between { column, low, high } => {
+                if let Ok(val) = self.get_column_value(data, schema, column) {
+                    let ge = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::GreaterThanOrEqual, low);
+                    let le = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::LessThanOrEqual, high);
+                    Ok(ge && le)
+                } else {
+                    let row_data = self.deserialize_row_full(data, schema)?;
+                    Ok(evaluate_condition_on_row(condition, &row_data))
+                }
+            }
             _ => {
                 let row_data = self.deserialize_row_full(data, schema)?;
                 Ok(evaluate_condition_on_row(condition, &row_data))
@@ -468,6 +478,16 @@ impl StorageFormat {
                     Ok(evaluate_condition_on_row(condition, &row_data))
                 }
             }
+            crate::parser::Condition::Between { column, low, high } => {
+                if let Ok(val) = self.get_column_value_with_metadata(data, schema, column) {
+                    let ge = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::GreaterThanOrEqual, low);
+                    let le = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::LessThanOrEqual, high);
+                    Ok(ge && le)
+                } else {
+                    let row_data = self.deserialize_row_full_with_metadata(data, schema)?;
+                    Ok(evaluate_condition_on_row(condition, &row_data))
+                }
+            }
             _ => {
                 // For complex conditions, fall back to full deserialization
                 let row_data = self.deserialize_row_full_with_metadata(data, schema)?;
@@ -598,6 +618,11 @@ fn evaluate_condition_on_row(
                 },
                 _ => false,
             }
+        }
+        crate::parser::Condition::Between { column, low, high } => {
+            let val = row_data.get(column).unwrap_or(&SqlValue::Null);
+            crate::sql_utils::compare_values(val, &crate::parser::ComparisonOperator::GreaterThanOrEqual, low)
+                && crate::sql_utils::compare_values(val, &crate::parser::ComparisonOperator::LessThanOrEqual, high)
         }
         crate::parser::Condition::And(left, right) => {
             evaluate_condition_on_row(left, row_data) && evaluate_condition_on_row(right, row_data)

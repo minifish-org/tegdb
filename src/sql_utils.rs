@@ -70,6 +70,11 @@ pub fn evaluate_condition(condition: &Condition, row_data: &HashMap<String, SqlV
             let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
             compare_values(row_value, operator, right)
         }
+        Condition::Between { column, low, high } => {
+            let row_value = row_data.get(column).unwrap_or(&SqlValue::Null);
+            compare_values(row_value, &ComparisonOperator::GreaterThanOrEqual, low)
+                && compare_values(row_value, &ComparisonOperator::LessThanOrEqual, high)
+        }
         Condition::And(left, right) => {
             // Short-circuit evaluation for AND
             evaluate_condition(left, row_data) && evaluate_condition(right, row_data)

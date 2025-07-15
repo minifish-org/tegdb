@@ -84,6 +84,16 @@ impl PreparedStatement {
                     0
                 }
             }
+            Condition::Between { low, high, .. } => {
+                let mut count = 0;
+                if matches!(low, SqlValue::Parameter(_)) {
+                    count += 1;
+                }
+                if matches!(high, SqlValue::Parameter(_)) {
+                    count += 1;
+                }
+                count
+            }
             Condition::And(left, right) => {
                 Self::count_parameters_in_condition_recursive(left)
                     + Self::count_parameters_in_condition_recursive(right)
@@ -768,6 +778,33 @@ impl Database {
                     left: left.clone(),
                     operator: *operator,
                     right: bound_right,
+                })
+            }
+            Condition::Between { column, low, high } => {
+                let mut bound_low = low.clone();
+                let mut bound_high = high.clone();
+                if let SqlValue::Parameter(_) = bound_low {
+                    if *param_index >= params.len() {
+                        return Err(crate::Error::Other(
+                            "Not enough parameters provided".to_string(),
+                        ));
+                    }
+                    bound_low = params[*param_index].clone();
+                    *param_index += 1;
+                }
+                if let SqlValue::Parameter(_) = bound_high {
+                    if *param_index >= params.len() {
+                        return Err(crate::Error::Other(
+                            "Not enough parameters provided".to_string(),
+                        ));
+                    }
+                    bound_high = params[*param_index].clone();
+                    *param_index += 1;
+                }
+                Ok(Condition::Between {
+                    column: column.clone(),
+                    low: bound_low,
+                    high: bound_high,
                 })
             }
             Condition::And(left, right) => Ok(Condition::And(

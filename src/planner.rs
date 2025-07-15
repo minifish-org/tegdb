@@ -535,6 +535,10 @@ impl QueryPlanner {
                     }
                 }
             }
+            Condition::Between { column, low, high } => {
+                // For BETWEEN, we can't do exact PK lookup, but we can use it for range optimization
+                // This will be handled by collect_pk_range_values instead
+            }
             Condition::And(left_cond, right_cond) => {
                 Self::collect_pk_equality_values(left_cond, pk_columns, pk_values);
                 Self::collect_pk_equality_values(right_cond, pk_columns, pk_values);
@@ -562,6 +566,19 @@ impl QueryPlanner {
                         .entry(left.clone())
                         .or_default()
                         .push((*operator, right.clone()));
+                }
+            }
+            Condition::Between { column, low, high } => {
+                if pk_columns.contains(column) {
+                    // Convert BETWEEN to >= and <= conditions for range optimization
+                    pk_conditions
+                        .entry(column.clone())
+                        .or_default()
+                        .push((ComparisonOperator::GreaterThanOrEqual, low.clone()));
+                    pk_conditions
+                        .entry(column.clone())
+                        .or_default()
+                        .push((ComparisonOperator::LessThanOrEqual, high.clone()));
                 }
             }
             Condition::And(left_cond, right_cond) => {
@@ -593,6 +610,13 @@ impl QueryPlanner {
                     right: _,
                 } => {
                     if pk_columns.contains(left) {
+                        None // This is a PK condition, filter it out
+                    } else {
+                        Some(condition.clone()) // Keep non-PK conditions
+                    }
+                }
+                Condition::Between { column, low, high } => {
+                    if pk_columns.contains(column) {
                         None // This is a PK condition, filter it out
                     } else {
                         Some(condition.clone()) // Keep non-PK conditions

@@ -144,10 +144,17 @@ pub struct WhereClause {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
+    /// Comparison: left operator right (e.g., id = 1)
     Comparison {
         left: String,
         operator: ComparisonOperator,
         right: SqlValue,
+    },
+    /// BETWEEN: column BETWEEN low AND high
+    Between {
+        column: String,
+        low: SqlValue,
+        high: SqlValue,
     },
     And(Box<Condition>, Box<Condition>),
     Or(Box<Condition>, Box<Condition>),
@@ -649,7 +656,9 @@ fn parse_and_condition(input: &str) -> IResult<&str, Condition> {
 
 // Parse primary condition
 fn parse_primary_condition(input: &str) -> IResult<&str, Condition> {
+    // Try BETWEEN first, then fallback to parenthesis or comparison
     alt((
+        parse_between,
         delimited(
             char('('),
             delimited(multispace0, parse_condition, multispace0),
@@ -658,6 +667,30 @@ fn parse_primary_condition(input: &str) -> IResult<&str, Condition> {
         parse_comparison,
     ))
     .parse(input)
+}
+
+// Parse BETWEEN condition: <column> BETWEEN <low> AND <high>
+fn parse_between(input: &str) -> IResult<&str, Condition> {
+    let (input, left_expr) = parse_expression.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("BETWEEN").parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, low) = parse_sql_value.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("AND").parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, high) = parse_sql_value.parse(input)?;
+    // Only allow column name on left
+    let column = match left_expr {
+        Expression::Column(name) => name,
+        _ => {
+            return Err(nom::Err::Error(nom::error::Error::new(
+                input,
+                nom::error::ErrorKind::Tag,
+            )))
+        }
+    };
+    Ok((input, Condition::Between { column, low, high }))
 }
 
 // Parse comparison
