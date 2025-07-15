@@ -83,24 +83,68 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
 
     println!("Test data setup complete. Running LIMIT benchmarks...");
 
-    // === LIMIT ON FULL TABLE SCAN ===
-    // Test if planner can optimize LIMIT to stop early
+    // === PREPARE ALL STATEMENTS ONCE ===
+    // Prepare all statements at the beginning to avoid borrow checker issues
 
-    let mut group = c.benchmark_group("LIMIT Full Scan");
+    // Basic LIMIT statements
+    let tegdb_limit_5 = tegdb.prepare("SELECT id, name FROM items LIMIT 5").unwrap();
+    let tegdb_limit_50 = tegdb
+        .prepare("SELECT id, name FROM items LIMIT 50")
+        .unwrap();
+    let mut sqlite_limit_5 = sqlite
+        .prepare("SELECT id, name FROM items LIMIT 5")
+        .unwrap();
+    let mut sqlite_limit_50 = sqlite
+        .prepare("SELECT id, name FROM items LIMIT 50")
+        .unwrap();
 
-    group.bench_function(BenchmarkId::new("TegDB", "limit_5"), |b| {
+    // LIMIT with WHERE statements
+    let tegdb_limit_where = tegdb
+        .prepare("SELECT id, name FROM items WHERE id >= 100 LIMIT 10")
+        .unwrap();
+    let mut sqlite_limit_where = sqlite
+        .prepare("SELECT id, name FROM items WHERE id >= 100 LIMIT 10")
+        .unwrap();
+
+    // LIMIT with non-indexed filter statements
+    let tegdb_limit_category = tegdb
+        .prepare("SELECT id, name FROM items WHERE category = 'A' LIMIT 5")
+        .unwrap();
+    let mut sqlite_limit_category = sqlite
+        .prepare("SELECT id, name FROM items WHERE category = 'A' LIMIT 5")
+        .unwrap();
+
+    // Full scan vs limited scan statements
+    let tegdb_full_scan = tegdb.prepare("SELECT id, name FROM items").unwrap();
+    let tegdb_limited_scan = tegdb
+        .prepare("SELECT id, name FROM items LIMIT 10")
+        .unwrap();
+    let mut sqlite_full_scan = sqlite.prepare("SELECT id, name FROM items").unwrap();
+    let mut sqlite_limited_scan = sqlite
+        .prepare("SELECT id, name FROM items LIMIT 10")
+        .unwrap();
+
+    // === 1. BASIC LIMIT QUERIES ===
+    let mut group = c.benchmark_group("Basic LIMIT Queries");
+
+    // LIMIT 5
+    group.bench_function(BenchmarkId::new("TegDB", "unprepared_limit_5"), |b| {
         b.iter(|| {
             let result = tegdb.query("SELECT id, name FROM items LIMIT 5").unwrap();
             black_box(result);
         });
     });
 
-    group.bench_function(BenchmarkId::new("SQLite", "limit_5"), |b| {
+    group.bench_function(BenchmarkId::new("TegDB", "prepared_limit_5"), |b| {
         b.iter(|| {
-            let mut stmt = sqlite
-                .prepare("SELECT id, name FROM items LIMIT 5")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
+            let result = tegdb.query_prepared(&tegdb_limit_5, &[]).unwrap();
+            black_box(result);
+        });
+    });
+
+    group.bench_function(BenchmarkId::new("SQLite", "prepared_limit_5"), |b| {
+        b.iter(|| {
+            let mut rows = sqlite_limit_5.query([]).unwrap();
             let mut results = Vec::new();
             while let Some(row) = rows.next().unwrap() {
                 results.push((
@@ -112,19 +156,24 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         });
     });
 
-    group.bench_function(BenchmarkId::new("TegDB", "limit_50"), |b| {
+    // LIMIT 50
+    group.bench_function(BenchmarkId::new("TegDB", "unprepared_limit_50"), |b| {
         b.iter(|| {
             let result = tegdb.query("SELECT id, name FROM items LIMIT 50").unwrap();
             black_box(result);
         });
     });
 
-    group.bench_function(BenchmarkId::new("SQLite", "limit_50"), |b| {
+    group.bench_function(BenchmarkId::new("TegDB", "prepared_limit_50"), |b| {
         b.iter(|| {
-            let mut stmt = sqlite
-                .prepare("SELECT id, name FROM items LIMIT 50")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
+            let result = tegdb.query_prepared(&tegdb_limit_50, &[]).unwrap();
+            black_box(result);
+        });
+    });
+
+    group.bench_function(BenchmarkId::new("SQLite", "prepared_limit_50"), |b| {
+        b.iter(|| {
+            let mut rows = sqlite_limit_50.query([]).unwrap();
             let mut results = Vec::new();
             while let Some(row) = rows.next().unwrap() {
                 results.push((
@@ -138,12 +187,10 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
 
     group.finish();
 
-    // === LIMIT WITH WHERE CLAUSE ===
-    // Test LIMIT with primary key filtering
+    // === 2. LIMIT WITH WHERE CLAUSES ===
+    let mut group = c.benchmark_group("LIMIT with WHERE Clauses");
 
-    let mut group = c.benchmark_group("LIMIT with WHERE");
-
-    group.bench_function(BenchmarkId::new("TegDB", "limit_pk_filter"), |b| {
+    group.bench_function(BenchmarkId::new("TegDB", "unprepared_limit_where"), |b| {
         b.iter(|| {
             let result = tegdb
                 .query("SELECT id, name FROM items WHERE id >= 100 LIMIT 10")
@@ -152,45 +199,16 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         });
     });
 
-    group.bench_function(BenchmarkId::new("SQLite", "limit_pk_filter"), |b| {
+    group.bench_function(BenchmarkId::new("TegDB", "prepared_limit_where"), |b| {
         b.iter(|| {
-            let mut stmt = sqlite
-                .prepare("SELECT id, name FROM items WHERE id >= 100 LIMIT 10")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
-            let mut results = Vec::new();
-            while let Some(row) = rows.next().unwrap() {
-                results.push((
-                    row.get::<_, i64>(0).unwrap(),
-                    row.get::<_, String>(1).unwrap(),
-                ));
-            }
-            black_box(results);
-        });
-    });
-
-    group.finish();
-
-    // === LIMIT WITH NON-INDEXED COLUMN ===
-    // Test LIMIT with full table scan requirement
-
-    let mut group = c.benchmark_group("LIMIT with Non-Indexed");
-
-    group.bench_function(BenchmarkId::new("TegDB", "limit_category_filter"), |b| {
-        b.iter(|| {
-            let result = tegdb
-                .query("SELECT id, name FROM items WHERE category = 'A' LIMIT 5")
-                .unwrap();
+            let result = tegdb.query_prepared(&tegdb_limit_where, &[]).unwrap();
             black_box(result);
         });
     });
 
-    group.bench_function(BenchmarkId::new("SQLite", "limit_category_filter"), |b| {
+    group.bench_function(BenchmarkId::new("SQLite", "prepared_limit_where"), |b| {
         b.iter(|| {
-            let mut stmt = sqlite
-                .prepare("SELECT id, name FROM items WHERE category = 'A' LIMIT 5")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
+            let mut rows = sqlite_limit_where.query([]).unwrap();
             let mut results = Vec::new();
             while let Some(row) = rows.next().unwrap() {
                 results.push((
@@ -204,29 +222,65 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
 
     group.finish();
 
-    // === COMPARISON: FULL SCAN vs LIMIT ===
-    // Show the difference between full scan and limited scan
+    // === 3. LIMIT WITH NON-INDEXED FILTERS ===
+    let mut group = c.benchmark_group("LIMIT with Non-Indexed Filters");
 
-    let mut group = c.benchmark_group("Full vs Limited Scan");
+    group.bench_function(
+        BenchmarkId::new("TegDB", "unprepared_limit_category"),
+        |b| {
+            b.iter(|| {
+                let result = tegdb
+                    .query("SELECT id, name FROM items WHERE category = 'A' LIMIT 5")
+                    .unwrap();
+                black_box(result);
+            });
+        },
+    );
 
-    group.bench_function(BenchmarkId::new("TegDB", "full_scan"), |b| {
+    group.bench_function(BenchmarkId::new("TegDB", "prepared_limit_category"), |b| {
+        b.iter(|| {
+            let result = tegdb.query_prepared(&tegdb_limit_category, &[]).unwrap();
+            black_box(result);
+        });
+    });
+
+    group.bench_function(BenchmarkId::new("SQLite", "prepared_limit_category"), |b| {
+        b.iter(|| {
+            let mut rows = sqlite_limit_category.query([]).unwrap();
+            let mut results = Vec::new();
+            while let Some(row) = rows.next().unwrap() {
+                results.push((
+                    row.get::<_, i64>(0).unwrap(),
+                    row.get::<_, String>(1).unwrap(),
+                ));
+            }
+            black_box(results);
+        });
+    });
+
+    group.finish();
+
+    // === 4. FULL SCAN vs LIMITED SCAN ===
+    let mut group = c.benchmark_group("Full Scan vs Limited Scan");
+
+    // Full scan
+    group.bench_function(BenchmarkId::new("TegDB", "unprepared_full_scan"), |b| {
         b.iter(|| {
             let result = tegdb.query("SELECT id, name FROM items").unwrap();
             black_box(result);
         });
     });
 
-    group.bench_function(BenchmarkId::new("TegDB", "limited_scan"), |b| {
+    group.bench_function(BenchmarkId::new("TegDB", "prepared_full_scan"), |b| {
         b.iter(|| {
-            let result = tegdb.query("SELECT id, name FROM items LIMIT 10").unwrap();
+            let result = tegdb.query_prepared(&tegdb_full_scan, &[]).unwrap();
             black_box(result);
         });
     });
 
-    group.bench_function(BenchmarkId::new("SQLite", "full_scan"), |b| {
+    group.bench_function(BenchmarkId::new("SQLite", "prepared_full_scan"), |b| {
         b.iter(|| {
-            let mut stmt = sqlite.prepare("SELECT id, name FROM items").unwrap();
-            let mut rows = stmt.query([]).unwrap();
+            let mut rows = sqlite_full_scan.query([]).unwrap();
             let mut results = Vec::new();
             while let Some(row) = rows.next().unwrap() {
                 results.push((
@@ -238,12 +292,24 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
         });
     });
 
-    group.bench_function(BenchmarkId::new("SQLite", "limited_scan"), |b| {
+    // Limited scan
+    group.bench_function(BenchmarkId::new("TegDB", "unprepared_limited_scan"), |b| {
         b.iter(|| {
-            let mut stmt = sqlite
-                .prepare("SELECT id, name FROM items LIMIT 10")
-                .unwrap();
-            let mut rows = stmt.query([]).unwrap();
+            let result = tegdb.query("SELECT id, name FROM items LIMIT 10").unwrap();
+            black_box(result);
+        });
+    });
+
+    group.bench_function(BenchmarkId::new("TegDB", "prepared_limited_scan"), |b| {
+        b.iter(|| {
+            let result = tegdb.query_prepared(&tegdb_limited_scan, &[]).unwrap();
+            black_box(result);
+        });
+    });
+
+    group.bench_function(BenchmarkId::new("SQLite", "prepared_limited_scan"), |b| {
+        b.iter(|| {
+            let mut rows = sqlite_limited_scan.query([]).unwrap();
             let mut results = Vec::new();
             while let Some(row) = rows.next().unwrap() {
                 results.push((
@@ -256,6 +322,21 @@ fn limit_optimization_benchmark(c: &mut Criterion) {
     });
 
     group.finish();
+
+    // === CLEANUP ===
+    // Drop all prepared statements before cleanup
+    drop(tegdb_limit_5);
+    drop(tegdb_limit_50);
+    drop(tegdb_limit_where);
+    drop(tegdb_limit_category);
+    drop(tegdb_full_scan);
+    drop(tegdb_limited_scan);
+    drop(sqlite_limit_5);
+    drop(sqlite_limit_50);
+    drop(sqlite_limit_where);
+    drop(sqlite_limit_category);
+    drop(sqlite_full_scan);
+    drop(sqlite_limited_scan);
 
     // Clean up
     drop(tegdb);

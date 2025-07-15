@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     println!("✓ Test data inserted");
 
     println!("\n1. Testing simple parameter binding...");
-    
+
     // Test with a simple query that should work
     let simple_stmt = db.prepare("SELECT * FROM users WHERE id = ?")?;
     println!("   → Prepared statement: {}", simple_stmt.sql());
@@ -37,45 +37,51 @@ fn main() -> Result<()> {
     let result = db.query_prepared(&simple_stmt, &params)?;
     println!("   → Query result: {} rows", result.rows().len());
     for row in result.rows() {
-        println!("     {:?}", row);
+        println!("     {row:?}");
     }
 
     println!("\n2. Testing direct SQL vs prepared statement...");
-    
+
     // Compare with direct SQL
     let direct_result = db.query("SELECT * FROM users WHERE id = 1")?;
-    println!("   → Direct SQL result: {} rows", direct_result.rows().len());
+    println!(
+        "   → Direct SQL result: {} rows",
+        direct_result.rows().len()
+    );
     for row in direct_result.rows() {
-        println!("     {:?}", row);
+        println!("     {row:?}");
     }
 
     println!("\n3. Testing INSERT with parameters...");
-    
+
     let insert_stmt = db.prepare("INSERT INTO users (id, name, age) VALUES (?, ?, ?)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
     println!("   → Parameter count: {}", insert_stmt.parameter_count());
-    
+
     // Debug: Let's see what the execution plan looks like
     #[cfg(feature = "dev")]
-    println!("   → Execution plan: {:?}", insert_stmt.debug_execution_plan());
-    
+    println!(
+        "   → Execution plan: {:?}",
+        insert_stmt.debug_execution_plan()
+    );
+
     let insert_params = vec![
         SqlValue::Integer(4),
         SqlValue::Text("Debug".to_string()),
         SqlValue::Integer(40),
     ];
-    println!("   → Parameters: {:?}", insert_params);
-    
+    println!("   → Parameters: {insert_params:?}");
+
     let affected = db.execute_prepared(&insert_stmt, &insert_params)?;
-    println!("   → Insert affected: {} rows", affected);
+    println!("   → Insert affected: {affected} rows");
 
     println!("\n4. Final verification...");
-    
+
     let final_result = db.query("SELECT * FROM users ORDER BY id")?;
     println!("   → Final data:");
     for row in final_result.rows() {
-        println!("     {:?}", row);
+        println!("     {row:?}");
     }
 
     Ok(())
-} 
+}

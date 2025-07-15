@@ -71,7 +71,7 @@ mod executor;
 pub mod planner;
 
 // Only export the high-level Database API and essential error types
-pub use database::{Database, DatabaseTransaction, QueryResult, PreparedStatement};
+pub use database::{Database, DatabaseTransaction, PreparedStatement, QueryResult};
 pub use error::{Error, Result};
 
 // Conditionally expose low-level API for development, examples, and benchmarks

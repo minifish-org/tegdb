@@ -85,9 +85,7 @@ fn main() {
     let serialization_time = start.elapsed();
 
     let serialized_data = storage.serialize_row(&test_row, &schema).unwrap();
-    println!(
-        "   ✅ Serialized {iterations} rows in {serialization_time:?}"
-    );
+    println!("   ✅ Serialized {iterations} rows in {serialization_time:?}");
     println!(
         "   ⚡ Average: {:?} per row",
         serialization_time / iterations
@@ -101,9 +99,7 @@ fn main() {
     }
     let deserialization_time = start.elapsed();
 
-    println!(
-        "   ✅ Deserialized {iterations} rows in {deserialization_time:?}"
-    );
+    println!("   ✅ Deserialized {iterations} rows in {deserialization_time:?}");
     println!(
         "   ⚡ Average: {:?} per row",
         deserialization_time / iterations
@@ -121,9 +117,7 @@ fn main() {
     }
     let partial_time = start.elapsed();
 
-    println!(
-        "   ✅ Accessed {iterations} partial columns in {partial_time:?}"
-    );
+    println!("   ✅ Accessed {iterations} partial columns in {partial_time:?}");
     println!("   ⚡ Average: {:?} per access", partial_time / iterations);
 
     // Benchmark 4: Single Column Access
@@ -136,9 +130,7 @@ fn main() {
     }
     let single_time = start.elapsed();
 
-    println!(
-        "   ✅ Accessed {iterations} single columns in {single_time:?}"
-    );
+    println!("   ✅ Accessed {iterations} single columns in {single_time:?}");
     println!("   ⚡ Average: {:?} per access", single_time / iterations);
 
     // Benchmark 5: Large Dataset Simulation

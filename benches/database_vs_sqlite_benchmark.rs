@@ -52,13 +52,16 @@ fn database_benchmark(c: &mut Criterion) {
     // Clean up accumulated data before next benchmark
     let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
-    // Benchmark SELECT operations
-    c.bench_function("database select", |b| {
+    // Benchmark prepared statement operations
+    c.bench_function("database prepared select", |b| {
         b.iter(|| {
-            let qr = db
-                .query("SELECT * FROM benchmark_test WHERE id = 1")
+            let stmt = db
+                .prepare("SELECT * FROM benchmark_test WHERE id = ?")
                 .unwrap();
-            let _rows = qr.rows().to_vec();
+            let result = db
+                .query_prepared(&stmt, &[tegdb::SqlValue::Integer(1)])
+                .unwrap();
+            let _rows = result.rows().to_vec();
             black_box(&_rows);
         })
     });
@@ -66,25 +69,25 @@ fn database_benchmark(c: &mut Criterion) {
     // Clean up accumulated data before next benchmark
     let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
-    // Benchmark SELECT with WHERE clause
-    c.bench_function("database select where", |b| {
+    // Benchmark prepared statement INSERT
+    c.bench_function("database prepared insert", |b| {
         b.iter(|| {
-            let qr = db
-                .query("SELECT name, value FROM benchmark_test WHERE value > 50")
+            let id = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as u64;
+            let stmt = db
+                .prepare("INSERT INTO benchmark_test (id, name, value) VALUES (?, ?, ?)")
                 .unwrap();
-            let _rows = qr.rows().to_vec();
-            black_box(&_rows);
-        })
-    });
-
-    // Clean up accumulated data before next benchmark
-    let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
-
-    // Benchmark UPDATE operations
-    c.bench_function("database update", |b| {
-        b.iter(|| {
             let affected = db
-                .execute("UPDATE benchmark_test SET value = 999 WHERE id = 1")
+                .execute_prepared(
+                    &stmt,
+                    &[
+                        tegdb::SqlValue::Integer((id % 1000000) as i64),
+                        tegdb::SqlValue::Text(format!("prepared_test_{id}")),
+                        tegdb::SqlValue::Integer(((id % 1000) * 10) as i64),
+                    ],
+                )
                 .unwrap();
             black_box(affected);
         })
@@ -93,34 +96,33 @@ fn database_benchmark(c: &mut Criterion) {
     // Clean up accumulated data before next benchmark
     let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
-    // Benchmark transaction operations
-    c.bench_function("database transaction", |b| {
+    // Benchmark prepared statement UPDATE
+    c.bench_function("database prepared update", |b| {
         b.iter(|| {
-            // Use timestamp-based ID to ensure uniqueness across all benchmarks
-            let id = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos() as u64;
-            let mut tx = db.begin_transaction().unwrap();
-            let sql = format!(
-                "INSERT INTO benchmark_test (id, name, value) VALUES ({}, 'tx_test_{}', {})",
-                black_box(id),
-                black_box(id),
-                black_box((id % 1000) * 5)
-            );
-            tx.execute(&sql).unwrap();
-            tx.commit().unwrap();
+            let stmt = db
+                .prepare("UPDATE benchmark_test SET value = ? WHERE id = ?")
+                .unwrap();
+            let affected = db
+                .execute_prepared(
+                    &stmt,
+                    &[tegdb::SqlValue::Integer(888), tegdb::SqlValue::Integer(1)],
+                )
+                .unwrap();
+            black_box(affected);
         })
     });
 
     // Clean up accumulated data before next benchmark
     let _ = db.execute("DELETE FROM benchmark_test WHERE id != 1");
 
-    // Benchmark DELETE operations
-    c.bench_function("database delete", |b| {
+    // Benchmark prepared statement DELETE
+    c.bench_function("database prepared delete", |b| {
         b.iter(|| {
+            let stmt = db
+                .prepare("DELETE FROM benchmark_test WHERE value = ?")
+                .unwrap();
             let affected = db
-                .execute("DELETE FROM benchmark_test WHERE value = 999")
+                .execute_prepared(&stmt, &[tegdb::SqlValue::Integer(888)])
                 .unwrap();
             black_box(affected);
         })
@@ -261,13 +263,73 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
     // Clean up accumulated data before next benchmark
     let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
 
-    // Benchmark DELETE operations
-    c.bench_function("sqlite sql delete", |b| {
+    // Benchmark prepared statement operations
+    c.bench_function("sqlite prepared select", |b| {
+        b.iter(|| {
+            let mut stmt = conn
+                .prepare("SELECT * FROM benchmark_test WHERE id = ?")
+                .unwrap();
+            let mut rows = stmt.query([black_box(1)]).unwrap();
+            while let Some(row) = rows.next().unwrap() {
+                black_box((
+                    row.get::<_, i64>(0).unwrap(),
+                    row.get::<_, String>(1).unwrap(),
+                    row.get::<_, i64>(2).unwrap(),
+                ));
+            }
+        })
+    });
+
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
+
+    // Benchmark prepared statement INSERT
+    c.bench_function("sqlite prepared insert", |b| {
+        b.iter(|| {
+            let id = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as u64;
+            let affected = conn
+                .execute(
+                    "INSERT INTO benchmark_test (id, name, value) VALUES (?, ?, ?)",
+                    params![
+                        (id % 1000000) as i64,
+                        format!("prepared_test_{}", id),
+                        ((id % 1000) * 10) as i64
+                    ],
+                )
+                .unwrap();
+            black_box(affected);
+        })
+    });
+
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
+
+    // Benchmark prepared statement UPDATE
+    c.bench_function("sqlite prepared update", |b| {
+        b.iter(|| {
+            let affected = conn
+                .execute(
+                    "UPDATE benchmark_test SET value = ? WHERE id = ?",
+                    params![black_box(888), black_box(1)],
+                )
+                .unwrap();
+            black_box(affected);
+        })
+    });
+
+    // Clean up accumulated data before next benchmark
+    let _ = conn.execute("DELETE FROM benchmark_test WHERE id != 1", []);
+
+    // Benchmark prepared statement DELETE
+    c.bench_function("sqlite prepared delete", |b| {
         b.iter(|| {
             let affected = conn
                 .execute(
                     "DELETE FROM benchmark_test WHERE value = ?",
-                    params![black_box(999)],
+                    params![black_box(888)],
                 )
                 .unwrap();
             black_box(affected);

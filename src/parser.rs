@@ -5,9 +5,9 @@
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case, take_until, take_while1},
+    bytes::complete::{tag, tag_no_case, take_while1},
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
-    combinator::{map, opt, recognize, peek},
+    combinator::{map, opt, recognize},
     multi::{many0, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
     IResult, Parser,
@@ -19,7 +19,9 @@ static mut PARAM_COUNTER: usize = 0;
 
 /// Reset the global parameter counter
 fn reset_param_counter() {
-    unsafe { PARAM_COUNTER = 0; }
+    unsafe {
+        PARAM_COUNTER = 0;
+    }
 }
 
 /// Get and increment the global parameter counter
@@ -54,11 +56,11 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
 }
 
 fn parse_u64_safe(s: &str) -> Result<u64, String> {
-    s.parse::<u64>().map_err(|e| format!("Invalid u64: {}", e))
+    s.parse::<u64>().map_err(|e| format!("Invalid u64: {e}"))
 }
 
 fn parse_f64_safe(s: &str) -> Result<f64, String> {
-    s.parse::<f64>().map_err(|e| format!("Invalid f64: {}", e))
+    s.parse::<f64>().map_err(|e| format!("Invalid f64: {e}"))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,7 +81,7 @@ pub struct SelectStatement {
     pub columns: Vec<String>,
     pub table: String,
     pub where_clause: Option<WhereClause>,
-    pub limit: Option<u64>,
+    pub limit: Option<u64>, // None means no limit, Some(n) means limit n
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -195,7 +197,7 @@ impl Expression {
             Expression::Column(column) => context
                 .get(column)
                 .cloned()
-                .ok_or_else(|| format!("Column '{}' not found in context", column)),
+                .ok_or_else(|| format!("Column '{column}' not found in context")),
             Expression::BinaryOp {
                 left,
                 operator,
@@ -287,15 +289,12 @@ impl Expression {
                         };
                         Ok(SqlValue::Real(result))
                     }
-                    (SqlValue::Text(a), SqlValue::Text(b)) => {
-                        match operator {
-                            ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{}{}", a, b))),
-                            _ => Err("Only addition (+) is supported for text values".to_string()),
-                        }
-                    }
+                    (SqlValue::Text(a), SqlValue::Text(b)) => match operator {
+                        ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{a}{b}"))),
+                        _ => Err("Only addition (+) is supported for text values".to_string()),
+                    },
                     _ => Err(format!(
-                        "Unsupported operation: {:?} {:?} {:?}",
-                        left_val, operator, right_val
+                        "Unsupported operation: {left_val:?} {operator:?} {right_val:?}"
                     )),
                 }
             }
@@ -354,7 +353,7 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
 // Parse parameter placeholder (? or ?1, ?2, etc.)
 fn parse_parameter_placeholder(input: &str) -> IResult<&str, usize> {
     let (input, _) = char('?').parse(input)?;
-    
+
     // Try to parse a number after the ?
     match digit1::<&str, nom::error::Error<&str>>.parse(input) {
         Ok((remaining, num_str)) => {
@@ -438,7 +437,14 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     )
     .parse(input)?;
 
-    Ok((input, Statement::Insert(InsertStatement { table, columns, values })))
+    Ok((
+        input,
+        Statement::Insert(InsertStatement {
+            table,
+            columns,
+            values,
+        }),
+    ))
 }
 
 // Parse SELECT statement
@@ -453,7 +459,7 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, limit) = opt(parse_limit).parse(input)?;
+    let (input, limit) = opt(parse_limit_with_parameter).parse(input)?;
 
     Ok((
         input,
@@ -461,7 +467,7 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
             columns,
             table,
             where_clause,
-            limit,
+            limit: limit.flatten(),
         }),
     ))
 }
@@ -477,7 +483,9 @@ fn parse_update(input: &str) -> IResult<&str, Statement> {
     let mut assignments = Vec::new();
     loop {
         // Manual check for WHERE keyword (case-insensitive)
-        if input.trim_start().to_ascii_uppercase().starts_with("WHERE") || input.trim_start().is_empty() {
+        if input.trim_start().to_ascii_uppercase().starts_with("WHERE")
+            || input.trim_start().is_empty()
+        {
             break;
         }
         let (next_input, assignment) = parse_assignment(input)?;
@@ -524,7 +532,13 @@ fn parse_delete(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
 
-    Ok((input, Statement::Delete(DeleteStatement { table, where_clause })))
+    Ok((
+        input,
+        Statement::Delete(DeleteStatement {
+            table,
+            where_clause,
+        }),
+    ))
 }
 
 // Parse DROP TABLE statement
@@ -657,9 +671,13 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     // Convert the left expression to a string representation for the condition
     let left = match left_expr {
         Expression::Column(name) => name,
-        Expression::Value(value) => format!("{:?}", value),
-        Expression::BinaryOp { left, operator: op, right } => {
-            format!("{:?} {:?} {:?}", left, op, right)
+        Expression::Value(value) => format!("{value:?}"),
+        Expression::BinaryOp {
+            left,
+            operator: op,
+            right,
+        } => {
+            format!("{left:?} {op:?} {right:?}")
         }
     };
 
@@ -699,6 +717,27 @@ fn parse_limit(input: &str) -> IResult<&str, u64> {
     Ok((input, limit))
 }
 
+// Parse LIMIT clause with parameter support
+fn parse_limit_with_parameter(input: &str) -> IResult<&str, Option<u64>> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("LIMIT").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+
+    // Try to parse a parameter placeholder first
+    if let Ok((input, _)) = char::<&str, nom::error::Error<&str>>('?').parse(input) {
+        // For now, we'll use a placeholder value and handle parameter binding later
+        // This allows the parser to accept LIMIT ? but we'll need to handle the actual value during execution
+        Ok((input, None)) // None indicates a parameter placeholder
+    } else {
+        // Fall back to parsing a literal number
+        let (input, limit_str) = digit1.parse(input)?;
+        let limit = parse_u64_safe(limit_str).map_err(|e| {
+            nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
+        })?;
+        Ok((input, Some(limit)))
+    }
+}
+
 // Parse assignment
 fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
     let (input, _) = multispace0.parse(input)?;
@@ -716,11 +755,8 @@ fn parse_column_definition(input: &str) -> IResult<&str, ColumnDefinition> {
     let (input, name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, data_type) = parse_data_type.parse(input)?;
-    let (input, constraints) = many0(preceded(
-        multispace1,
-        parse_column_constraint,
-    ))
-    .parse(input)?;
+    let (input, constraints) =
+        many0(preceded(multispace1, parse_column_constraint)).parse(input)?;
 
     Ok((
         input,

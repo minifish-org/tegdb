@@ -113,7 +113,7 @@ impl Catalog {
                 // Deserialize schema using centralized utility
                 if let Ok(mut schema) = sql_utils::deserialize_schema_from_bytes(&value_rc) {
                     schema.name = table_name.to_string(); // Set the actual table name
-                    // Compute storage metadata automatically when loading from storage
+                                                          // Compute storage metadata automatically when loading from storage
                     let _ = Self::compute_table_metadata(&mut schema);
                     schemas.insert(table_name.to_string(), Rc::new(schema));
                 }
@@ -174,13 +174,17 @@ impl Catalog {
         Ok(())
     }
 
-    pub fn get_column_size_and_type(data_type: &crate::parser::DataType) -> crate::Result<(usize, u8)> {
+    pub fn get_column_size_and_type(
+        data_type: &crate::parser::DataType,
+    ) -> crate::Result<(usize, u8)> {
         use crate::storage_format::TypeCode;
         match data_type {
             crate::parser::DataType::Integer => Ok((8, TypeCode::Integer as u8)),
             crate::parser::DataType::Real => Ok((8, TypeCode::Real as u8)),
             crate::parser::DataType::Text(Some(len)) => Ok((*len, TypeCode::TextFixed as u8)),
-            crate::parser::DataType::Text(None) => Err(crate::Error::Other("Variable-length TEXT not supported in fixed-length format".to_string())),
+            crate::parser::DataType::Text(None) => Err(crate::Error::Other(
+                "Variable-length TEXT not supported in fixed-length format".to_string(),
+            )),
         }
     }
 }

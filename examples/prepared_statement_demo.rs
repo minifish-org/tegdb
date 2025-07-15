@@ -20,7 +20,9 @@ fn main() -> Result<()> {
     println!("✓ Database opened");
 
     // Create table
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER, city TEXT(32))")?;
+    db.execute(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER, city TEXT(32))",
+    )?;
     println!("✓ Table created");
 
     // Insert some test data
@@ -32,7 +34,7 @@ fn main() -> Result<()> {
     println!("✓ Test data inserted");
 
     println!("\n1. Preparing SELECT statement with parameters...");
-    
+
     // Prepare a SELECT statement with parameters
     let select_stmt = db.prepare("SELECT name, age FROM users WHERE age > ? AND city = ?")?;
     println!("   → Prepared statement: {}", select_stmt.sql());
@@ -40,25 +42,31 @@ fn main() -> Result<()> {
 
     // Execute the prepared statement with different parameters
     println!("\n2. Executing prepared SELECT with parameters...");
-    
-    let params1 = vec![SqlValue::Integer(30), SqlValue::Text("New York".to_string())];
+
+    let params1 = vec![
+        SqlValue::Integer(30),
+        SqlValue::Text("New York".to_string()),
+    ];
     let result1 = db.query_prepared(&select_stmt, &params1)?;
     println!("   → Query: age > 30 AND city = 'New York'");
     println!("   → Found {} rows", result1.rows().len());
     for row in result1.rows() {
-        println!("     {:?}", row);
+        println!("     {row:?}");
     }
 
-    let params2 = vec![SqlValue::Integer(25), SqlValue::Text("Los Angeles".to_string())];
+    let params2 = vec![
+        SqlValue::Integer(25),
+        SqlValue::Text("Los Angeles".to_string()),
+    ];
     let result2 = db.query_prepared(&select_stmt, &params2)?;
     println!("   → Query: age > 25 AND city = 'Los Angeles'");
     println!("   → Found {} rows", result2.rows().len());
     for row in result2.rows() {
-        println!("     {:?}", row);
+        println!("     {row:?}");
     }
 
     println!("\n3. Preparing INSERT statement with parameters...");
-    
+
     // Prepare an INSERT statement with parameters
     let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?, ?, ?, ?)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
@@ -72,25 +80,22 @@ fn main() -> Result<()> {
         SqlValue::Text("Seattle".to_string()),
     ];
     let affected = db.execute_prepared(&insert_stmt, &insert_params)?;
-    println!("   → Inserted {} rows", affected);
+    println!("   → Inserted {affected} rows");
 
     println!("\n4. Preparing UPDATE statement with parameters...");
-    
+
     // Prepare an UPDATE statement with parameters
     let update_stmt = db.prepare("UPDATE users SET age = ? WHERE name = ?")?;
     println!("   → Prepared statement: {}", update_stmt.sql());
     println!("   → Parameter count: {}", update_stmt.parameter_count());
 
     // Execute the prepared UPDATE statement
-    let update_params = vec![
-        SqlValue::Integer(31),
-        SqlValue::Text("Alice".to_string()),
-    ];
+    let update_params = vec![SqlValue::Integer(31), SqlValue::Text("Alice".to_string())];
     let affected = db.execute_prepared(&update_stmt, &update_params)?;
-    println!("   → Updated {} rows", affected);
+    println!("   → Updated {affected} rows");
 
     println!("\n5. Preparing DELETE statement with parameters...");
-    
+
     // Prepare a DELETE statement with parameters
     let delete_stmt = db.prepare("DELETE FROM users WHERE age < ?")?;
     println!("   → Prepared statement: {}", delete_stmt.sql());
@@ -99,17 +104,17 @@ fn main() -> Result<()> {
     // Execute the prepared DELETE statement
     let delete_params = vec![SqlValue::Integer(30)];
     let affected = db.execute_prepared(&delete_stmt, &delete_params)?;
-    println!("   → Deleted {} rows", affected);
+    println!("   → Deleted {affected} rows");
 
     println!("\n6. Final query to see remaining data...");
-    
+
     // Query to see the final state
     let final_result = db.query("SELECT * FROM users")?;
     println!("   → Remaining users:");
     for row in final_result.rows() {
-        println!("     {:?}", row);
+        println!("     {row:?}");
     }
 
     println!("\n✓ Prepared statement demo completed successfully!");
     Ok(())
-} 
+}

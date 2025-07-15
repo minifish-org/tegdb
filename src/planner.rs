@@ -561,7 +561,7 @@ impl QueryPlanner {
                     pk_conditions
                         .entry(left.clone())
                         .or_default()
-                        .push((operator.clone(), right.clone()));
+                        .push((*operator, right.clone()));
                 }
             }
             Condition::And(left_cond, right_cond) => {
