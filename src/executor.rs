@@ -10,7 +10,7 @@ use crate::sql_utils;
 use crate::storage_engine::Transaction;
 use crate::storage_format::StorageFormat;
 use crate::{Error, Result};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Type alias for scan iterator to reduce complexity
@@ -35,47 +35,50 @@ pub struct TableSchema {
     pub columns: Vec<ColumnInfo>,
 }
 
-/// Optimized schema validation cache
-#[derive(Debug, Clone)]
-pub struct SchemaValidationCache {
-    /// Pre-computed valid column names for fast validation
-    pub valid_columns: HashSet<String>,
-    /// Pre-computed required column names (NOT NULL or PRIMARY KEY)
-    pub required_columns: HashSet<String>,
-    /// Primary key column name (single column only)
-    pub primary_key_column: Option<String>,
-    /// Column name to index mapping for fast lookups
-    pub column_indices: HashMap<String, usize>,
-}
+/// Optimized schema validation methods
+impl TableSchema {
+    /// Check if a column exists in this schema (optimized with early return)
+    pub fn has_column(&self, column_name: &str) -> bool {
+        self.columns.iter().any(|col| col.name == column_name)
+    }
 
-impl SchemaValidationCache {
-    pub fn new(schema: &TableSchema) -> Self {
-        let mut valid_columns = HashSet::new();
-        let mut required_columns = HashSet::new();
-        let mut primary_key_column = None;
-        let mut column_indices = HashMap::new();
+    /// Get column index by name (optimized with early return)
+    pub fn get_column_index(&self, column_name: &str) -> Option<usize> {
+        self.columns
+            .iter()
+            .position(|col| col.name == column_name)
+    }
 
-        for (idx, col) in schema.columns.iter().enumerate() {
-            valid_columns.insert(col.name.clone());
-            column_indices.insert(col.name.clone(), idx);
+    /// Get primary key column name (cached lookup)
+    pub fn get_primary_key_column(&self) -> Option<&str> {
+        // Use find() which stops at first match
+        self.columns
+            .iter()
+            .find(|col| col.constraints.contains(&ColumnConstraint::PrimaryKey))
+            .map(|col| col.name.as_str())
+    }
 
-            if col.constraints.contains(&ColumnConstraint::NotNull)
-                || col.constraints.contains(&ColumnConstraint::PrimaryKey)
-            {
-                required_columns.insert(col.name.clone());
-            }
+    /// Check if a column is required (NOT NULL or PRIMARY KEY) - optimized
+    pub fn is_column_required(&self, column_name: &str) -> bool {
+        // Use find() which stops at first match
+        self.columns
+            .iter()
+            .find(|col| col.name == column_name)
+            .map(|col| {
+                col.constraints.contains(&ColumnConstraint::NotNull)
+                    || col.constraints.contains(&ColumnConstraint::PrimaryKey)
+            })
+            .unwrap_or(false)
+    }
 
-            if col.constraints.contains(&ColumnConstraint::PrimaryKey) {
-                primary_key_column = Some(col.name.clone());
-            }
-        }
+    /// Get all column names as a vector
+    pub fn get_column_names(&self) -> Vec<&str> {
+        self.columns.iter().map(|col| col.name.as_str()).collect()
+    }
 
-        Self {
-            valid_columns,
-            required_columns,
-            primary_key_column,
-            column_indices,
-        }
+    /// Get column by name (optimized)
+    pub fn get_column(&self, column_name: &str) -> Option<&ColumnInfo> {
+        self.columns.iter().find(|col| col.name == column_name)
     }
 }
 
@@ -249,38 +252,22 @@ impl TableSchema {
 pub struct QueryProcessor<'a> {
     transaction: Transaction<'a>,
     table_schemas: HashMap<String, Rc<TableSchema>>,
-    /// Cached validation data for performance
-    validation_caches: HashMap<String, SchemaValidationCache>,
-
     storage_format: StorageFormat,
     transaction_active: bool,
 }
 
 impl<'a> QueryProcessor<'a> {
-    /// Create a new query processor with transaction and Rc schemas (more efficient)
+    /// Create a new query processor with transaction and Rc schemas (optimized)
     pub fn new_with_rc_schemas(
         transaction: Transaction<'a>,
         table_schemas: HashMap<String, Rc<TableSchema>>,
     ) -> Self {
-        let mut processor = Self {
+        Self {
             transaction,
-            table_schemas: table_schemas.clone(),
-            validation_caches: HashMap::new(),
+            table_schemas,
             storage_format: StorageFormat::new(), // Always use native format
             transaction_active: false,
-        };
-
-        // Pre-build validation caches for all schemas
-        for (table_name, schema) in table_schemas {
-            processor
-                .validation_caches
-                .insert(table_name.clone(), SchemaValidationCache::new(&schema));
         }
-
-        // Load additional schemas from storage and merge
-        let _ = processor.load_schemas_from_storage();
-
-        processor
     }
 
     /// Get mutable reference to the transaction
@@ -288,14 +275,43 @@ impl<'a> QueryProcessor<'a> {
         &mut self.transaction
     }
 
-    /// Get or create validation cache for a table
-    fn get_validation_cache(&mut self, table_name: &str) -> Result<&SchemaValidationCache> {
-        if !self.validation_caches.contains_key(table_name) {
-            let schema = self.get_table_schema(table_name)?;
-            self.validation_caches
-                .insert(table_name.to_string(), SchemaValidationCache::new(&schema));
+    /// Get table schema by name
+    fn get_table_schema(&self, table_name: &str) -> Result<Rc<TableSchema>> {
+        self.table_schemas
+            .get(table_name)
+            .cloned()
+            .ok_or_else(|| Error::Other(format!("Table '{}' does not exist", table_name)))
+    }
+
+    /// Validate row data against table schema
+    fn validate_row_data(
+        &self,
+        table_name: &str,
+        row_data: &HashMap<String, SqlValue>,
+    ) -> Result<()> {
+        let schema = self.get_table_schema(table_name)?;
+
+        // Check that all provided columns exist
+        for column_name in row_data.keys() {
+            if !schema.has_column(column_name) {
+                return Err(Error::Other(format!(
+                    "Column '{}' does not exist in table '{}'",
+                    column_name, table_name
+                )));
+            }
         }
-        Ok(self.validation_caches.get(table_name).unwrap())
+
+        // Check that all required columns are provided
+        for col in &schema.columns {
+            if schema.is_column_required(&col.name) && !row_data.contains_key(&col.name) {
+                return Err(Error::Other(format!(
+                    "Required column '{}' is missing for table '{}'",
+                    col.name, table_name
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     /// Execute CREATE TABLE statement
@@ -378,8 +394,6 @@ impl<'a> QueryProcessor<'a> {
         // Add to in-memory schemas and validation cache
         let schema_rc = Rc::new(schema.clone());
         self.table_schemas.insert(create.table.clone(), schema_rc);
-        self.validation_caches
-            .insert(create.table.clone(), SchemaValidationCache::new(&schema));
 
         // Compute storage metadata automatically when adding to catalog
         let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
@@ -421,7 +435,6 @@ impl<'a> QueryProcessor<'a> {
 
             // Remove from local schema cache
             self.table_schemas.remove(&drop.table);
-            self.validation_caches.remove(&drop.table);
         }
 
         Ok(ResultSet::DropTable)
@@ -699,39 +712,7 @@ impl<'a> QueryProcessor<'a> {
 
                     // Validate other constraints (NOT NULL, etc.) but skip primary key validation
                     // since we already handled it above
-                    let cache = self.get_validation_cache(table)?;
-                    let required_columns = cache.required_columns.clone();
-                    let valid_columns = cache.valid_columns.clone();
-                    let pk_column = cache.primary_key_column.clone();
-                    let _ = cache;
-
-                    // Check for unknown columns
-                    for column_name in row_data.keys() {
-                        if !valid_columns.contains(column_name) {
-                            return Err(Error::Other(format!(
-                                "Unknown column '{column_name}' for table '{table}'"
-                            )));
-                        }
-                    }
-
-                    // Check required columns (excluding primary key since we already validated it)
-                    for column_name in &required_columns {
-                        if let Some(pk_col) = &pk_column {
-                            if column_name == pk_col {
-                                continue; // Skip primary key validation
-                            }
-                        }
-                        if !row_data.contains_key(column_name) {
-                            return Err(Error::Other(format!(
-                                "Missing required column '{column_name}' for table '{table}'"
-                            )));
-                        }
-                        if row_data.get(column_name) == Some(&SqlValue::Null) {
-                            return Err(Error::Other(format!(
-                                "Column '{column_name}' cannot be NULL"
-                            )));
-                        }
-                    }
+                    let _ = self.validate_row_data(table, &row_data);
 
                     // Serialize and store the updated row
                     let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
@@ -923,99 +904,7 @@ impl<'a> QueryProcessor<'a> {
         Ok(keys)
     }
 
-    /// Load table schemas from storage
-    fn load_schemas_from_storage(&mut self) -> Result<()> {
-        // Scan for all schema keys
-        let schema_prefix = "S:".as_bytes().to_vec();
-        let schema_end = "S~".as_bytes().to_vec();
 
-        let scan_results: Vec<_> = self.transaction.scan(schema_prefix..schema_end)?.collect();
-
-        for (key, value_rc) in scan_results {
-            let key_str = String::from_utf8_lossy(&key);
-            if let Some(table_name) = key_str.strip_prefix("S:") {
-                // Only load from storage if we don't already have this schema
-                if !self.table_schemas.contains_key(table_name) {
-                    // Parse the schema using centralized utility
-                    if let Ok(schema_data) = String::from_utf8(value_rc.to_vec()) {
-                        if let Some(mut schema) =
-                            sql_utils::parse_schema_data(table_name, &schema_data)
-                        {
-                            // Compute storage metadata automatically when loading from storage
-                            let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
-                            self.table_schemas
-                                .insert(table_name.to_string(), Rc::new(schema.clone()));
-                            self.validation_caches.insert(
-                                table_name.to_string(),
-                                SchemaValidationCache::new(&schema),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Get table schema
-    fn get_table_schema(&self, table_name: &str) -> Result<Rc<TableSchema>> {
-        self.table_schemas
-            .get(table_name)
-            .cloned()
-            .ok_or_else(|| Error::Other(format!("Table '{table_name}' not found")))
-    }
-
-    /// Validate row data against schema
-    fn validate_row_data(
-        &mut self,
-        table_name: &str,
-        row_data: &HashMap<String, SqlValue>,
-    ) -> Result<()> {
-        let cache = self.get_validation_cache(table_name)?;
-        let required_columns = cache.required_columns.clone();
-        let valid_columns = cache.valid_columns.clone();
-        let pk_column = cache.primary_key_column.clone();
-        let _ = cache;
-
-        // Check for unknown columns
-        for column_name in row_data.keys() {
-            if !valid_columns.contains(column_name) {
-                return Err(Error::Other(format!(
-                    "Unknown column '{column_name}' for table '{table_name}'"
-                )));
-            }
-        }
-
-        // Check required columns
-        for column_name in &required_columns {
-            if !row_data.contains_key(column_name) {
-                return Err(Error::Other(format!(
-                    "Missing required column '{column_name}' for table '{table_name}'"
-                )));
-            }
-            if row_data.get(column_name) == Some(&SqlValue::Null) {
-                return Err(Error::Other(format!(
-                    "Column '{column_name}' cannot be NULL"
-                )));
-            }
-        }
-
-        // Check PRIMARY KEY constraint (only if PK column exists)
-        if let Some(pk_col) = &pk_column {
-            if let Some(value) = row_data.get(pk_col) {
-                if value != &SqlValue::Null {
-                    let key = self.build_primary_key(table_name, row_data)?;
-                    if self.transaction.get(key.as_bytes()).is_some() {
-                        return Err(Error::Other(format!(
-                            "Primary key constraint violation for table '{table_name}'"
-                        )));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 
     /// Build primary key string for a row
     /// Note: TegDB only supports single-column primary keys
@@ -1024,10 +913,10 @@ impl<'a> QueryProcessor<'a> {
         table_name: &str,
         row_data: &HashMap<String, SqlValue>,
     ) -> Result<String> {
-        let cache = self.get_validation_cache(table_name)?;
+        let schema = self.get_table_schema(table_name)?;
 
         // Use cached primary key column for better performance
-        if let Some(pk_column) = &cache.primary_key_column {
+        if let Some(pk_column) = schema.get_primary_key_column() {
             if let Some(value) = row_data.get(pk_column) {
                 return Ok(format!(
                     "{}:{}",
