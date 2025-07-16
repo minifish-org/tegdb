@@ -245,3 +245,8 @@ required-features = ["dev"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+debug = true  # Enable debug symbols for flamegraph
+lto = true    # Link-time optimization for better performance
+codegen-units = 1  # Single codegen unit for better optimization
