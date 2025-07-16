@@ -520,12 +520,12 @@ impl<'a> QueryProcessor<'a> {
         match plan {
             ExecutionPlan::PrimaryKeyLookup {
                 table,
-                pk_values,
+                pk_value,
                 selected_columns,
                 additional_filter,
             } => {
                 let schema = self.get_table_schema(&table)?;
-                let key = self.build_primary_key(&table, &pk_values)?;
+                let key = self.build_primary_key_from_value(&table, &pk_value);
 
                 // Create an iterator that returns at most one row if the key exists and matches
                 let key_bytes = key.as_bytes().to_vec();
@@ -625,7 +625,7 @@ impl<'a> QueryProcessor<'a> {
             self.validate_row_data(table, row_data)?;
 
             // Build primary key
-            let key = self.build_primary_key(table, row_data)?;
+            let key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
 
             // Check for primary key conflicts
             if self.transaction.get(key.as_bytes()).is_some() {
@@ -682,7 +682,7 @@ impl<'a> QueryProcessor<'a> {
                         row_data.insert(col_name.clone(), value.clone());
                     }
                 }
-                let key = self.build_primary_key(table, &row_data)?;
+                let key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
                 keys.push(key);
             }
             keys
@@ -703,7 +703,7 @@ impl<'a> QueryProcessor<'a> {
 
                     // Validate updated row
                     // Check if primary key was changed and if new key conflicts with existing data
-                    let new_key = self.build_primary_key(table, &row_data)?;
+                    let new_key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
                     if new_key != key && self.transaction.get(new_key.as_bytes()).is_some() {
                         return Err(Error::Other(format!(
                             "Primary key constraint violation for table '{table}'"
@@ -803,11 +803,11 @@ impl<'a> QueryProcessor<'a> {
         match scan_plan {
             ExecutionPlan::PrimaryKeyLookup {
                 table,
-                pk_values,
+                pk_value,
                 additional_filter,
                 ..
             } => {
-                let key = self.build_primary_key(table, pk_values)?;
+                let key = self.build_primary_key_from_value(table, pk_value);
                 if let Some(value) = self.transaction.get(key.as_bytes()) {
                     let matches = if let Some(filter) = additional_filter {
                         self.storage_format
@@ -908,32 +908,12 @@ impl<'a> QueryProcessor<'a> {
 
     /// Build primary key string for a row
     /// Note: TegDB only supports single-column primary keys
-    fn build_primary_key(
-        &mut self,
+    fn build_primary_key_from_value(
+        &self,
         table_name: &str,
-        row_data: &HashMap<String, SqlValue>,
-    ) -> Result<String> {
-        let schema = self.get_table_schema(table_name)?;
-
-        // Use cached primary key column for better performance
-        if let Some(pk_column) = schema.get_primary_key_column() {
-            if let Some(value) = row_data.get(pk_column) {
-                return Ok(format!(
-                    "{}:{}",
-                    table_name,
-                    self.value_to_key_string(value)
-                ));
-            } else {
-                return Err(Error::Other(format!(
-                    "Missing primary key value for column '{pk_column}'"
-                )));
-            }
-        }
-
-        // Fallback to schema-based lookup (should not happen with proper cache)
-        Err(Error::Other(format!(
-            "Table '{table_name}' has no primary key or cache is invalid"
-        )))
+        pk_value: &SqlValue,
+    ) -> String {
+        format!("{}:{}", table_name, self.value_to_key_string(pk_value))
     }
 
     /// Convert SqlValue to key string representation
@@ -994,36 +974,30 @@ impl<'a> QueryProcessor<'a> {
 
         // Build start key
         let start_key = if let Some(start_bound) = &pk_range.start_bound {
-            if let Some(value) = start_bound.values.get(pk_column) {
-                let key_string = if start_bound.inclusive {
-                    format!("{}{}", table_prefix, self.value_to_key_string(value))
-                } else {
-                    // For exclusive bounds, we need to find the next key
-                    // This is a simplified implementation
-                    format!("{}{}", table_prefix, self.value_to_key_string(value))
-                };
-                key_string.as_bytes().to_vec()
+            let value = &start_bound.value;
+            let key_string = if start_bound.inclusive {
+                format!("{}{}", table_prefix, self.value_to_key_string(value))
             } else {
-                table_prefix.as_bytes().to_vec()
-            }
+                // For exclusive bounds, we need to find the next key
+                // This is a simplified implementation
+                format!("{}{}", table_prefix, self.value_to_key_string(value))
+            };
+            key_string.as_bytes().to_vec()
         } else {
             table_prefix.as_bytes().to_vec()
         };
 
         // Build end key
         let end_key = if let Some(end_bound) = &pk_range.end_bound {
-            if let Some(value) = end_bound.values.get(pk_column) {
-                let key_string = if end_bound.inclusive {
-                    // For inclusive bounds, we need to find the next key after this value
-                    // This is a simplified implementation
-                    format!("{}{}", table_prefix, self.value_to_key_string(value))
-                } else {
-                    format!("{}{}", table_prefix, self.value_to_key_string(value))
-                };
-                key_string.as_bytes().to_vec()
+            let value = &end_bound.value;
+            let key_string = if end_bound.inclusive {
+                // For inclusive bounds, we need to find the next key after this value
+                // This is a simplified implementation
+                format!("{}{}", table_prefix, self.value_to_key_string(value))
             } else {
-                format!("{table}~").as_bytes().to_vec()
-            }
+                format!("{}{}", table_prefix, self.value_to_key_string(value))
+            };
+            key_string.as_bytes().to_vec()
         } else {
             format!("{table}~").as_bytes().to_vec()
         };
