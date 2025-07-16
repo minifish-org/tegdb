@@ -82,6 +82,35 @@ impl TableSchema {
     }
 }
 
+/// Query schema for fast column access
+#[derive(Clone)]
+pub struct QuerySchema {
+    pub column_names: Vec<String>,
+    pub column_indices: Vec<usize>,
+}
+
+impl QuerySchema {
+    pub fn new(selected_columns: &[String], schema: &TableSchema) -> Self {
+        let mut column_indices = Vec::with_capacity(selected_columns.len());
+        for col_name in selected_columns {
+            if let Some((idx, _col)) = schema
+                .columns
+                .iter()
+                .enumerate()
+                .find(|(_, c)| &c.name == col_name)
+            {
+                column_indices.push(idx);
+            } else {
+                column_indices.push(usize::MAX);
+            }
+        }
+        Self {
+            column_names: selected_columns.to_vec(),
+            column_indices,
+        }
+    }
+}
+
 /// Streaming iterator for SELECT query results
 /// This provides a streaming interface that yields rows on-demand
 pub struct SelectRowIterator<'a> {
@@ -89,10 +118,8 @@ pub struct SelectRowIterator<'a> {
     scan_iter: ScanIterator<'a>,
     /// Schema for deserializing rows
     schema: TableSchema,
-    /// Columns to select
-    selected_columns: Vec<String>,
-    /// Pre-computed column indices for faster access
-    column_indices: Vec<usize>,
+    /// Query schema for fast column access
+    query_schema: QuerySchema,
     /// Optional filter condition
     filter: Option<Condition>,
     /// Storage format for deserialization
@@ -108,31 +135,16 @@ impl<'a> SelectRowIterator<'a> {
     pub fn new(
         scan_iter: ScanIterator<'a>,
         schema: TableSchema,
-        selected_columns: Vec<String>,
+        query_schema: QuerySchema,
         filter: Option<Condition>,
         limit: Option<u64>,
     ) -> Self {
-        let mut column_indices = Vec::with_capacity(selected_columns.len());
-        for col_name in &selected_columns {
-            if let Some((idx, _col)) = schema
-                .columns
-                .iter()
-                .enumerate()
-                .find(|(_, c)| &c.name == col_name)
-            {
-                column_indices.push(idx);
-            } else {
-                column_indices.push(usize::MAX);
-            }
-        }
-
         let storage_format = StorageFormat::new();
 
         Self {
             scan_iter,
             schema,
-            selected_columns,
-            column_indices,
+            query_schema,
             filter,
             storage_format,
             limit,
@@ -183,7 +195,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                 let row_values_result = self.storage_format.get_columns_by_indices_with_metadata(
                     &value,
                     &self.schema,
-                    &self.column_indices,
+                    &self.query_schema.column_indices,
                 );
 
                 match row_values_result {
@@ -206,7 +218,7 @@ impl<'a> std::fmt::Debug for SelectRowIterator<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SelectRowIterator")
             .field("schema", &self.schema.name)
-            .field("selected_columns", &self.selected_columns)
+            .field("selected_columns", &self.query_schema.column_names)
             .field("filter", &self.filter)
             .field("limit", &self.limit)
             .field("count", &self.count)
@@ -525,6 +537,7 @@ impl<'a> QueryProcessor<'a> {
                 additional_filter,
             } => {
                 let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new(&selected_columns, &schema);
                 let key = self.build_primary_key_from_value(&table, &pk_value);
 
                 // Create an iterator that returns at most one row if the key exists and matches
@@ -543,7 +556,7 @@ impl<'a> QueryProcessor<'a> {
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
                     (*schema).clone(),
-                    selected_columns.clone(),
+                    query_schema,
                     additional_filter,
                     Some(1), // PK lookup returns at most 1 row
                 );
@@ -561,6 +574,7 @@ impl<'a> QueryProcessor<'a> {
                 limit,
             } => {
                 let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new(&selected_columns, &schema);
 
                 // Build range scan keys based on PK range
                 let (start_key, end_key) = self.build_pk_range_keys(&table, &pk_range, &schema)?;
@@ -570,7 +584,7 @@ impl<'a> QueryProcessor<'a> {
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
                     (*schema).clone(),
-                    selected_columns.clone(),
+                    query_schema,
                     additional_filter,
                     limit,
                 );
@@ -588,6 +602,7 @@ impl<'a> QueryProcessor<'a> {
                 ..
             } => {
                 let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new(&selected_columns, &schema);
                 let table_prefix = format!("{table}:");
                 let start_key = table_prefix.as_bytes().to_vec();
                 let end_key = format!("{table}~").as_bytes().to_vec();
@@ -597,7 +612,7 @@ impl<'a> QueryProcessor<'a> {
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
                     (*schema).clone(),
-                    selected_columns.clone(),
+                    query_schema,
                     filter,
                     limit,
                 );
@@ -1003,5 +1018,86 @@ impl<'a> QueryProcessor<'a> {
         };
 
         Ok((start_key, end_key))
+    }
+
+    pub fn execute_plan_with_query_schema(&mut self, plan: crate::planner::ExecutionPlan, query_schema: &QuerySchema) -> Result<ResultSet<'_>> {
+        use crate::planner::ExecutionPlan;
+        match plan {
+            ExecutionPlan::PrimaryKeyLookup {
+                table,
+                pk_value,
+                selected_columns: _,
+                additional_filter,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                let key = self.build_primary_key_from_value(&table, &pk_value);
+                let key_bytes = key.as_bytes().to_vec();
+                let scan_iter = if let Some(value) = self.transaction.get(&key_bytes) {
+                    let single_result = vec![(key_bytes, value)];
+                    Box::new(single_result.into_iter())
+                        as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
+                } else {
+                    Box::new(std::iter::empty())
+                        as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
+                };
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    (*schema).clone(),
+                    query_schema.clone(),
+                    additional_filter,
+                    Some(1),
+                );
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(row_iter),
+                })
+            }
+            ExecutionPlan::TableRangeScan {
+                table,
+                selected_columns: _,
+                pk_range,
+                additional_filter,
+                limit,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                let (start_key, end_key) = self.build_pk_range_keys(&table, &pk_range, &schema)?;
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    (*schema).clone(),
+                    query_schema.clone(),
+                    additional_filter,
+                    limit,
+                );
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(row_iter),
+                })
+            }
+            ExecutionPlan::TableScan {
+                table,
+                selected_columns: _,
+                filter,
+                limit,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                let table_prefix = format!("{table}:");
+                let start_key = table_prefix.as_bytes().to_vec();
+                let end_key = format!("{table}~").as_bytes().to_vec();
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    (*schema).clone(),
+                    query_schema.clone(),
+                    filter,
+                    limit,
+                );
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(row_iter),
+                })
+            }
+            _ => self.execute_plan(plan),
+        }
     }
 }

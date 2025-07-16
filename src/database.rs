@@ -4,7 +4,7 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::catalog::Catalog;
-use crate::executor::{QueryProcessor, TableSchema};
+use crate::executor::{QueryProcessor, TableSchema, QuerySchema};
 use crate::parser::{parse_sql, SqlValue, Statement};
 use crate::planner::{ExecutionPlan, QueryPlanner};
 use crate::storage_engine::StorageEngine;
@@ -20,16 +20,18 @@ pub struct PreparedStatement {
     statement: Statement,
     /// Number of parameters expected
     parameter_count: usize,
+    query_schema: Option<QuerySchema>,
 }
 
 impl PreparedStatement {
     /// Create a new prepared statement
-    fn new(sql: String, statement: Statement) -> Self {
+    fn new(sql: String, statement: Statement, query_schema: Option<QuerySchema>) -> Self {
         let parameter_count = Self::count_parameters(&statement);
         Self {
             sql,
             statement,
             parameter_count,
+            query_schema,
         }
     }
 
@@ -422,9 +424,17 @@ impl Database {
     pub fn prepare(&self, sql: &str) -> Result<PreparedStatement> {
         let statement =
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+        let query_schema = if let Statement::Select(ref select) = statement {
+            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let schema = schemas.get(&select.table).ok_or_else(|| crate::Error::Other(format!("Table '{}' not found", &select.table)))?;
+            Some(QuerySchema::new(&select.columns, schema))
+        } else {
+            None
+        };
         Ok(PreparedStatement::new(
             sql.to_string(),
             statement,
+            query_schema,
         ))
     }
 
@@ -491,8 +501,10 @@ impl Database {
         let plan = planner.plan(bound_stmt)?;
         let transaction = self.storage.begin_transaction();
         let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-        // Use the same logic as query()
-        let result = processor.execute_plan(plan)?;
+        let result = match &stmt.query_schema {
+            Some(query_schema) => processor.execute_plan_with_query_schema(plan, query_schema),
+            None => processor.execute_plan(plan),
+        }?;
         match result {
             crate::executor::ResultSet::Select { columns, rows } => {
                 let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
