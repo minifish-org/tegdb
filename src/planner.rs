@@ -439,25 +439,6 @@ impl QueryPlanner {
         })
     }
 
-    /// Extract primary key equality conditions from WHERE clause
-    fn extract_pk_equality_conditions(
-        &self,
-        table_name: &str,
-        condition: &Condition,
-    ) -> Result<Option<HashMap<String, SqlValue>>> {
-        let pk_columns = self.get_primary_key_columns(table_name)?;
-        let mut pk_values = HashMap::new();
-
-        Self::collect_pk_equality_values(condition, &pk_columns, &mut pk_values);
-
-        // Check if we have values for ALL primary key columns
-        if pk_values.len() == pk_columns.len() {
-            Ok(Some(pk_values))
-        } else {
-            Ok(None)
-        }
-    }
-
     /// Extract primary key range conditions from WHERE clause
     fn extract_pk_range_conditions(
         &self,
@@ -478,7 +459,7 @@ impl QueryPlanner {
         let mut start_bound = None;
         let mut end_bound = None;
 
-        for (column, conditions) in pk_conditions {
+        for (_column, conditions) in pk_conditions {
             for (operator, value) in conditions {
                 match operator {
                     ComparisonOperator::GreaterThan => {
@@ -528,38 +509,6 @@ impl QueryPlanner {
         }
     }
 
-    /// Recursively collect primary key equality values from conditions
-    fn collect_pk_equality_values(
-        condition: &Condition,
-        pk_columns: &[String],
-        pk_values: &mut HashMap<String, SqlValue>,
-    ) {
-        match condition {
-            Condition::Comparison {
-                left,
-                operator,
-                right,
-            } => {
-                if let ComparisonOperator::Equal = operator {
-                    if pk_columns.contains(left) && !pk_values.contains_key(left) {
-                        pk_values.insert(left.clone(), right.clone());
-                    }
-                }
-            }
-            Condition::Between { column, low, high } => {
-                // For BETWEEN, we can't do exact PK lookup, but we can use it for range optimization
-                // This will be handled by collect_pk_range_values instead
-            }
-            Condition::And(left_cond, right_cond) => {
-                Self::collect_pk_equality_values(left_cond, pk_columns, pk_values);
-                Self::collect_pk_equality_values(right_cond, pk_columns, pk_values);
-            }
-            Condition::Or(_, _) => {
-                // For OR conditions, we cannot optimize with PK lookup
-            }
-        }
-    }
-
     /// Recursively collect primary key range values from conditions
     fn collect_pk_range_values(
         condition: &Condition,
@@ -579,17 +528,17 @@ impl QueryPlanner {
                         .push((*operator, right.clone()));
                 }
             }
-            Condition::Between { column, low, high } => {
-                if pk_columns.contains(column) {
+            Condition::Between { column: _column, low: _low, high: _high } => {
+                if pk_columns.contains(_column) {
                     // Convert BETWEEN to >= and <= conditions for range optimization
                     pk_conditions
-                        .entry(column.clone())
+                        .entry(_column.clone())
                         .or_default()
-                        .push((ComparisonOperator::GreaterThanOrEqual, low.clone()));
+                        .push((ComparisonOperator::GreaterThanOrEqual, _low.clone()));
                     pk_conditions
-                        .entry(column.clone())
+                        .entry(_column.clone())
                         .or_default()
-                        .push((ComparisonOperator::LessThanOrEqual, high.clone()));
+                        .push((ComparisonOperator::LessThanOrEqual, _high.clone()));
                 }
             }
             Condition::And(left_cond, right_cond) => {
@@ -626,8 +575,8 @@ impl QueryPlanner {
                         Some(condition.clone()) // Keep non-PK conditions
                     }
                 }
-                Condition::Between { column, low, high } => {
-                    if pk_columns.contains(column) {
+                Condition::Between { column: _column, low: _low, high: _high } => {
+                    if pk_columns.contains(_column) {
                         None // This is a PK condition, filter it out
                     } else {
                         Some(condition.clone()) // Keep non-PK conditions

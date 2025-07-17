@@ -1173,21 +1173,6 @@ impl<'a> QueryProcessor<'a> {
         PrimaryKey::new(table_name.to_string(), native_key)
     }
 
-    /// Convert SqlValue to key string representation (legacy method - use NativeKey instead)
-    fn value_to_key_string(&self, value: &SqlValue) -> String {
-        match value {
-            SqlValue::Integer(i) => i.to_string(),
-            SqlValue::Real(r) => r.to_string(),
-            SqlValue::Text(t) => t.clone(),
-            SqlValue::Null => "NULL".to_string(),
-            SqlValue::Parameter(_) => {
-                // Parameter placeholders should not appear in key generation
-                // This indicates a bug in parameter binding
-                panic!("Parameter placeholder found in key generation - parameter binding failed")
-            }
-        }
-    }
-
     /// Execute a plan and immediately materialize SELECT results for internal use
     /// This is used by UPDATE/DELETE operations that need to collect keys
     fn execute_plan_materialized(

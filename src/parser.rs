@@ -9,7 +9,7 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
     combinator::{map, opt, recognize},
     multi::{many0, separated_list0, separated_list1},
-    sequence::{delimited, pair, preceded, tuple},
+    sequence::{delimited, pair, preceded},
     IResult, Parser,
 };
 use std::collections::HashMap;
@@ -21,15 +21,6 @@ static mut PARAM_COUNTER: usize = 0;
 fn reset_param_counter() {
     unsafe {
         PARAM_COUNTER = 0;
-    }
-}
-
-/// Get and increment the global parameter counter
-fn get_next_param_index() -> usize {
-    unsafe {
-        let index = PARAM_COUNTER;
-        PARAM_COUNTER += 1;
-        index
     }
 }
 
@@ -362,7 +353,7 @@ fn parse_parameter_placeholder(input: &str) -> IResult<&str, usize> {
     let (input, _) = char('?').parse(input)?;
     // Require a number after '?'
     let (input, num_str) = digit1::<&str, nom::error::Error<&str>>.parse(input)?;
-    let num = num_str.parse::<usize>().map_err(|_| {
+    let num = num_str.parse::<usize>().map_err(|_e| {
         nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Digit))
     })?;
     Ok((input, num - 1)) // Convert to 0-based index
@@ -558,22 +549,22 @@ fn parse_begin_transaction(input: &str) -> IResult<&str, Statement> {
     alt((
         // BEGIN TRANSACTION
         map(
-            tuple((
+            pair(
                 tag_no_case("BEGIN"),
                 opt(delimited(
                     multispace1,
                     tag_no_case("TRANSACTION"),
                     multispace0,
                 )),
-            )),
+            ),
             |_| Statement::Begin,
         ),
         // START TRANSACTION
         map(
-            tuple((
+            pair(
                 tag_no_case("START"),
                 delimited(multispace1, tag_no_case("TRANSACTION"), multispace0),
-            )),
+            ),
             |_| Statement::Begin,
         ),
     ))
@@ -725,17 +716,6 @@ fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
     .parse(input)
 }
 
-// Parse LIMIT clause
-fn parse_limit(input: &str) -> IResult<&str, u64> {
-    let (input, _) = multispace0.parse(input)?;
-    let (input, _) = tag_no_case("LIMIT").parse(input)?;
-    let (input, _) = multispace1.parse(input)?;
-    let (input, limit_str) = digit1.parse(input)?;
-    let limit = parse_u64_safe(limit_str)
-        .map_err(|e| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
-    Ok((input, limit))
-}
-
 // Parse LIMIT clause with parameter support
 fn parse_limit_with_parameter(input: &str) -> IResult<&str, Option<u64>> {
     let (input, _) = multispace0.parse(input)?;
@@ -750,7 +730,7 @@ fn parse_limit_with_parameter(input: &str) -> IResult<&str, Option<u64>> {
     } else {
         // Fall back to parsing a literal number
         let (input, limit_str) = digit1.parse(input)?;
-        let limit = parse_u64_safe(limit_str).map_err(|e| {
+        let limit = parse_u64_safe(limit_str).map_err(|_e| {
             nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
         })?;
         Ok((input, Some(limit)))
@@ -817,7 +797,7 @@ fn parse_length_specification(input: &str) -> IResult<&str, usize> {
 
     let length = length_str
         .parse::<usize>()
-        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+        .map_err(|_e| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
 
     Ok((input, length))
 }
@@ -860,7 +840,7 @@ fn parse_integer(input: &str) -> IResult<&str, i64> {
         }
         Ok((input, result))
     } else {
-        let value = int_str.parse::<i64>().map_err(|_| {
+        let value = int_str.parse::<i64>().map_err(|_e| {
             nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
         })?;
         Ok((input, value))
@@ -871,7 +851,7 @@ fn parse_integer(input: &str) -> IResult<&str, i64> {
 fn parse_real(input: &str) -> IResult<&str, f64> {
     let (input, real_str) = recognize((opt(char('-')), digit1, char('.'), digit1)).parse(input)?;
     let value = parse_f64_safe(real_str)
-        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
+        .map_err(|_e| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
     Ok((input, value))
 }
 
