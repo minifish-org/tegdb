@@ -1,7 +1,9 @@
+#[cfg(feature = "dev")]
 use tegdb::low_level::{parse_sql, Statement};
 
 /// Test parsing BEGIN statements
 #[test]
+#[cfg(feature = "dev")]
 fn test_parse_begin() {
     // Test basic BEGIN
     let sql = "BEGIN";
@@ -27,6 +29,7 @@ fn test_parse_begin() {
 
 /// Test parsing START TRANSACTION statements
 #[test]
+#[cfg(feature = "dev")]
 fn test_parse_start_transaction() {
     // Test START TRANSACTION
     let sql = "START TRANSACTION";
@@ -59,6 +62,7 @@ fn test_parse_start_transaction() {
 
 /// Test parsing COMMIT statements
 #[test]
+#[cfg(feature = "dev")]
 fn test_parse_commit() {
     // Test basic COMMIT
     let sql = "COMMIT";
@@ -84,6 +88,7 @@ fn test_parse_commit() {
 
 /// Test parsing ROLLBACK statements
 #[test]
+#[cfg(feature = "dev")]
 fn test_parse_rollback() {
     // Test basic ROLLBACK
     let sql = "ROLLBACK";
@@ -109,6 +114,7 @@ fn test_parse_rollback() {
 
 /// Test transaction statement priority in parsing
 #[test]
+#[cfg(feature = "dev")]
 fn test_transaction_statement_priority() {
     // Verify that transaction statements are parsed correctly
     // even when they might conflict with other keywords
@@ -131,6 +137,7 @@ fn test_transaction_statement_priority() {
 
 /// Test invalid transaction statements
 #[test]
+#[cfg(feature = "dev")]
 fn test_invalid_transaction_statements() {
     let invalid_statements = vec![
         "BEGINS",          // Invalid variant

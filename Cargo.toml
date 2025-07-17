@@ -31,6 +31,7 @@ serde_json = "1.0.140"
 [dev-dependencies]
 sled = "0.34.7" # for performance comparison
 rusqlite = "0.37.0"
+rand = "0.8.5" # for random number generation in examples
 
 # Common dev dependencies that work on all platforms
 tempfile = "3.20.0"

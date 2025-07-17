@@ -16,6 +16,246 @@ use std::rc::Rc;
 /// Type alias for scan iterator to reduce complexity
 type ScanIterator<'a> = Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)> + 'a>;
 
+/// Native primary key types that avoid string conversion
+#[derive(Debug, Clone)]
+pub enum NativeKey {
+    Integer(i64),
+    Real(f64),
+    Text(String),
+    Null,
+}
+
+impl NativeKey {
+    /// Convert SqlValue to NativeKey (zero-copy where possible)
+    pub fn from_sql_value(value: &SqlValue) -> Result<Self> {
+        match value {
+            SqlValue::Integer(i) => Ok(NativeKey::Integer(*i)),
+            SqlValue::Real(r) => Ok(NativeKey::Real(*r)),
+            SqlValue::Text(t) => Ok(NativeKey::Text(t.clone())), // Only clone needed
+            SqlValue::Null => Ok(NativeKey::Null),
+            SqlValue::Parameter(_) => {
+                Err(Error::Other("Parameter placeholder found in key generation - parameter binding failed".to_string()))
+            }
+        }
+    }
+
+    /// Convert NativeKey back to SqlValue (zero-copy where possible)
+    pub fn to_sql_value(&self) -> SqlValue {
+        match self {
+            NativeKey::Integer(i) => SqlValue::Integer(*i),
+            NativeKey::Real(r) => SqlValue::Real(*r),
+            NativeKey::Text(t) => SqlValue::Text(t.clone()), // Only clone needed
+            NativeKey::Null => SqlValue::Null,
+        }
+    }
+
+    /// Serialize to bytes for storage (efficient binary format)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            NativeKey::Integer(i) => {
+                let mut bytes = vec![0x01]; // Type tag for Integer
+                bytes.extend_from_slice(&i.to_be_bytes()); // Use big-endian for correct ordering
+                bytes
+            }
+            NativeKey::Real(r) => {
+                let mut bytes = vec![0x02]; // Type tag for Real
+                bytes.extend_from_slice(&r.to_be_bytes()); // Use big-endian for correct ordering
+                bytes
+            }
+            NativeKey::Text(t) => {
+                let mut bytes = vec![0x03]; // Type tag for Text
+                bytes.extend_from_slice(&(t.len() as u32).to_le_bytes());
+                bytes.extend_from_slice(t.as_bytes());
+                bytes
+            }
+            NativeKey::Null => {
+                vec![0x00] // Type tag for Null
+            }
+        }
+    }
+
+    /// Deserialize from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.is_empty() {
+            return Err(Error::Other("Empty key bytes".to_string()));
+        }
+
+        match bytes[0] {
+            0x00 => Ok(NativeKey::Null),
+            0x01 => {
+                if bytes.len() != 9 {
+                    return Err(Error::Other("Invalid integer key length".to_string()));
+                }
+                let i = i64::from_be_bytes(bytes[1..9].try_into().unwrap()); // Use big-endian
+                Ok(NativeKey::Integer(i))
+            }
+            0x02 => {
+                if bytes.len() != 9 {
+                    return Err(Error::Other("Invalid real key length".to_string()));
+                }
+                let r = f64::from_be_bytes(bytes[1..9].try_into().unwrap()); // Use big-endian
+                Ok(NativeKey::Real(r))
+            }
+            0x03 => {
+                if bytes.len() < 5 {
+                    return Err(Error::Other("Invalid text key length".to_string()));
+                }
+                let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
+                if bytes.len() != 5 + len {
+                    return Err(Error::Other("Text key length mismatch".to_string()));
+                }
+                let text = String::from_utf8(bytes[5..].to_vec())
+                    .map_err(|_| Error::Other("Invalid UTF-8 in text key".to_string()))?;
+                Ok(NativeKey::Text(text))
+            }
+            _ => Err(Error::Other("Unknown key type".to_string())),
+        }
+    }
+}
+
+/// High-level primary key that combines table name with native key
+#[derive(Debug, Clone)]
+pub struct PrimaryKey {
+    table_name: String,
+    key: NativeKey,
+}
+
+impl PrimaryKey {
+    /// Create a new primary key
+    pub fn new(table_name: String, key: NativeKey) -> Self {
+        Self { table_name, key }
+    }
+
+    /// Create from table name and SqlValue
+    pub fn from_sql_value(table_name: String, value: &SqlValue) -> Result<Self> {
+        let native_key = NativeKey::from_sql_value(value)?;
+        Ok(Self::new(table_name, native_key))
+    }
+
+    /// Get the native key
+    pub fn key(&self) -> &NativeKey {
+        &self.key
+    }
+
+    /// Get the table name
+    pub fn table_name(&self) -> &str {
+        &self.table_name
+    }
+
+    /// Convert to storage bytes (efficient binary format)
+    pub fn to_storage_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        
+        // Table name prefix with length
+        bytes.extend_from_slice(&(self.table_name.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(self.table_name.as_bytes());
+        bytes.push(b':'); // Separator
+        
+        // Native key bytes
+        bytes.extend_from_slice(&self.key.to_bytes());
+        
+        bytes
+    }
+
+    /// Create from storage bytes
+    pub fn from_storage_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() < 5 {
+            return Err(Error::Other("Invalid primary key bytes".to_string()));
+        }
+
+        // Parse table name length
+        let table_name_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        
+        if bytes.len() < 5 + table_name_len {
+            return Err(Error::Other("Primary key bytes too short".to_string()));
+        }
+
+        // Parse table name
+        let table_name = String::from_utf8(bytes[4..4+table_name_len].to_vec())
+            .map_err(|_| Error::Other("Invalid UTF-8 in table name".to_string()))?;
+
+        // Check separator
+        if bytes[4+table_name_len] != b':' {
+            return Err(Error::Other("Invalid primary key separator".to_string()));
+        }
+
+        // Parse native key
+        let key_bytes = &bytes[5+table_name_len..];
+        let key = NativeKey::from_bytes(key_bytes)?;
+
+        Ok(Self::new(table_name, key))
+    }
+
+    /// Create range start key (for range scans)
+    pub fn range_start(table_name: &str, start_key: &NativeKey, inclusive: bool) -> Self {
+        let mut pk = Self::new(table_name.to_string(), start_key.clone());
+        if !inclusive {
+            // For exclusive bounds, we need to increment the key
+            // This ensures we start after the specified value
+            match &mut pk.key {
+                NativeKey::Integer(i) => *i += 1,
+                NativeKey::Real(r) => *r += f64::EPSILON,
+                NativeKey::Text(s) => {
+                    // For text, append a character that sorts after the current string
+                    s.push('\u{10FFFF}'); // Highest Unicode character
+                }
+                NativeKey::Null => {
+                    // For null, we can't increment, so we'll use a special marker
+                    pk.key = NativeKey::Text("".to_string());
+                }
+            }
+        }
+        pk
+    }
+
+    /// Create range end key (for range scans)
+    pub fn range_end(table_name: &str, end_key: &NativeKey, inclusive: bool) -> Self {
+        let mut pk = Self::new(table_name.to_string(), end_key.clone());
+        match &mut pk.key {
+            NativeKey::Integer(i) => {
+                if inclusive {
+                    *i += 1;
+                }
+                // else: leave as is for exclusive
+            },
+            NativeKey::Real(r) => {
+                if inclusive {
+                    *r = f64::from_bits(r.to_bits() + 1); // next representable float
+                }
+                // else: leave as is for exclusive
+            },
+            NativeKey::Text(s) => {
+                if inclusive {
+                    s.push('\u{10FFFF}');
+                }
+                // else: leave as is for exclusive
+            },
+            NativeKey::Null => {
+                pk.key = NativeKey::Text("".to_string());
+            }
+        }
+        pk
+    }
+
+    /// Create table prefix for full table scans
+    pub fn table_prefix(table_name: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(table_name.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(table_name.as_bytes());
+        bytes.push(b':');
+        bytes
+    }
+
+    /// Create table end marker for full table scans
+    pub fn table_end_marker(table_name: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&(table_name.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(table_name.as_bytes());
+        bytes.push(b'~'); // End marker
+        bytes
+    }
+}
+
 /// Column information for table schema with embedded storage metadata
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
@@ -548,7 +788,7 @@ impl<'a> QueryProcessor<'a> {
                 let key = self.build_primary_key_from_value(&table, &pk_value);
 
                 // Create an iterator that returns at most one row if the key exists and matches
-                let key_bytes = key.as_bytes().to_vec();
+                let key_bytes = key.to_storage_bytes();
                 let scan_iter = if let Some(value) = self.transaction.get(&key_bytes) {
                     // Create a single-item iterator if the key exists
                     let single_result = vec![(key_bytes, value)];
@@ -610,10 +850,8 @@ impl<'a> QueryProcessor<'a> {
             } => {
                 let schema = self.get_table_schema(&table)?;
                 let query_schema = QuerySchema::new(&selected_columns, &schema);
-                let table_prefix = format!("{table}:");
-                let start_key = table_prefix.as_bytes().to_vec();
-                let end_key = format!("{table}~").as_bytes().to_vec();
-
+                let start_key = PrimaryKey::table_prefix(&table);
+                let end_key = PrimaryKey::table_end_marker(&table);
                 // Create streaming iterator for table scan
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
@@ -648,9 +886,8 @@ impl<'a> QueryProcessor<'a> {
 
             // Build primary key
             let key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
-
             // Check for primary key conflicts
-            if self.transaction.get(key.as_bytes()).is_some() {
+            if self.transaction.get(&key.to_storage_bytes()).is_some() {
                 return Err(Error::Other(format!(
                     "Primary key constraint violation for table '{table}'"
                 )));
@@ -658,7 +895,7 @@ impl<'a> QueryProcessor<'a> {
 
             // Serialize and store row
             let serialized = self.storage_format.serialize_row(row_data, &schema)?;
-            self.transaction.set(key.as_bytes(), serialized)?;
+            self.transaction.set(&key.to_storage_bytes(), serialized)?;
 
             rows_affected += 1;
         }
@@ -711,7 +948,7 @@ impl<'a> QueryProcessor<'a> {
         };
 
         for key in keys_to_update {
-            if let Some(value) = self.transaction.get(key.as_bytes()) {
+            if let Some(value) = self.transaction.get(&key.to_storage_bytes()) {
                 if let Ok(old_row_data) = self.storage_format.deserialize_row(&value, &schema) {
                     let mut row_data = old_row_data.clone();
 
@@ -726,7 +963,9 @@ impl<'a> QueryProcessor<'a> {
                     // Validate updated row
                     // Check if primary key was changed and if new key conflicts with existing data
                     let new_key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
-                    if new_key != key && self.transaction.get(new_key.as_bytes()).is_some() {
+                    let new_key_bytes = new_key.to_storage_bytes();
+                    let key_bytes = key.to_storage_bytes();
+                    if new_key_bytes != key_bytes && self.transaction.get(&new_key_bytes).is_some() {
                         return Err(Error::Other(format!(
                             "Primary key constraint violation for table '{table}'"
                         )));
@@ -740,11 +979,11 @@ impl<'a> QueryProcessor<'a> {
                     let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
 
                     // If primary key changed, we need to delete the old row and insert the new one
-                    if new_key != key {
-                        self.transaction.delete(key.as_bytes())?;
-                        self.transaction.set(new_key.as_bytes(), serialized)?;
+                    if new_key_bytes != key_bytes {
+                        self.transaction.delete(&key_bytes)?;
+                        self.transaction.set(&new_key_bytes, serialized)?;
                     } else {
-                        self.transaction.set(key.as_bytes(), serialized)?;
+                        self.transaction.set(&key_bytes, serialized)?;
                     }
 
                     rows_affected += 1;
@@ -768,8 +1007,8 @@ impl<'a> QueryProcessor<'a> {
         let keys_to_delete = self.execute_scan_and_collect_keys(&scan_plan, &schema)?;
         let rows_affected = keys_to_delete.len();
 
-        for key in &keys_to_delete {
-            self.transaction.delete(key.as_bytes())?;
+        for key_bytes in &keys_to_delete {
+            self.transaction.delete(key_bytes)?;
         }
 
         Ok(ResultSet::Delete { rows_affected })
@@ -818,7 +1057,7 @@ impl<'a> QueryProcessor<'a> {
         &mut self,
         scan_plan: &crate::planner::ExecutionPlan,
         schema: &TableSchema,
-    ) -> Result<Vec<String>> {
+    ) -> Result<Vec<Vec<u8>>> {
         use crate::planner::ExecutionPlan;
         let mut keys = Vec::new();
 
@@ -830,7 +1069,7 @@ impl<'a> QueryProcessor<'a> {
                 ..
             } => {
                 let key = self.build_primary_key_from_value(table, pk_value);
-                if let Some(value) = self.transaction.get(key.as_bytes()) {
+                if let Some(value) = self.transaction.get(&key.to_storage_bytes()) {
                     let matches = if let Some(filter) = additional_filter {
                         self.storage_format
                             .matches_condition(&value, schema, filter)
@@ -840,7 +1079,7 @@ impl<'a> QueryProcessor<'a> {
                     };
 
                     if matches {
-                        keys.push(key);
+                        keys.push(key.to_storage_bytes());
                     }
                 }
             }
@@ -873,10 +1112,8 @@ impl<'a> QueryProcessor<'a> {
                     };
 
                     if matches {
-                        if let Ok(key_str) = String::from_utf8(key) {
-                            keys.push(key_str);
-                            count += 1;
-                        }
+                        keys.push(key);
+                        count += 1;
                     }
                 }
             }
@@ -886,9 +1123,8 @@ impl<'a> QueryProcessor<'a> {
                 limit,
                 ..
             } => {
-                let table_prefix = format!("{table}:");
-                let start_key = table_prefix.as_bytes().to_vec();
-                let end_key = format!("{table}~").as_bytes().to_vec();
+                let start_key = PrimaryKey::table_prefix(table);
+                let end_key = PrimaryKey::table_end_marker(table);
                 let mut count = 0;
 
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
@@ -910,10 +1146,8 @@ impl<'a> QueryProcessor<'a> {
                     };
 
                     if matches {
-                        if let Ok(key_str) = String::from_utf8(key) {
-                            keys.push(key_str);
-                            count += 1;
-                        }
+                        keys.push(key);
+                        count += 1;
                     }
                 }
             }
@@ -934,11 +1168,12 @@ impl<'a> QueryProcessor<'a> {
         &self,
         table_name: &str,
         pk_value: &SqlValue,
-    ) -> String {
-        format!("{}:{}", table_name, self.value_to_key_string(pk_value))
+    ) -> PrimaryKey {
+        let native_key = NativeKey::from_sql_value(pk_value).unwrap();
+        PrimaryKey::new(table_name.to_string(), native_key)
     }
 
-    /// Convert SqlValue to key string representation
+    /// Convert SqlValue to key string representation (legacy method - use NativeKey instead)
     fn value_to_key_string(&self, value: &SqlValue) -> String {
         match value {
             SqlValue::Integer(i) => i.to_string(),
@@ -975,8 +1210,6 @@ impl<'a> QueryProcessor<'a> {
         pk_range: &crate::planner::PkRange,
         schema: &TableSchema,
     ) -> Result<(Vec<u8>, Vec<u8>)> {
-        let table_prefix = format!("{table}:");
-
         // For now, we'll implement a simple range scan that works with single-column PKs
         // This can be enhanced later to support composite PKs
 
@@ -992,37 +1225,32 @@ impl<'a> QueryProcessor<'a> {
             ));
         }
 
-        let pk_column = &pk_columns[0].name;
-
         // Build start key
         let start_key = if let Some(start_bound) = &pk_range.start_bound {
             let value = &start_bound.value;
-            let key_string = if start_bound.inclusive {
-                format!("{}{}", table_prefix, self.value_to_key_string(value))
-            } else {
-                // For exclusive bounds, we need to find the next key
-                // This is a simplified implementation
-                format!("{}{}", table_prefix, self.value_to_key_string(value))
-            };
-            key_string.as_bytes().to_vec()
+            let native_key = NativeKey::from_sql_value(value).unwrap();
+            let key = PrimaryKey::range_start(table, &native_key, start_bound.inclusive);
+            key.to_storage_bytes()
         } else {
-            table_prefix.as_bytes().to_vec()
+            PrimaryKey::table_prefix(table)
         };
 
         // Build end key
         let end_key = if let Some(end_bound) = &pk_range.end_bound {
             let value = &end_bound.value;
-            let key_string = if end_bound.inclusive {
-                // For inclusive bounds, we need to find the next key after this value
-                // This is a simplified implementation
-                format!("{}{}", table_prefix, self.value_to_key_string(value))
-            } else {
-                format!("{}{}", table_prefix, self.value_to_key_string(value))
-            };
-            key_string.as_bytes().to_vec()
+            let native_key = NativeKey::from_sql_value(value).unwrap();
+            let key = PrimaryKey::range_end(table, &native_key, end_bound.inclusive);
+            key.to_storage_bytes()
         } else {
-            format!("{table}~").as_bytes().to_vec()
+            PrimaryKey::table_end_marker(table)
         };
+
+        // Ensure start_key <= end_key for BTreeMap range scan
+        if start_key > end_key {
+            return Err(Error::Other(
+                "Invalid range: start key is greater than end key".to_string(),
+            ));
+        }
 
         Ok((start_key, end_key))
     }
@@ -1038,7 +1266,7 @@ impl<'a> QueryProcessor<'a> {
             } => {
                 let schema = self.get_table_schema(&table)?;
                 let key = self.build_primary_key_from_value(&table, &pk_value);
-                let key_bytes = key.as_bytes().to_vec();
+                let key_bytes = key.to_storage_bytes();
                 let scan_iter = if let Some(value) = self.transaction.get(&key_bytes) {
                     let single_result = vec![(key_bytes, value)];
                     Box::new(single_result.into_iter())
@@ -1088,9 +1316,8 @@ impl<'a> QueryProcessor<'a> {
                 limit,
             } => {
                 let schema = self.get_table_schema(&table)?;
-                let table_prefix = format!("{table}:");
-                let start_key = table_prefix.as_bytes().to_vec();
-                let end_key = format!("{table}~").as_bytes().to_vec();
+                let start_key = PrimaryKey::table_prefix(&table);
+                let end_key = PrimaryKey::table_end_marker(&table);
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
