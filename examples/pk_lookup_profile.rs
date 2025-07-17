@@ -45,7 +45,7 @@ fn main() {
     }
 
     // Prepare statement
-    let stmt = tegdb.prepare("SELECT id, name FROM items WHERE id = ?").unwrap();
+    let stmt = tegdb.prepare("SELECT id, name FROM items WHERE id = ?1").unwrap();
 
     // Profile loop
     let start = Instant::now();
