@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     println!("\n1. Testing simple parameter binding...");
 
     // Test with a simple query that should work
-    let simple_stmt = db.prepare("SELECT * FROM users WHERE id = ?")?;
+    let simple_stmt = db.prepare("SELECT * FROM users WHERE id = ?1")?;
     println!("   → Prepared statement: {}", simple_stmt.sql());
     println!("   → Parameter count: {}", simple_stmt.parameter_count());
 
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
 
     println!("\n3. Testing INSERT with parameters...");
 
-    let insert_stmt = db.prepare("INSERT INTO users (id, name, age) VALUES (?, ?, ?)")?;
+    let insert_stmt = db.prepare("INSERT INTO users (id, name, age) VALUES (?1, ?2, ?3)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
     println!("   → Parameter count: {}", insert_stmt.parameter_count());
 
@@ -73,7 +73,7 @@ fn main() -> Result<()> {
 
     println!("\n4. Final verification...");
 
-    let final_result = db.query("SELECT * FROM users ORDER BY id")?;
+    let final_result = db.query("SELECT * FROM users")?;
     println!("   → Final data:");
     for row in final_result.rows() {
         println!("     {row:?}");

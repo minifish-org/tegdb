@@ -126,7 +126,7 @@ fn sqlite_benchmark(c: &mut Criterion) {
     c.bench_function("sqlite get", |b| {
         b.iter(|| {
             let mut stmt = conn
-                .prepare("SELECT value FROM test WHERE key = ?")
+                .prepare("SELECT value FROM test WHERE key = ?1")
                 .unwrap();
             let mut rows = stmt.query([black_box(key)]).unwrap();
             rows.next().unwrap();
@@ -136,7 +136,7 @@ fn sqlite_benchmark(c: &mut Criterion) {
     c.bench_function("sqlite scan", |b| {
         b.iter(|| {
             let mut stmt = conn
-                .prepare("SELECT key, value FROM test WHERE key >= ? AND key <= ?")
+                .prepare("SELECT key, value FROM test WHERE key >= ?1 AND key <= ?2")
                 .unwrap();
             let rows = stmt
                 .query_map(

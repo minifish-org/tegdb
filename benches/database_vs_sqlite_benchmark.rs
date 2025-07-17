@@ -56,7 +56,7 @@ fn database_benchmark(c: &mut Criterion) {
     c.bench_function("database prepared select", |b| {
         b.iter(|| {
             let stmt = db
-                .prepare("SELECT * FROM benchmark_test WHERE id = ?")
+                .prepare("SELECT * FROM benchmark_test WHERE id = ?1")
                 .unwrap();
             let result = db
                 .query_prepared(&stmt, &[tegdb::SqlValue::Integer(1)])
@@ -77,7 +77,7 @@ fn database_benchmark(c: &mut Criterion) {
                 .unwrap()
                 .as_nanos() as u64;
             let stmt = db
-                .prepare("INSERT INTO benchmark_test (id, name, value) VALUES (?, ?, ?)")
+                .prepare("INSERT INTO benchmark_test (id, name, value) VALUES (?1, ?2, ?3)")
                 .unwrap();
             let affected = db
                 .execute_prepared(
@@ -100,7 +100,7 @@ fn database_benchmark(c: &mut Criterion) {
     c.bench_function("database prepared update", |b| {
         b.iter(|| {
             let stmt = db
-                .prepare("UPDATE benchmark_test SET value = ? WHERE id = ?")
+                .prepare("UPDATE benchmark_test SET value = ?1 WHERE id = ?2")
                 .unwrap();
             let affected = db
                 .execute_prepared(
@@ -119,7 +119,7 @@ fn database_benchmark(c: &mut Criterion) {
     c.bench_function("database prepared delete", |b| {
         b.iter(|| {
             let stmt = db
-                .prepare("DELETE FROM benchmark_test WHERE value = ?")
+                .prepare("DELETE FROM benchmark_test WHERE value = ?1")
                 .unwrap();
             let affected = db
                 .execute_prepared(&stmt, &[tegdb::SqlValue::Integer(888)])

@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     println!("\n1. Testing plan caching with SELECT statements...");
 
     // Prepare a SELECT statement with parameters
-    let select_stmt = db.prepare("SELECT name, age FROM users WHERE age > ? AND city = ?")?;
+    let select_stmt = db.prepare("SELECT name, age FROM users WHERE age > ?1 AND city = ?2")?;
     println!("   → Prepared statement: {}", select_stmt.sql());
     println!("   → Parameter count: {}", select_stmt.parameter_count());
 
@@ -79,7 +79,7 @@ fn main() -> Result<()> {
     println!("\n2. Testing plan caching with INSERT statements...");
 
     // Prepare an INSERT statement
-    let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?, ?, ?, ?)")?;
+    let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?1, ?2, ?3, ?4)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
 
     // Execute multiple inserts
@@ -100,7 +100,7 @@ fn main() -> Result<()> {
     println!("\n3. Testing plan caching with UPDATE statements...");
 
     // Prepare an UPDATE statement
-    let update_stmt = db.prepare("UPDATE users SET age = ? WHERE name = ?")?;
+    let update_stmt = db.prepare("UPDATE users SET age = ?1 WHERE name = ?2")?;
     println!("   → Prepared statement: {}", update_stmt.sql());
 
     // Execute multiple updates
@@ -119,7 +119,7 @@ fn main() -> Result<()> {
     println!("\n4. Testing plan caching with DELETE statements...");
 
     // Prepare a DELETE statement
-    let delete_stmt = db.prepare("DELETE FROM users WHERE age < ?")?;
+    let delete_stmt = db.prepare("DELETE FROM users WHERE age < ?1")?;
     println!("   → Prepared statement: {}", delete_stmt.sql());
 
     // Execute multiple deletes

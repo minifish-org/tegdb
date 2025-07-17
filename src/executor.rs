@@ -91,21 +91,28 @@ pub struct QuerySchema {
 
 impl QuerySchema {
     pub fn new(selected_columns: &[String], schema: &TableSchema) -> Self {
-        let mut column_indices = Vec::with_capacity(selected_columns.len());
-        for col_name in selected_columns {
-            if let Some((idx, _col)) = schema
-                .columns
-                .iter()
-                .enumerate()
-                .find(|(_, c)| &c.name == col_name)
-            {
-                column_indices.push(idx);
-            } else {
-                column_indices.push(usize::MAX);
+        let (column_names, column_indices) = if selected_columns.len() == 1 && selected_columns[0] == "*" {
+            let names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
+            let indices: Vec<usize> = (0..schema.columns.len()).collect();
+            (names, indices)
+        } else {
+            let mut indices = Vec::with_capacity(selected_columns.len());
+            for col_name in selected_columns {
+                if let Some((idx, _col)) = schema
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .find(|(_, c)| &c.name == col_name)
+                {
+                    indices.push(idx);
+                } else {
+                    indices.push(usize::MAX);
+                }
             }
-        }
+            (selected_columns.to_vec(), indices)
+        };
         Self {
-            column_names: selected_columns.to_vec(),
+            column_names,
             column_indices,
         }
     }

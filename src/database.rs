@@ -522,52 +522,49 @@ impl Database {
 
     /// Helper: Bind parameters into a Statement AST (recursively)
     fn bind_parameters_to_statement(statement: &Statement, params: &[SqlValue]) -> Result<Statement> {
-        let mut param_index = 0;
-        fn bind_value(value: &SqlValue, params: &[SqlValue], param_index: &mut usize) -> Result<SqlValue> {
+        fn bind_value(value: &SqlValue, params: &[SqlValue]) -> Result<SqlValue> {
             match value {
-                SqlValue::Parameter(_) => {
-                    if *param_index >= params.len() {
-                        return Err(crate::Error::Other("Not enough parameters provided".to_string()));
+                SqlValue::Parameter(index) => {
+                    if *index >= params.len() {
+                        return Err(crate::Error::Other(format!("Parameter index {} out of bounds (only {} parameters provided)", index + 1, params.len())));
                     }
-                    let v = params[*param_index].clone();
-                    *param_index += 1;
-                    Ok(v)
+                    Ok(params[*index].clone())
                 }
                 _ => Ok(value.clone()),
             }
         }
-        fn bind_expr(expr: &crate::parser::Expression, params: &[SqlValue], param_index: &mut usize) -> Result<crate::parser::Expression> {
+        fn bind_expr(expr: &crate::parser::Expression, params: &[SqlValue]) -> Result<crate::parser::Expression> {
             use crate::parser::Expression;
             match expr {
-                Expression::Value(v) => Ok(Expression::Value(bind_value(v, params, param_index)?)),
+                Expression::Value(v) => Ok(Expression::Value(bind_value(v, params)?)),
                 Expression::Column(c) => Ok(Expression::Column(c.clone())),
                 Expression::BinaryOp { left, operator, right } => Ok(Expression::BinaryOp {
-                    left: Box::new(bind_expr(left, params, param_index)?),
+                    left: Box::new(bind_expr(left, params)?),
                     operator: *operator,
-                    right: Box::new(bind_expr(right, params, param_index)?),
+                    right: Box::new(bind_expr(right, params)?),
                 }),
             }
         }
-        fn bind_condition(cond: &crate::parser::Condition, params: &[SqlValue], param_index: &mut usize) -> Result<crate::parser::Condition> {
+        fn bind_condition(cond: &crate::parser::Condition, params: &[SqlValue]) -> Result<crate::parser::Condition> {
             use crate::parser::Condition;
             match cond {
                 Condition::Comparison { left, operator, right } => Ok(Condition::Comparison {
                     left: left.clone(),
                     operator: *operator,
-                    right: bind_value(right, params, param_index)?,
+                    right: bind_value(right, params)?,
                 }),
                 Condition::Between { column, low, high } => Ok(Condition::Between {
                     column: column.clone(),
-                    low: bind_value(low, params, param_index)?,
-                    high: bind_value(high, params, param_index)?,
+                    low: bind_value(low, params)?,
+                    high: bind_value(high, params)?,
                 }),
                 Condition::And(l, r) => Ok(Condition::And(
-                    Box::new(bind_condition(l, params, param_index)?),
-                    Box::new(bind_condition(r, params, param_index)?),
+                    Box::new(bind_condition(l, params)?),
+                    Box::new(bind_condition(r, params)?),
                 )),
                 Condition::Or(l, r) => Ok(Condition::Or(
-                    Box::new(bind_condition(l, params, param_index)?),
-                    Box::new(bind_condition(r, params, param_index)?),
+                    Box::new(bind_condition(l, params)?),
+                    Box::new(bind_condition(r, params)?),
                 )),
             }
         }
@@ -576,7 +573,7 @@ impl Database {
             Statement::Select(s) => {
                 let where_clause = if let Some(wc) = &s.where_clause {
                     Some(crate::parser::WhereClause {
-                        condition: bind_condition(&wc.condition, params, &mut param_index)?,
+                        condition: bind_condition(&wc.condition, params)?,
                     })
                 } else { None };
                 Ok(Statement::Select(crate::parser::SelectStatement {
@@ -591,7 +588,7 @@ impl Database {
                 for row in &s.values {
                     let mut new_row = Vec::new();
                     for v in row {
-                        new_row.push(bind_value(v, params, &mut param_index)?);
+                        new_row.push(bind_value(v, params)?);
                     }
                     values.push(new_row);
                 }
@@ -605,12 +602,12 @@ impl Database {
                 let assignments = s.assignments.iter().map(|a| {
                     Ok(crate::parser::Assignment {
                         column: a.column.clone(),
-                        value: bind_expr(&a.value, params, &mut param_index)?,
+                        value: bind_expr(&a.value, params)?,
                     })
                 }).collect::<Result<Vec<_>>>()?;
                 let where_clause = if let Some(wc) = &s.where_clause {
                     Some(crate::parser::WhereClause {
-                        condition: bind_condition(&wc.condition, params, &mut param_index)?,
+                        condition: bind_condition(&wc.condition, params)?,
                     })
                 } else { None };
                 Ok(Statement::Update(crate::parser::UpdateStatement {
@@ -622,7 +619,7 @@ impl Database {
             Statement::Delete(s) => {
                 let where_clause = if let Some(wc) = &s.where_clause {
                     Some(crate::parser::WhereClause {
-                        condition: bind_condition(&wc.condition, params, &mut param_index)?,
+                        condition: bind_condition(&wc.condition, params)?,
                     })
                 } else { None };
                 Ok(Statement::Delete(crate::parser::DeleteStatement {

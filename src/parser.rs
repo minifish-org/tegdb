@@ -357,29 +357,15 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
     .parse(input)
 }
 
-// Parse parameter placeholder (? or ?1, ?2, etc.)
+// Parse parameter placeholder (?1, ?2, etc.) - now requires index
 fn parse_parameter_placeholder(input: &str) -> IResult<&str, usize> {
     let (input, _) = char('?').parse(input)?;
-
-    // Try to parse a number after the ?
-    match digit1::<&str, nom::error::Error<&str>>.parse(input) {
-        Ok((remaining, num_str)) => {
-            // Parse the number as usize
-            match num_str.parse::<usize>() {
-                Ok(num) => Ok((remaining, num - 1)), // Convert to 0-based index
-                Err(_) => {
-                    // Fallback to auto-assigned index
-                    let index = get_next_param_index();
-                    Ok((input, index))
-                }
-            }
-        }
-        Err(_) => {
-            // Simple ? without number - assign next available index
-            let index = get_next_param_index();
-            Ok((input, index))
-        }
-    }
+    // Require a number after '?'
+    let (input, num_str) = digit1::<&str, nom::error::Error<&str>>.parse(input)?;
+    let num = num_str.parse::<usize>().map_err(|_| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Digit))
+    })?;
+    Ok((input, num - 1)) // Convert to 0-based index
 }
 
 // Parse SQL values

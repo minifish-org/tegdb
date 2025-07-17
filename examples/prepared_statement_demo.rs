@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     println!("\n1. Preparing SELECT statement with parameters...");
 
     // Prepare a SELECT statement with parameters
-    let select_stmt = db.prepare("SELECT name, age FROM users WHERE age > ? AND city = ?")?;
+    let select_stmt = db.prepare("SELECT name, age FROM users WHERE age > ?1 AND city = ?2")?;
     println!("   → Prepared statement: {}", select_stmt.sql());
     println!("   → Parameter count: {}", select_stmt.parameter_count());
 
@@ -68,7 +68,7 @@ fn main() -> Result<()> {
     println!("\n3. Preparing INSERT statement with parameters...");
 
     // Prepare an INSERT statement with parameters
-    let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?, ?, ?, ?)")?;
+    let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?1, ?2, ?3, ?4)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
     println!("   → Parameter count: {}", insert_stmt.parameter_count());
 
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
     println!("\n4. Preparing UPDATE statement with parameters...");
 
     // Prepare an UPDATE statement with parameters
-    let update_stmt = db.prepare("UPDATE users SET age = ? WHERE name = ?")?;
+    let update_stmt = db.prepare("UPDATE users SET age = ?1 WHERE name = ?2")?;
     println!("   → Prepared statement: {}", update_stmt.sql());
     println!("   → Parameter count: {}", update_stmt.parameter_count());
 
@@ -97,7 +97,7 @@ fn main() -> Result<()> {
     println!("\n5. Preparing DELETE statement with parameters...");
 
     // Prepare a DELETE statement with parameters
-    let delete_stmt = db.prepare("DELETE FROM users WHERE age < ?")?;
+    let delete_stmt = db.prepare("DELETE FROM users WHERE age < ?1")?;
     println!("   → Prepared statement: {}", delete_stmt.sql());
     println!("   → Parameter count: {}", delete_stmt.parameter_count());
 

@@ -42,7 +42,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
 
     // === FOCUSED EXECUTION BREAKDOWN ===
     // Use a single prepared statement: PK lookup
-    let pk_lookup_stmt = db.prepare("SELECT id, value FROM test WHERE id = ?").unwrap();
+    let pk_lookup_stmt = db.prepare("SELECT id, value FROM test WHERE id = ?1").unwrap();
     
     // === 1. PARAMETER BINDING BREAKDOWN ===
     let mut group = c.benchmark_group("Parameter Binding Breakdown");

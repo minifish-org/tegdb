@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     println!("\n1. Testing simple SELECT with parameter...");
 
     // Test with a simple query
-    let stmt = db.prepare("SELECT * FROM users WHERE id = ?")?;
+    let stmt = db.prepare("SELECT * FROM users WHERE id = ?1")?;
     println!("   → Prepared statement: {}", stmt.sql());
     println!("   → Parameter count: {}", stmt.parameter_count());
 
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
 
     println!("\n2. Testing simple INSERT with parameters...");
 
-    let insert_stmt = db.prepare("INSERT INTO users (id, name, age) VALUES (?, ?, ?)")?;
+    let insert_stmt = db.prepare("INSERT INTO users (id, name, age) VALUES (?1, ?2, ?3)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
     println!("   → Parameter count: {}", insert_stmt.parameter_count());
 
