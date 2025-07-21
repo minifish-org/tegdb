@@ -120,35 +120,6 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
         })
     });
 
-    // 4. Lazy row creation
-    c.bench_function("lazy_row_creation", |b| {
-        b.iter(|| {
-            let _lazy_row = storage_format
-                .create_lazy_row(black_box(&serialized_data), black_box(&test_schema))
-                .unwrap();
-        })
-    });
-
-    // 5. Lazy row column access
-    c.bench_function("lazy_row_column_access", |b| {
-        let lazy_row = storage_format
-            .create_lazy_row(&serialized_data, &test_schema)
-            .unwrap();
-        b.iter(|| {
-            let _value = lazy_row.get_column("id").unwrap();
-        })
-    });
-
-    // 6. Lazy row multiple columns
-    c.bench_function("lazy_row_multiple_columns", |b| {
-        let lazy_row = storage_format
-            .create_lazy_row(&serialized_data, &test_schema)
-            .unwrap();
-        b.iter(|| {
-            let _values = lazy_row.get_columns(&["id", "value", "name"]).unwrap();
-        })
-    });
-
     // 7. Condition evaluation (zero-copy)
     let simple_condition = tegdb::parser::Condition::Comparison {
         left: "id".to_string(),
@@ -200,16 +171,6 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
             let _row_data = storage_format
                 .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
                 .unwrap();
-        })
-    });
-
-    // 10. Lazy row to HashMap conversion
-    c.bench_function("lazy_row_to_hashmap", |b| {
-        let lazy_row = storage_format
-            .create_lazy_row(&serialized_data, &test_schema)
-            .unwrap();
-        b.iter(|| {
-            let _hashmap = lazy_row.to_hashmap().unwrap();
         })
     });
 
@@ -273,37 +234,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
         })
     });
 
-    // 16. Memory allocation comparison
-    c.bench_function("lazy_memory_allocation", |b| {
-        b.iter(|| {
-            // Simulate lazy approach memory usage
-            let lazy_row = storage_format
-                .create_lazy_row(&serialized_data, &test_schema)
-                .unwrap();
-            let _value = lazy_row.get_column("id").unwrap();
-            black_box(lazy_row);
-        })
-    });
-
-    c.bench_function("old_memory_allocation", |b| {
-        b.iter(|| {
-            // Simulate old approach memory usage
-            let _row_data = storage_format
-                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
-                .unwrap();
-        })
-    });
-
-    // 17. String operations comparison
-    c.bench_function("lazy_string_operations", |b| {
-        b.iter(|| {
-            let lazy_row = storage_format
-                .create_lazy_row(&serialized_data, &test_schema)
-                .unwrap();
-            let _name = lazy_row.get_column("name").unwrap();
-        })
-    });
-
+    // 16. String operations comparison
     c.bench_function("old_string_operations", |b| {
         b.iter(|| {
             let row_data = storage_format
@@ -314,17 +245,6 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     });
 
     // 18. HashMap operations comparison
-    c.bench_function("lazy_hashmap_avoidance", |b| {
-        b.iter(|| {
-            // Lazy approach: no HashMap created
-            let lazy_row = storage_format
-                .create_lazy_row(&serialized_data, &test_schema)
-                .unwrap();
-            let _id = lazy_row.get_column("id").unwrap();
-            let _value = lazy_row.get_column("value").unwrap();
-        })
-    });
-
     c.bench_function("old_hashmap_creation", |b| {
         b.iter(|| {
             // Old approach: HashMap created every time

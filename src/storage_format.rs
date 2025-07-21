@@ -22,17 +22,7 @@ pub enum TypeCode {
     TextFixed = 3, // Fixed-length text (padded with nulls)
 }
 
-/// A zero-copy, lazy row view
-pub struct LazyRow<'a> {
-    data: &'a [u8],
-    schema: &'a TableSchema,
-}
-
-impl Default for StorageFormat {
-    fn default() -> Self {
-        StorageFormat
-    }
-}
+// Remove LazyRow struct, its methods, and create_lazy_row function
 
 impl StorageFormat {
     /// Create a new storage format
@@ -104,15 +94,6 @@ impl StorageFormat {
             }
         }
         Ok(())
-    }
-
-    /// Create a lazy row view (zero-copy, no allocation) using embedded metadata
-    pub fn create_lazy_row<'a>(
-        &self,
-        data: &'a [u8],
-        schema: &'a TableSchema,
-    ) -> Result<LazyRow<'a>> {
-        Ok(LazyRow { data, schema })
     }
 
     /// Get a single column value by name (zero-copy) using embedded metadata
@@ -483,66 +464,6 @@ impl StorageFormat {
                 column.storage_size,
                 column.storage_type_code,
             )?;
-            result.insert(column.name.clone(), value);
-        }
-        Ok(result)
-    }
-}
-
-impl<'a> LazyRow<'a> {
-    /// Get a single column value by name (zero-copy)
-    pub fn get_column(&self, column_name: &str) -> Result<SqlValue> {
-        if let Some((index, _)) = self
-            .schema
-            .columns
-            .iter()
-            .enumerate()
-            .find(|(_, col)| col.name == column_name)
-        {
-            let column_info = &self.schema.columns[index];
-            StorageFormat::deserialize_value_at_offset(
-                self.data,
-                column_info.storage_offset,
-                column_info.storage_size,
-                column_info.storage_type_code,
-            )
-        } else {
-            Err(crate::Error::Other(format!(
-                "Column '{column_name}' not found"
-            )))
-        }
-    }
-
-    /// Get a single column value by index (zero-copy)
-    pub fn get_by_index(&self, index: usize) -> Result<SqlValue> {
-        if index >= self.schema.columns.len() {
-            return Err(crate::Error::Other(
-                "Column index out of bounds".to_string(),
-            ));
-        }
-        let column_info = &self.schema.columns[index];
-        StorageFormat::deserialize_value_at_offset(
-            self.data,
-            column_info.storage_offset,
-            column_info.storage_size,
-            column_info.storage_type_code,
-        )
-    }
-
-    /// Get multiple columns by name (zero-copy)
-    pub fn get_columns(&self, column_names: &[&str]) -> Result<Vec<SqlValue>> {
-        let mut result = Vec::with_capacity(column_names.len());
-        for &column_name in column_names {
-            result.push(self.get_column(column_name)?);
-        }
-        Ok(result)
-    }
-
-    /// Convert to full HashMap (only when needed)
-    pub fn to_hashmap(&self) -> Result<HashMap<String, SqlValue>> {
-        let mut result = HashMap::with_capacity(self.schema.columns.len());
-        for column in &self.schema.columns {
-            let value = self.get_column(&column.name)?;
             result.insert(column.name.clone(), value);
         }
         Ok(result)

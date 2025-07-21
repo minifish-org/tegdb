@@ -125,5 +125,4 @@ pub mod arithmetic;
 pub mod helpers;
 pub mod integration;
 pub mod performance;
-pub mod unit;
 pub mod wasm;
