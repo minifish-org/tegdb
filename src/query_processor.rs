@@ -33,9 +33,10 @@ impl NativeKey {
             SqlValue::Real(r) => Ok(NativeKey::Real(*r)),
             SqlValue::Text(t) => Ok(NativeKey::Text(t.clone())), // Only clone needed
             SqlValue::Null => Ok(NativeKey::Null),
-            SqlValue::Parameter(_) => {
-                Err(Error::Other("Parameter placeholder found in key generation - parameter binding failed".to_string()))
-            }
+            SqlValue::Parameter(_) => Err(Error::Other(
+                "Parameter placeholder found in key generation - parameter binding failed"
+                    .to_string(),
+            )),
         }
     }
 
@@ -145,15 +146,15 @@ impl PrimaryKey {
     /// Convert to storage bytes (efficient binary format)
     pub fn to_storage_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        
+
         // Table name prefix with length
         bytes.extend_from_slice(&(self.table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(self.table_name.as_bytes());
         bytes.push(b':'); // Separator
-        
+
         // Native key bytes
         bytes.extend_from_slice(&self.key.to_bytes());
-        
+
         bytes
     }
 
@@ -165,22 +166,22 @@ impl PrimaryKey {
 
         // Parse table name length
         let table_name_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
-        
+
         if bytes.len() < 5 + table_name_len {
             return Err(Error::Other("Primary key bytes too short".to_string()));
         }
 
         // Parse table name
-        let table_name = String::from_utf8(bytes[4..4+table_name_len].to_vec())
+        let table_name = String::from_utf8(bytes[4..4 + table_name_len].to_vec())
             .map_err(|_| Error::Other("Invalid UTF-8 in table name".to_string()))?;
 
         // Check separator
-        if bytes[4+table_name_len] != b':' {
+        if bytes[4 + table_name_len] != b':' {
             return Err(Error::Other("Invalid primary key separator".to_string()));
         }
 
         // Parse native key
-        let key_bytes = &bytes[5+table_name_len..];
+        let key_bytes = &bytes[5 + table_name_len..];
         let key = NativeKey::from_bytes(key_bytes)?;
 
         Ok(Self::new(table_name, key))
@@ -217,19 +218,19 @@ impl PrimaryKey {
                     *i += 1;
                 }
                 // else: leave as is for exclusive
-            },
+            }
             NativeKey::Real(r) => {
                 if inclusive {
                     *r = f64::from_bits(r.to_bits() + 1); // next representable float
                 }
                 // else: leave as is for exclusive
-            },
+            }
             NativeKey::Text(s) => {
                 if inclusive {
                     s.push('\u{10FFFF}');
                 }
                 // else: leave as is for exclusive
-            },
+            }
             NativeKey::Null => {
                 pk.key = NativeKey::Text("".to_string());
             }
@@ -284,9 +285,7 @@ impl TableSchema {
 
     /// Get column index by name (optimized with early return)
     pub fn get_column_index(&self, column_name: &str) -> Option<usize> {
-        self.columns
-            .iter()
-            .position(|col| col.name == column_name)
+        self.columns.iter().position(|col| col.name == column_name)
     }
 
     /// Get primary key column name (cached lookup)
@@ -331,26 +330,27 @@ pub struct QuerySchema {
 
 impl QuerySchema {
     pub fn new(selected_columns: &[String], schema: &TableSchema) -> Self {
-        let (column_names, column_indices) = if selected_columns.len() == 1 && selected_columns[0] == "*" {
-            let names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
-            let indices: Vec<usize> = (0..schema.columns.len()).collect();
-            (names, indices)
-        } else {
-            let mut indices = Vec::with_capacity(selected_columns.len());
-            for col_name in selected_columns {
-                if let Some((idx, _col)) = schema
-                    .columns
-                    .iter()
-                    .enumerate()
-                    .find(|(_, c)| &c.name == col_name)
-                {
-                    indices.push(idx);
-                } else {
-                    indices.push(usize::MAX);
+        let (column_names, column_indices) =
+            if selected_columns.len() == 1 && selected_columns[0] == "*" {
+                let names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
+                let indices: Vec<usize> = (0..schema.columns.len()).collect();
+                (names, indices)
+            } else {
+                let mut indices = Vec::with_capacity(selected_columns.len());
+                for col_name in selected_columns {
+                    if let Some((idx, _col)) = schema
+                        .columns
+                        .iter()
+                        .enumerate()
+                        .find(|(_, c)| &c.name == col_name)
+                    {
+                        indices.push(idx);
+                    } else {
+                        indices.push(usize::MAX);
+                    }
                 }
-            }
-            (selected_columns.to_vec(), indices)
-        };
+                (selected_columns.to_vec(), indices)
+            };
         Self {
             column_names,
             column_indices,
@@ -539,7 +539,7 @@ impl<'a> QueryProcessor<'a> {
         self.table_schemas
             .get(table_name)
             .cloned()
-            .ok_or_else(|| Error::Other(format!("Table '{}' does not exist", table_name)))
+            .ok_or_else(|| Error::Other(format!("Table '{table_name}' does not exist")))
     }
 
     /// Validate row data against table schema
@@ -554,8 +554,7 @@ impl<'a> QueryProcessor<'a> {
         for column_name in row_data.keys() {
             if !schema.has_column(column_name) {
                 return Err(Error::Other(format!(
-                    "Column '{}' does not exist in table '{}'",
-                    column_name, table_name
+                    "Column '{column_name}' does not exist in table '{table_name}'"
                 )));
             }
         }
@@ -885,7 +884,12 @@ impl<'a> QueryProcessor<'a> {
             self.validate_row_data(table, row_data)?;
 
             // Build primary key
-            let key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
+            let key = self.build_primary_key_from_value(
+                table,
+                row_data
+                    .get(schema.get_primary_key_column().unwrap())
+                    .unwrap(),
+            );
             // Check for primary key conflicts
             if self.transaction.get(&key.to_storage_bytes()).is_some() {
                 return Err(Error::Other(format!(
@@ -941,7 +945,12 @@ impl<'a> QueryProcessor<'a> {
                         row_data.insert(col_name.clone(), value.clone());
                     }
                 }
-                let key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
+                let key = self.build_primary_key_from_value(
+                    table,
+                    row_data
+                        .get(schema.get_primary_key_column().unwrap())
+                        .unwrap(),
+                );
                 keys.push(key);
             }
             keys
@@ -949,7 +958,8 @@ impl<'a> QueryProcessor<'a> {
 
         for key in keys_to_update {
             if let Some(value) = self.transaction.get(&key.to_storage_bytes()) {
-                if let Ok(old_row_data) = self.storage_format.deserialize_row_full(&value, &schema) {
+                if let Ok(old_row_data) = self.storage_format.deserialize_row_full(&value, &schema)
+                {
                     let mut row_data = old_row_data.clone();
 
                     // Apply assignments
@@ -962,10 +972,16 @@ impl<'a> QueryProcessor<'a> {
 
                     // Validate updated row
                     // Check if primary key was changed and if new key conflicts with existing data
-                    let new_key = self.build_primary_key_from_value(table, row_data.get(schema.get_primary_key_column().unwrap()).unwrap());
+                    let new_key = self.build_primary_key_from_value(
+                        table,
+                        row_data
+                            .get(schema.get_primary_key_column().unwrap())
+                            .unwrap(),
+                    );
                     let new_key_bytes = new_key.to_storage_bytes();
                     let key_bytes = key.to_storage_bytes();
-                    if new_key_bytes != key_bytes && self.transaction.get(&new_key_bytes).is_some() {
+                    if new_key_bytes != key_bytes && self.transaction.get(&new_key_bytes).is_some()
+                    {
                         return Err(Error::Other(format!(
                             "Primary key constraint violation for table '{table}'"
                         )));
@@ -1160,15 +1176,9 @@ impl<'a> QueryProcessor<'a> {
         Ok(keys)
     }
 
-
-
     /// Build primary key string for a row
     /// Note: TegDB only supports single-column primary keys
-    fn build_primary_key_from_value(
-        &self,
-        table_name: &str,
-        pk_value: &SqlValue,
-    ) -> PrimaryKey {
+    fn build_primary_key_from_value(&self, table_name: &str, pk_value: &SqlValue) -> PrimaryKey {
         let native_key = NativeKey::from_sql_value(pk_value).unwrap();
         PrimaryKey::new(table_name.to_string(), native_key)
     }
@@ -1240,7 +1250,11 @@ impl<'a> QueryProcessor<'a> {
         Ok((start_key, end_key))
     }
 
-    pub fn execute_plan_with_query_schema(&mut self, plan: crate::planner::ExecutionPlan, query_schema: &QuerySchema) -> Result<ResultSet<'_>> {
+    pub fn execute_plan_with_query_schema(
+        &mut self,
+        plan: crate::planner::ExecutionPlan,
+        query_schema: &QuerySchema,
+    ) -> Result<ResultSet<'_>> {
         use crate::planner::ExecutionPlan;
         match plan {
             ExecutionPlan::PrimaryKeyLookup {

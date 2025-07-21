@@ -5,7 +5,11 @@ use std::time::Instant;
 
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = env::temp_dir();
-    path.push(format!("tegdb_limit_profile_{}_{}", prefix, std::process::id()));
+    path.push(format!(
+        "tegdb_limit_profile_{}_{}",
+        prefix,
+        std::process::id()
+    ));
     path
 }
 
@@ -24,7 +28,9 @@ fn main() {
         category TEXT(32) NOT NULL,
         value INTEGER NOT NULL
     )";
-    tegdb.execute(create_table_sql).expect("Failed to create TegDB table");
+    tegdb
+        .execute(create_table_sql)
+        .expect("Failed to create TegDB table");
 
     // Insert test data
     for i in 1..=1000 {
@@ -45,7 +51,9 @@ fn main() {
     }
 
     // Prepare statement
-    let stmt = tegdb.prepare("SELECT id, name FROM items WHERE id = ?1").unwrap();
+    let stmt = tegdb
+        .prepare("SELECT id, name FROM items WHERE id = ?1")
+        .unwrap();
 
     // Profile loop
     let start = Instant::now();
@@ -55,10 +63,10 @@ fn main() {
         std::hint::black_box(&result);
     }
     let elapsed = start.elapsed();
-    println!("Profiled 10,000,000 PK lookup queries in {:?}", elapsed);
+    println!("Profiled 10,000,000 PK lookup queries in {elapsed:?}");
 
     // Clean up
     drop(stmt);
     drop(tegdb);
     let _ = fs::remove_file(&tegdb_path);
-} 
+}

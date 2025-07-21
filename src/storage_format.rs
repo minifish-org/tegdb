@@ -1,5 +1,5 @@
-use crate::query_processor::TableSchema;
 use crate::parser::SqlValue;
+use crate::query_processor::TableSchema;
 use crate::Result;
 use std::collections::HashMap;
 
@@ -232,8 +232,16 @@ impl StorageFormat {
             }
             crate::parser::Condition::Between { column, low, high } => {
                 if let Ok(val) = self.get_column_value(data, schema, column) {
-                    let ge = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::GreaterThanOrEqual, low);
-                    let le = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::LessThanOrEqual, high);
+                    let ge = crate::sql_utils::compare_values(
+                        &val,
+                        &crate::parser::ComparisonOperator::GreaterThanOrEqual,
+                        low,
+                    );
+                    let le = crate::sql_utils::compare_values(
+                        &val,
+                        &crate::parser::ComparisonOperator::LessThanOrEqual,
+                        high,
+                    );
                     Ok(ge && le)
                 } else {
                     let row_data = self.deserialize_row_full(data, schema)?;
@@ -437,8 +445,16 @@ impl StorageFormat {
             }
             crate::parser::Condition::Between { column, low, high } => {
                 if let Ok(val) = self.get_column_value_with_metadata(data, schema, column) {
-                    let ge = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::GreaterThanOrEqual, low);
-                    let le = crate::sql_utils::compare_values(&val, &crate::parser::ComparisonOperator::LessThanOrEqual, high);
+                    let ge = crate::sql_utils::compare_values(
+                        &val,
+                        &crate::parser::ComparisonOperator::GreaterThanOrEqual,
+                        low,
+                    );
+                    let le = crate::sql_utils::compare_values(
+                        &val,
+                        &crate::parser::ComparisonOperator::LessThanOrEqual,
+                        high,
+                    );
                     Ok(ge && le)
                 } else {
                     let row_data = self.deserialize_row_full_with_metadata(data, schema)?;
@@ -578,8 +594,15 @@ fn evaluate_condition_on_row(
         }
         crate::parser::Condition::Between { column, low, high } => {
             let val = row_data.get(column).unwrap_or(&SqlValue::Null);
-            crate::sql_utils::compare_values(val, &crate::parser::ComparisonOperator::GreaterThanOrEqual, low)
-                && crate::sql_utils::compare_values(val, &crate::parser::ComparisonOperator::LessThanOrEqual, high)
+            crate::sql_utils::compare_values(
+                val,
+                &crate::parser::ComparisonOperator::GreaterThanOrEqual,
+                low,
+            ) && crate::sql_utils::compare_values(
+                val,
+                &crate::parser::ComparisonOperator::LessThanOrEqual,
+                high,
+            )
         }
         crate::parser::Condition::And(left, right) => {
             evaluate_condition_on_row(left, row_data) && evaluate_condition_on_row(right, row_data)
@@ -593,8 +616,8 @@ fn evaluate_condition_on_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query_processor::{ColumnInfo, TableSchema};
     use crate::parser::{DataType, SqlValue};
+    use crate::query_processor::{ColumnInfo, TableSchema};
     use std::collections::HashMap;
 
     fn create_test_schema() -> TableSchema {
@@ -663,7 +686,7 @@ mod tests {
         let serialized = storage.serialize_row(&row_data, &schema).unwrap();
 
         // Only deserialize name and score
-        let columns = vec!["name".to_string(), "score".to_string()];
+        let columns = ["name".to_string(), "score".to_string()];
         let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
         let values = storage
             .get_columns(&serialized, &schema, &columns_ref)

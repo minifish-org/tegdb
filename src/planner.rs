@@ -4,11 +4,11 @@
 //! and generates optimized execution plans. The planner focuses on fast, predictable
 //! optimizations without complex cost estimation.
 
-use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::parser::{
     ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
     InsertStatement, SelectStatement, SqlValue, Statement, UpdateStatement,
 };
+use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::Result;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -145,9 +145,13 @@ impl QueryPlanner {
     /// Try to create a primary key lookup plan (exact equality)
     fn try_primary_key_lookup(&self, select: &SelectStatement) -> Result<Option<ExecutionPlan>> {
         if let Some(ref where_clause) = select.where_clause {
-            if let Some(pk_value) = self.extract_single_pk_equality(&select.table, &where_clause.condition)? {
-                let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-                let additional_filter = self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
+            if let Some(pk_value) =
+                self.extract_single_pk_equality(&select.table, &where_clause.condition)?
+            {
+                let selected_columns =
+                    self.normalize_selected_columns(&select.table, &select.columns)?;
+                let additional_filter =
+                    self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
                 return Ok(Some(ExecutionPlan::PrimaryKeyLookup {
                     table: select.table.clone(),
                     pk_value,
@@ -159,10 +163,16 @@ impl QueryPlanner {
         Ok(None)
     }
 
-    fn extract_single_pk_equality(&self, table_name: &str, condition: &Condition) -> Result<Option<SqlValue>> {
+    fn extract_single_pk_equality(
+        &self,
+        table_name: &str,
+        condition: &Condition,
+    ) -> Result<Option<SqlValue>> {
         let pk_columns = self.get_primary_key_columns(table_name)?;
         if pk_columns.len() != 1 {
-            return Err(crate::Error::Other("Composite primary keys are not supported".to_string()));
+            return Err(crate::Error::Other(
+                "Composite primary keys are not supported".to_string(),
+            ));
         }
         let pk_col = &pk_columns[0];
         let mut found = None;
@@ -172,7 +182,11 @@ impl QueryPlanner {
 
     fn find_pk_equality(cond: &Condition, pk_col: &str, found: &mut Option<SqlValue>) {
         match cond {
-            Condition::Comparison { left, operator, right } => {
+            Condition::Comparison {
+                left,
+                operator,
+                right,
+            } => {
                 if left == pk_col && matches!(operator, ComparisonOperator::Equal) {
                     *found = Some(right.clone());
                 }
@@ -264,7 +278,9 @@ impl QueryPlanner {
         // Create scan plan for the rows to update
         let scan_plan = if let Some(ref where_clause) = update.where_clause {
             // Try to optimize the scan based on WHERE clause
-            if let Some(pk_value) = self.extract_single_pk_equality(&update.table, &where_clause.condition)? {
+            if let Some(pk_value) =
+                self.extract_single_pk_equality(&update.table, &where_clause.condition)?
+            {
                 let pk_columns = self.get_primary_key_columns(&update.table)?;
                 if pk_columns.len() == 1 {
                     ExecutionPlan::PrimaryKeyLookup {
@@ -340,7 +356,9 @@ impl QueryPlanner {
         // Create scan plan for the rows to delete
         let scan_plan = if let Some(ref where_clause) = delete.where_clause {
             // Try to optimize the scan based on WHERE clause
-            if let Some(pk_value) = self.extract_single_pk_equality(&delete.table, &where_clause.condition)? {
+            if let Some(pk_value) =
+                self.extract_single_pk_equality(&delete.table, &where_clause.condition)?
+            {
                 let pk_columns = self.get_primary_key_columns(&delete.table)?;
                 if pk_columns.len() == 1 {
                     ExecutionPlan::PrimaryKeyLookup {
@@ -528,7 +546,11 @@ impl QueryPlanner {
                         .push((*operator, right.clone()));
                 }
             }
-            Condition::Between { column: _column, low: _low, high: _high } => {
+            Condition::Between {
+                column: _column,
+                low: _low,
+                high: _high,
+            } => {
                 if pk_columns.contains(_column) {
                     // Convert BETWEEN to >= and <= conditions for range optimization
                     pk_conditions
@@ -575,7 +597,11 @@ impl QueryPlanner {
                         Some(condition.clone()) // Keep non-PK conditions
                     }
                 }
-                Condition::Between { column: _column, low: _low, high: _high } => {
+                Condition::Between {
+                    column: _column,
+                    low: _low,
+                    high: _high,
+                } => {
                     if pk_columns.contains(_column) {
                         None // This is a PK condition, filter it out
                     } else {
@@ -700,11 +726,7 @@ impl ExecutionPlan {
             ExecutionPlan::PrimaryKeyLookup {
                 table, pk_value, ..
             } => {
-                format!(
-                    "Primary Key Lookup on {} (key: {:?})",
-                    table,
-                    pk_value
-                )
+                format!("Primary Key Lookup on {table} (key: {pk_value:?})")
             }
             ExecutionPlan::TableRangeScan {
                 table, pk_range, ..
@@ -751,8 +773,8 @@ impl ExecutionPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query_processor::{ColumnInfo, TableSchema};
     use crate::parser::{ColumnConstraint, DataType, SqlValue, Statement, WhereClause};
+    use crate::query_processor::{ColumnInfo, TableSchema};
     use std::collections::HashMap;
     use std::rc::Rc;
 

@@ -79,7 +79,8 @@ fn main() -> Result<()> {
     println!("\n2. Testing plan caching with INSERT statements...");
 
     // Prepare an INSERT statement
-    let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?1, ?2, ?3, ?4)")?;
+    let insert_stmt =
+        db.prepare("INSERT INTO users (id, name, age, city) VALUES (?1, ?2, ?3, ?4)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
 
     // Execute multiple inserts

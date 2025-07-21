@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
 use std::hint::black_box;
-use tegdb::query_processor::{ColumnInfo, TableSchema};
 use tegdb::parser::{DataType, SqlValue};
+use tegdb::query_processor::{ColumnInfo, TableSchema};
 use tegdb::storage_format::StorageFormat;
 
 /// Create a test schema with fixed-length columns
@@ -114,7 +114,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     });
 
     // Benchmark 5: Partial column deserialization
-    let column_names = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+    let column_names = ["id".to_string(), "name".to_string(), "score".to_string()];
     let column_refs: Vec<&str> = column_names.iter().map(|s| s.as_str()).collect();
     c.bench_function("partial_column_deserialization", |b| {
         b.iter(|| {
@@ -143,7 +143,11 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let mut values = Vec::new();
             for &index in &column_indices {
-                values.push(storage.get_column_by_index(black_box(&serialized_data), black_box(&schema), index).unwrap());
+                values.push(
+                    storage
+                        .get_column_by_index(black_box(&serialized_data), black_box(&schema), index)
+                        .unwrap(),
+                );
             }
             values
         })

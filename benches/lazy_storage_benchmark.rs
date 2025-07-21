@@ -227,7 +227,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     // 12. Old approach: deserialize columns
     c.bench_function("old_deserialize_columns", |b| {
         b.iter(|| {
-            let columns = vec!["id".to_string(), "value".to_string()];
+            let columns = ["id".to_string(), "value".to_string()];
             let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
             let _values = storage_format
                 .get_columns(

@@ -1,11 +1,11 @@
 use std::{env, fs, path::PathBuf};
+#[cfg(not(feature = "dev"))]
+use tegdb::Result;
 #[cfg(feature = "dev")]
 use tegdb::{
     low_level::{EngineConfig, StorageEngine},
     Result,
 };
-#[cfg(not(feature = "dev"))]
-use tegdb::Result;
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {

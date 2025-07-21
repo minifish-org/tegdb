@@ -170,7 +170,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     // ===== PARTIAL DESERIALIZATION BENCHMARKS =====
 
     c.bench_function("deserialize_columns_single", |b| {
-        let columns = vec!["id".to_string()];
+        let columns = ["id".to_string()];
         let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
         b.iter(|| {
             let values = storage_format
@@ -185,7 +185,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     c.bench_function("deserialize_columns_multiple", |b| {
-        let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+        let columns = ["id".to_string(), "name".to_string(), "score".to_string()];
         let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
         b.iter(|| {
             let values = storage_format
@@ -200,9 +200,16 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     });
 
     c.bench_function("deserialize_column_indices", |b| {
-        let indices = vec![0, 1, 2]; // id, name, score
+        let indices = [0, 1, 2]; // id, name, score
         b.iter(|| {
-            let values: Vec<_> = indices.iter().map(|&i| storage_format.get_column_by_index(black_box(&serialized_small), black_box(&schema), i).unwrap()).collect();
+            let values: Vec<_> = indices
+                .iter()
+                .map(|&i| {
+                    storage_format
+                        .get_column_by_index(black_box(&serialized_small), black_box(&schema), i)
+                        .unwrap()
+                })
+                .collect();
             black_box(values);
         })
     });
@@ -216,7 +223,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("deserialize_columns_fast", |b| {
         b.iter(|| {
-            let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+            let columns = ["id".to_string(), "name".to_string(), "score".to_string()];
             let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
             let values = storage_format
                 .get_columns(
@@ -231,8 +238,15 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("deserialize_column_indices_fast", |b| {
         b.iter(|| {
-            let indices = vec![0, 1, 2]; // id, name, score
-            let values: Vec<_> = indices.iter().map(|&i| storage_format.get_column_by_index(black_box(&serialized_small), black_box(&schema), i).unwrap()).collect();
+            let indices = [0, 1, 2]; // id, name, score
+            let values: Vec<_> = indices
+                .iter()
+                .map(|&i| {
+                    storage_format
+                        .get_column_by_index(black_box(&serialized_small), black_box(&schema), i)
+                        .unwrap()
+                })
+                .collect();
             black_box(values);
         })
     });
@@ -307,7 +321,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             let mut results = Vec::new();
             for serialized_row in &serialized_rows {
                 // Simulate: SELECT id, name FROM table WHERE id = 25
-                let columns = vec!["id".to_string(), "name".to_string()];
+                let columns = ["id".to_string(), "name".to_string()];
                 let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
                 let values = storage_format
                     .get_columns(serialized_row, &schema, &columns_ref)
@@ -335,7 +349,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             let mut total_score = 0.0;
             for serialized_row in &serialized_rows {
                 // Extract only the score column for aggregation
-                let columns = vec!["score".to_string()];
+                let columns = ["score".to_string()];
                 let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
                 let values = storage_format
                     .get_columns(serialized_row, &schema, &columns_ref)
@@ -353,7 +367,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("zero_allocation_column_access", |b| {
         // Use the public API to extract just the id column
-        let columns = vec!["id".to_string()];
+        let columns = ["id".to_string()];
 
         b.iter(|| {
             // Direct access using public API
@@ -444,7 +458,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             // Simulate complex query processing using public API
             for serialized_row in &serialized_rows {
                 // Extract multiple columns efficiently using public API
-                let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+                let columns = ["id".to_string(), "name".to_string(), "score".to_string()];
                 let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
                 let values = storage_format
                     .get_columns(serialized_row, &schema, &columns_ref)

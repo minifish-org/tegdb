@@ -198,8 +198,8 @@ impl Default for Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query_processor::{ColumnInfo, TableSchema};
     use crate::parser::{ColumnConstraint, DataType};
+    use crate::query_processor::{ColumnInfo, TableSchema};
 
     #[test]
     fn test_catalog_basic_operations() {

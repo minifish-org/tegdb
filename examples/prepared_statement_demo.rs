@@ -68,7 +68,8 @@ fn main() -> Result<()> {
     println!("\n3. Preparing INSERT statement with parameters...");
 
     // Prepare an INSERT statement with parameters
-    let insert_stmt = db.prepare("INSERT INTO users (id, name, age, city) VALUES (?1, ?2, ?3, ?4)")?;
+    let insert_stmt =
+        db.prepare("INSERT INTO users (id, name, age, city) VALUES (?1, ?2, ?3, ?4)")?;
     println!("   → Prepared statement: {}", insert_stmt.sql());
     println!("   → Parameter count: {}", insert_stmt.parameter_count());
 

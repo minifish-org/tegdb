@@ -95,7 +95,9 @@ fn main() {
     println!("\n🔄 Benchmarking Deserialization...");
     let start = Instant::now();
     for _ in 0..iterations {
-        let _deserialized = storage.deserialize_row_full(&serialized_data, &schema).unwrap();
+        let _deserialized = storage
+            .deserialize_row_full(&serialized_data, &schema)
+            .unwrap();
     }
     let deserialization_time = start.elapsed();
 
@@ -107,7 +109,7 @@ fn main() {
 
     // Benchmark 3: Partial Column Access
     println!("\n🎯 Benchmarking Partial Column Access...");
-    let column_names = vec!["id".to_string(), "name".to_string()];
+    let column_names = ["id".to_string(), "name".to_string()];
     let column_refs: Vec<&str> = column_names.iter().map(|s| s.as_str()).collect();
 
     let start = Instant::now();
