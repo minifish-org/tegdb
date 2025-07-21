@@ -20,8 +20,8 @@
 //! - `transaction_parsing_tests.rs` - Transaction statement parsing
 //! - `explicit_transaction_integration_tests.rs` - Explicit transaction handling
 //! - `planner_database_integration_test.rs` - Planner-database integration
-//! - `executor_validation_test.rs` - Query execution validation
-//! - `executor_acid_tests_new.rs` - ACID compliance testing
+//! - `query_processor_validation_test.rs` - Query execution validation
+//! - `query_processor_acid_tests_new.rs` - ACID compliance testing
 //! - `query_iterator_test.rs` - Query result iteration
 //! - `read_only_transaction_test.rs` - Read-only transaction optimization
 //! - `schema_persistence_test.rs` - Schema persistence across sessions

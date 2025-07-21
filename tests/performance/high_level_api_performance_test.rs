@@ -614,7 +614,7 @@ fn measure_sql_execution(
 
     // Get schemas for planner and convert to Rc format
     let schemas = db.get_table_schemas();
-    let rc_schemas: HashMap<String, std::rc::Rc<tegdb::executor::TableSchema>> = schemas
+    let rc_schemas: HashMap<String, std::rc::Rc<tegdb::query_processor::TableSchema>> = schemas
         .into_iter()
         .map(|(k, v)| (k, std::rc::Rc::new(v)))
         .collect();

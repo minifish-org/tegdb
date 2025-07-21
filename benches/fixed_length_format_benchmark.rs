@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
 use std::hint::black_box;
-use tegdb::executor::{ColumnInfo, TableSchema};
+use tegdb::query_processor::{ColumnInfo, TableSchema};
 use tegdb::parser::{DataType, SqlValue};
 use tegdb::storage_format::StorageFormat;
 
@@ -108,20 +108,21 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     c.bench_function("row_deserialization", |b| {
         b.iter(|| {
             let _deserialized = storage
-                .deserialize_row(black_box(&serialized_data), black_box(&schema))
+                .deserialize_row_full(black_box(&serialized_data), black_box(&schema))
                 .unwrap();
         })
     });
 
     // Benchmark 5: Partial column deserialization
     let column_names = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+    let column_refs: Vec<&str> = column_names.iter().map(|s| s.as_str()).collect();
     c.bench_function("partial_column_deserialization", |b| {
         b.iter(|| {
             let _values = storage
-                .deserialize_columns(
+                .get_columns(
                     black_box(&serialized_data),
                     black_box(&schema),
-                    black_box(&column_names),
+                    black_box(&column_refs),
                 )
                 .unwrap();
         })
@@ -131,7 +132,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     c.bench_function("single_column_by_index", |b| {
         b.iter(|| {
             let _value = storage
-                .deserialize_column_by_index(black_box(&serialized_data), black_box(&schema), 0)
+                .get_column_by_index(black_box(&serialized_data), black_box(&schema), 0)
                 .unwrap();
         })
     });
@@ -140,13 +141,11 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     let column_indices = vec![0, 1, 4]; // id, name, score
     c.bench_function("multiple_columns_by_index", |b| {
         b.iter(|| {
-            let _values = storage
-                .deserialize_column_indices(
-                    black_box(&serialized_data),
-                    black_box(&schema),
-                    black_box(&column_indices),
-                )
-                .unwrap();
+            let mut values = Vec::new();
+            for &index in &column_indices {
+                values.push(storage.get_column_by_index(black_box(&serialized_data), black_box(&schema), index).unwrap());
+            }
+            values
         })
     });
 
@@ -239,7 +238,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
     c.bench_function("large_row_deserialization", |b| {
         b.iter(|| {
             let _deserialized = storage
-                .deserialize_row(black_box(&large_serialized), black_box(&large_schema))
+                .deserialize_row_full(black_box(&large_serialized), black_box(&large_schema))
                 .unwrap();
         })
     });

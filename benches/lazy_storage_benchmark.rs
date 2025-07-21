@@ -39,10 +39,10 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     }
 
     let storage_format = tegdb::storage_format::StorageFormat::new();
-    let mut test_schema = tegdb::executor::TableSchema {
+    let mut test_schema = tegdb::query_processor::TableSchema {
         name: "test".to_string(),
         columns: vec![
-            tegdb::executor::ColumnInfo {
+            tegdb::query_processor::ColumnInfo {
                 name: "id".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
@@ -50,7 +50,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
                 storage_size: 0,
                 storage_type_code: 0,
             },
-            tegdb::executor::ColumnInfo {
+            tegdb::query_processor::ColumnInfo {
                 name: "value".to_string(),
                 data_type: tegdb::parser::DataType::Integer,
                 constraints: vec![],
@@ -58,7 +58,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
                 storage_size: 0,
                 storage_type_code: 0,
             },
-            tegdb::executor::ColumnInfo {
+            tegdb::query_processor::ColumnInfo {
                 name: "name".to_string(),
                 data_type: tegdb::parser::DataType::Text(Some(10)),
                 constraints: vec![],
@@ -219,7 +219,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("old_full_deserialization", |b| {
         b.iter(|| {
             let _row_data = storage_format
-                .deserialize_row(black_box(&serialized_data), black_box(&test_schema))
+                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
                 .unwrap();
         })
     });
@@ -227,11 +227,13 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     // 12. Old approach: deserialize columns
     c.bench_function("old_deserialize_columns", |b| {
         b.iter(|| {
+            let columns = vec!["id".to_string(), "value".to_string()];
+            let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
             let _values = storage_format
-                .deserialize_columns(
+                .get_columns(
                     black_box(&serialized_data),
                     black_box(&test_schema),
-                    &["id".to_string(), "value".to_string()],
+                    &columns_ref,
                 )
                 .unwrap();
         })
@@ -287,7 +289,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
         b.iter(|| {
             // Simulate old approach memory usage
             let _row_data = storage_format
-                .deserialize_row(&serialized_data, &test_schema)
+                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
                 .unwrap();
         })
     });
@@ -305,7 +307,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     c.bench_function("old_string_operations", |b| {
         b.iter(|| {
             let row_data = storage_format
-                .deserialize_row(&serialized_data, &test_schema)
+                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
                 .unwrap();
             let _name = row_data.get("name").unwrap();
         })
@@ -327,7 +329,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
         b.iter(|| {
             // Old approach: HashMap created every time
             let _row_data = storage_format
-                .deserialize_row(&serialized_data, &test_schema)
+                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
                 .unwrap();
         })
     });

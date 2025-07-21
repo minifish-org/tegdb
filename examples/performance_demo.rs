@@ -95,7 +95,7 @@ fn main() {
     println!("\n🔄 Benchmarking Deserialization...");
     let start = Instant::now();
     for _ in 0..iterations {
-        let _deserialized = storage.deserialize_row(&serialized_data, &schema).unwrap();
+        let _deserialized = storage.deserialize_row_full(&serialized_data, &schema).unwrap();
     }
     let deserialization_time = start.elapsed();
 
@@ -108,11 +108,12 @@ fn main() {
     // Benchmark 3: Partial Column Access
     println!("\n🎯 Benchmarking Partial Column Access...");
     let column_names = vec!["id".to_string(), "name".to_string()];
+    let column_refs: Vec<&str> = column_names.iter().map(|s| s.as_str()).collect();
 
     let start = Instant::now();
     for _ in 0..iterations {
         let _values = storage
-            .deserialize_columns(&serialized_data, &schema, &column_names)
+            .get_columns(&serialized_data, &schema, &column_refs)
             .unwrap();
     }
     let partial_time = start.elapsed();
@@ -125,7 +126,7 @@ fn main() {
     let start = Instant::now();
     for _ in 0..iterations {
         let _value = storage
-            .deserialize_column_by_index(&serialized_data, &schema, 0)
+            .get_column_by_index(&serialized_data, &schema, 0)
             .unwrap();
     }
     let single_time = start.elapsed();
@@ -212,7 +213,7 @@ fn main() {
     let start = Instant::now();
     for _ in 0..large_iterations {
         let _deserialized = storage
-            .deserialize_row(&large_serialized, &large_schema)
+            .deserialize_row_full(&large_serialized, &large_schema)
             .unwrap();
     }
     let large_deserialization_time = start.elapsed();

@@ -175,11 +175,6 @@ required-features = ["dev"]
 # Removed database_tests - file deleted
 
 [[test]]
-name = "executor_acid_tests_new"
-path = "tests/integration/executor_acid_tests_new.rs"
-required-features = ["dev"]
-
-[[test]]
 name = "query_iterator_test"
 path = "tests/integration/query_iterator_test.rs"
 required-features = ["dev"]
@@ -207,11 +202,6 @@ required-features = ["dev"]
 [[test]]
 name = "commit_marker_tests"
 path = "tests/integration/commit_marker_tests.rs"
-required-features = ["dev"]
-
-[[test]]
-name = "executor_validation_test"
-path = "tests/integration/executor_validation_test.rs"
 required-features = ["dev"]
 
 [[test]]

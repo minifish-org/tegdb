@@ -5,8 +5,8 @@ pub mod commit_marker_tests;
 // Removed database_tests module
 pub mod drop_table_integration_test;
 pub mod engine_tests;
-pub mod executor_acid_tests_new;
-pub mod executor_validation_test;
+pub mod query_processor_acid_tests_new;
+pub mod query_processor_validation_test;
 pub mod explicit_transaction_integration_tests;
 pub mod planner_database_integration_test;
 pub mod query_iterator_test;

@@ -949,7 +949,7 @@ impl<'a> QueryProcessor<'a> {
 
         for key in keys_to_update {
             if let Some(value) = self.transaction.get(&key.to_storage_bytes()) {
-                if let Ok(old_row_data) = self.storage_format.deserialize_row(&value, &schema) {
+                if let Ok(old_row_data) = self.storage_format.deserialize_row_full(&value, &schema) {
                     let mut row_data = old_row_data.clone();
 
                     // Apply assignments

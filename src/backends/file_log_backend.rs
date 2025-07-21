@@ -9,10 +9,6 @@ use crate::log::LogBackend;
 use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::protocol_utils::parse_storage_identifier;
 
-/// Type alias for uncommitted changes list
-#[allow(dead_code)]
-type UncommittedChanges = Vec<(Vec<u8>, Option<Rc<[u8]>>)>;
-
 /// File-based storage backend for native platforms
 #[cfg(not(target_arch = "wasm32"))]
 pub struct FileLogBackend {
@@ -57,7 +53,7 @@ impl LogBackend for FileLogBackend {
 
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
         let mut key_map = KeyMap::new();
-        let mut uncommitted_changes: UncommittedChanges = Vec::new();
+        let mut uncommitted_changes: Vec<(Vec<u8>, Option<Rc<[u8]>>)> = Vec::new();
         let file_len = self.file.metadata()?.len();
         let mut reader = std::io::BufReader::new(&mut self.file);
         let mut pos = reader.seek(SeekFrom::Start(0))?;

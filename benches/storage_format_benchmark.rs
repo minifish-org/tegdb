@@ -152,7 +152,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     c.bench_function("deserialize_row_full_small", |b| {
         b.iter(|| {
             let deserialized = storage_format
-                .deserialize_row(black_box(&serialized_small), black_box(&schema))
+                .deserialize_row_full(black_box(&serialized_small), black_box(&schema))
                 .unwrap();
             black_box(deserialized);
         })
@@ -161,7 +161,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     c.bench_function("deserialize_row_full_large", |b| {
         b.iter(|| {
             let deserialized = storage_format
-                .deserialize_row(black_box(&serialized_large), black_box(&schema))
+                .deserialize_row_full(black_box(&serialized_large), black_box(&schema))
                 .unwrap();
             black_box(deserialized);
         })
@@ -171,12 +171,13 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("deserialize_columns_single", |b| {
         let columns = vec!["id".to_string()];
+        let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
         b.iter(|| {
             let values = storage_format
-                .deserialize_columns(
+                .get_columns(
                     black_box(&serialized_small),
                     black_box(&schema),
-                    black_box(&columns),
+                    black_box(&columns_ref),
                 )
                 .unwrap();
             black_box(values);
@@ -185,12 +186,13 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("deserialize_columns_multiple", |b| {
         let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+        let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
         b.iter(|| {
             let values = storage_format
-                .deserialize_columns(
+                .get_columns(
                     black_box(&serialized_small),
                     black_box(&schema),
-                    black_box(&columns),
+                    black_box(&columns_ref),
                 )
                 .unwrap();
             black_box(values);
@@ -200,13 +202,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
     c.bench_function("deserialize_column_indices", |b| {
         let indices = vec![0, 1, 2]; // id, name, score
         b.iter(|| {
-            let values = storage_format
-                .deserialize_column_indices(
-                    black_box(&serialized_small),
-                    black_box(&schema),
-                    black_box(&indices),
-                )
-                .unwrap();
+            let values: Vec<_> = indices.iter().map(|&i| storage_format.get_column_by_index(black_box(&serialized_small), black_box(&schema), i).unwrap()).collect();
             black_box(values);
         })
     });
@@ -220,13 +216,13 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("deserialize_columns_fast", |b| {
         b.iter(|| {
-            // Use the public deserialize_columns method with pre-computed column names
             let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+            let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
             let values = storage_format
-                .deserialize_columns(
+                .get_columns(
                     black_box(&serialized_small),
                     black_box(&schema),
-                    black_box(&columns),
+                    black_box(&columns_ref),
                 )
                 .unwrap();
             black_box(values);
@@ -235,15 +231,8 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
     c.bench_function("deserialize_column_indices_fast", |b| {
         b.iter(|| {
-            // Use the public deserialize_column_indices method
             let indices = vec![0, 1, 2]; // id, name, score
-            let values = storage_format
-                .deserialize_column_indices(
-                    black_box(&serialized_small),
-                    black_box(&schema),
-                    black_box(&indices),
-                )
-                .unwrap();
+            let values: Vec<_> = indices.iter().map(|&i| storage_format.get_column_by_index(black_box(&serialized_small), black_box(&schema), i).unwrap()).collect();
             black_box(values);
         })
     });
@@ -319,8 +308,9 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             for serialized_row in &serialized_rows {
                 // Simulate: SELECT id, name FROM table WHERE id = 25
                 let columns = vec!["id".to_string(), "name".to_string()];
+                let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
                 let values = storage_format
-                    .deserialize_columns(serialized_row, &schema, &columns)
+                    .get_columns(serialized_row, &schema, &columns_ref)
                     .unwrap();
 
                 // Simulate condition check
@@ -346,8 +336,9 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             for serialized_row in &serialized_rows {
                 // Extract only the score column for aggregation
                 let columns = vec!["score".to_string()];
+                let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
                 let values = storage_format
-                    .deserialize_columns(serialized_row, &schema, &columns)
+                    .get_columns(serialized_row, &schema, &columns_ref)
                     .unwrap();
 
                 if let SqlValue::Real(score) = values[0] {
@@ -366,8 +357,9 @@ fn storage_format_benchmarks(c: &mut Criterion) {
 
         b.iter(|| {
             // Direct access using public API
+            let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
             let values = storage_format
-                .deserialize_columns(&serialized_small, &schema, &columns)
+                .get_columns(&serialized_small, &schema, &columns_ref)
                 .unwrap();
             black_box(values[0].clone());
         })
@@ -453,8 +445,9 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             for serialized_row in &serialized_rows {
                 // Extract multiple columns efficiently using public API
                 let columns = vec!["id".to_string(), "name".to_string(), "score".to_string()];
+                let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
                 let values = storage_format
-                    .deserialize_columns(serialized_row, &schema, &columns)
+                    .get_columns(serialized_row, &schema, &columns_ref)
                     .unwrap();
 
                 // Simulate filtering and transformation

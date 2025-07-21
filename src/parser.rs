@@ -14,16 +14,6 @@ use nom::{
 };
 use std::collections::HashMap;
 
-// Global parameter counter for tracking parameter indices
-static mut PARAM_COUNTER: usize = 0;
-
-/// Reset the global parameter counter
-fn reset_param_counter() {
-    unsafe {
-        PARAM_COUNTER = 0;
-    }
-}
-
 fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
     let (input, first_char) = alpha1.parse(input)?;
     let (input, rest) = many0(alt((alphanumeric1, tag("_")))).parse(input)?;
@@ -311,7 +301,6 @@ pub enum ArithmeticOperator {
 
 /// Parse SQL and assign unique parameter indices
 pub fn parse_sql(input: &str) -> Result<Statement, String> {
-    reset_param_counter();
     let (remaining, statement) = parse_statement
         .parse(input)
         .map_err(|e| format!("Parse error: {e:?}"))?;

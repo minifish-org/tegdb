@@ -1,4 +1,4 @@
-use crate::executor::TableSchema;
+use crate::query_processor::TableSchema;
 use crate::parser::SqlValue;
 use crate::Result;
 use std::collections::HashMap;
@@ -304,50 +304,7 @@ impl StorageFormat {
         Ok(schema.columns.iter().map(|col| col.storage_size).sum())
     }
 
-    // Backward compatibility methods
-    pub fn deserialize_row(
-        &self,
-        data: &[u8],
-        schema: &TableSchema,
-    ) -> Result<HashMap<String, SqlValue>> {
-        self.deserialize_row_full(data, schema)
-    }
-
-    /// Deserialize specific columns by name using embedded metadata
-    pub fn deserialize_columns(
-        &self,
-        data: &[u8],
-        schema: &TableSchema,
-        column_names: &[String],
-    ) -> Result<Vec<SqlValue>> {
-        let mut result = Vec::with_capacity(column_names.len());
-        for column_name in column_names {
-            result.push(self.get_column_value(data, schema, column_name)?);
-        }
-        Ok(result)
-    }
-
-    pub fn deserialize_column_by_index(
-        &self,
-        data: &[u8],
-        schema: &TableSchema,
-        column_index: usize,
-    ) -> Result<SqlValue> {
-        self.get_column_by_index(data, schema, column_index)
-    }
-
-    pub fn deserialize_column_indices(
-        &self,
-        data: &[u8],
-        schema: &TableSchema,
-        column_indices: &[usize],
-    ) -> Result<Vec<SqlValue>> {
-        let mut result = Vec::with_capacity(column_indices.len());
-        for &index in column_indices {
-            result.push(self.get_column_by_index(data, schema, index)?);
-        }
-        Ok(result)
-    }
+    // Remove backward compatibility methods if unused
 
     /// Get a single column value by name (zero-copy) - with cached metadata
     pub fn get_column_value_with_metadata(
@@ -636,7 +593,7 @@ fn evaluate_condition_on_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::{ColumnInfo, TableSchema};
+    use crate::query_processor::{ColumnInfo, TableSchema};
     use crate::parser::{DataType, SqlValue};
     use std::collections::HashMap;
 
@@ -684,7 +641,7 @@ mod tests {
         row_data.insert("score".to_string(), SqlValue::Real(95.5));
 
         let serialized = storage.serialize_row(&row_data, &schema).unwrap();
-        let deserialized = storage.deserialize_row(&serialized, &schema).unwrap();
+        let deserialized = storage.deserialize_row_full(&serialized, &schema).unwrap();
 
         assert_eq!(deserialized.get("id"), Some(&SqlValue::Integer(123)));
         assert_eq!(
@@ -707,8 +664,9 @@ mod tests {
 
         // Only deserialize name and score
         let columns = vec!["name".to_string(), "score".to_string()];
+        let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
         let values = storage
-            .deserialize_columns(&serialized, &schema, &columns)
+            .get_columns(&serialized, &schema, &columns_ref)
             .unwrap();
 
         assert_eq!(values.len(), 2);

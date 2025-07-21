@@ -135,10 +135,10 @@ fn bottleneck_analysis(c: &mut Criterion) {
     // Create test data for deserialization
     let storage_format = tegdb::storage_format::StorageFormat::new();
     let test_schema = {
-        let mut schema = tegdb::executor::TableSchema {
+        let mut schema = tegdb::query_processor::TableSchema {
             name: "test".to_string(),
             columns: vec![
-                tegdb::executor::ColumnInfo {
+                tegdb::query_processor::ColumnInfo {
                     name: "id".to_string(),
                     data_type: tegdb::parser::DataType::Integer,
                     constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
@@ -146,7 +146,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
                     storage_size: 0,
                     storage_type_code: 0,
                 },
-                tegdb::executor::ColumnInfo {
+                tegdb::query_processor::ColumnInfo {
                     name: "value".to_string(),
                     data_type: tegdb::parser::DataType::Integer,
                     constraints: vec![],
@@ -174,7 +174,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     group.bench_function("deserialize_full_row", |b| {
         b.iter(|| {
             let _result = storage_format
-                .deserialize_row(black_box(&serialized_data), black_box(&test_schema))
+                .deserialize_row_full(black_box(&serialized_data), black_box(&test_schema))
                 .unwrap();
             black_box(_result);
         });
@@ -183,12 +183,9 @@ fn bottleneck_analysis(c: &mut Criterion) {
     group.bench_function("deserialize_partial_columns", |b| {
         b.iter(|| {
             let columns = vec!["id".to_string()];
+            let columns_ref: Vec<&str> = columns.iter().map(|s| s.as_str()).collect();
             let _result = storage_format
-                .deserialize_columns(
-                    black_box(&serialized_data),
-                    black_box(&test_schema),
-                    black_box(&columns),
-                )
+                .get_columns(black_box(&serialized_data), black_box(&test_schema), &columns_ref)
                 .unwrap();
             black_box(_result);
         });

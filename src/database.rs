@@ -4,7 +4,7 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::catalog::Catalog;
-use crate::executor::{QueryProcessor, TableSchema, QuerySchema};
+use crate::query_processor::{QueryProcessor, TableSchema, QuerySchema};
 use crate::parser::{parse_sql, SqlValue, Statement};
 use crate::planner::{ExecutionPlan, QueryPlanner};
 use crate::storage_engine::StorageEngine;
@@ -126,17 +126,6 @@ impl PreparedStatement {
     /// Get the original SQL
     pub fn sql(&self) -> &str {
         &self.sql
-    }
-
-    /// Debug method to inspect the execution plan (for debugging only)
-    #[cfg(feature = "dev")]
-    pub fn debug_execution_plan(&self) -> &ExecutionPlan {
-        // This method is no longer applicable as execution plans are not cached
-        // and parameter binding is done at execution time.
-        // For now, we'll return a placeholder or remove it if not needed.
-        // Given the new_planner.plan(statement) call, we can't easily get the plan here.
-        // For now, we'll return a placeholder.
-        unimplemented!("debug_execution_plan is no longer applicable for prepared statements.");
     }
 }
 
@@ -299,7 +288,7 @@ impl Database {
                 // Execute and immediately collect results
                 let result = processor.execute_plan(plan)?;
                 match result {
-                    crate::executor::ResultSet::Select { columns, rows } => {
+                    crate::query_processor::ResultSet::Select { columns, rows } => {
                         // Collect all rows from the iterator
                         let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> =
                             rows.collect();
@@ -344,15 +333,15 @@ impl Database {
 
         // Process the result immediately to avoid lifetime conflicts
         let final_result = match result {
-            crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Update { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::executor::ResultSet::CreateTable => 0,
-            crate::executor::ResultSet::DropTable => 0,
-            crate::executor::ResultSet::Begin => 0,
-            crate::executor::ResultSet::Commit => 0,
-            crate::executor::ResultSet::Rollback => 0,
-            crate::executor::ResultSet::Select { .. } => {
+            crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
+            crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
+            crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
+            crate::query_processor::ResultSet::CreateTable => 0,
+            crate::query_processor::ResultSet::DropTable => 0,
+            crate::query_processor::ResultSet::Begin => 0,
+            crate::query_processor::ResultSet::Commit => 0,
+            crate::query_processor::ResultSet::Rollback => 0,
+            crate::query_processor::ResultSet::Select { .. } => {
                 return Err(crate::Error::Other(
                     "execute() should not be used for SELECT statements. Use query() instead."
                         .to_string(),
@@ -460,15 +449,15 @@ impl Database {
         let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
         let result = processor.execute_plan(plan)?;
         let final_result = match result {
-            crate::executor::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Update { rows_affected } => rows_affected,
-            crate::executor::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::executor::ResultSet::CreateTable => 0,
-            crate::executor::ResultSet::DropTable => 0,
-            crate::executor::ResultSet::Begin => 0,
-            crate::executor::ResultSet::Commit => 0,
-            crate::executor::ResultSet::Rollback => 0,
-            crate::executor::ResultSet::Select { .. } => {
+            crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
+            crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
+            crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
+            crate::query_processor::ResultSet::CreateTable => 0,
+            crate::query_processor::ResultSet::DropTable => 0,
+            crate::query_processor::ResultSet::Begin => 0,
+            crate::query_processor::ResultSet::Commit => 0,
+            crate::query_processor::ResultSet::Rollback => 0,
+            crate::query_processor::ResultSet::Select { .. } => {
                 return Err(crate::Error::Other(
                     "execute_prepared() should not be used for SELECT statements. Use query_prepared() instead."
                         .to_string(),
@@ -506,7 +495,7 @@ impl Database {
             None => processor.execute_plan(plan),
         }?;
         match result {
-            crate::executor::ResultSet::Select { columns, rows } => {
+            crate::query_processor::ResultSet::Select { columns, rows } => {
                 let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
                 let final_rows = collected_rows?;
                 Ok(QueryResult {
@@ -707,10 +696,10 @@ impl DatabaseTransaction<'_> {
         Database::update_schema_catalog_for_ddl(self.catalog, &statement);
 
         match result {
-            crate::executor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Update { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
-            crate::executor::ResultSet::CreateTable => Ok(0),
+            crate::query_processor::ResultSet::Insert { rows_affected } => Ok(rows_affected),
+            crate::query_processor::ResultSet::Update { rows_affected } => Ok(rows_affected),
+            crate::query_processor::ResultSet::Delete { rows_affected } => Ok(rows_affected),
+            crate::query_processor::ResultSet::CreateTable => Ok(0),
             _ => Ok(0),
         }
     }

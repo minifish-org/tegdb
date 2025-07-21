@@ -65,7 +65,7 @@ fn test_schema_loading_performance() -> Result<()> {
             println!("Time for 5 queries: {query_time:?}");
 
             // With the new implementation, schema loading happens once at database open,
-            // not for each executor/query
+            // not for each query_processor/query
             assert!(schema_load_time.as_millis() < 1000); // Should be reasonable
             assert!(query_time.as_millis() < 500); // Should also be fast
         }
