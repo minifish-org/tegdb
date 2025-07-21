@@ -1,20 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
-use std::env;
 use std::hint::black_box;
-use std::path::PathBuf;
 use tegdb::{ColumnInfo, DataType, SqlValue, StorageFormat, TableSchema};
-
-/// Creates a unique temporary file path for benchmarks
-fn temp_db_path(prefix: &str) -> PathBuf {
-    let mut path = env::temp_dir();
-    path.push(format!(
-        "tegdb_storage_bench_{}_{}",
-        prefix,
-        std::process::id()
-    ));
-    path
-}
 
 /// Create a test schema with various data types
 fn create_test_schema() -> TableSchema {

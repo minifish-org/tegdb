@@ -125,7 +125,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     group.bench_function("storage_scan_empty", |b| {
         b.iter(|| {
             let _result = engine.scan(b"test:".to_vec()..b"test~".to_vec());
-            black_box(_result);
+            let _ = black_box(_result);
         });
     });
 
