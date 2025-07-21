@@ -215,11 +215,6 @@ path = "tests/performance/high_level_api_performance_test.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "schema_performance_test"
-path = "tests/performance/schema_performance_test.rs"
-required-features = ["dev"]
-
-[[test]]
 name = "arithmetic_expressions_test"
 path = "tests/arithmetic/arithmetic_expressions_test.rs"
 required-features = ["dev"]
