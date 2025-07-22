@@ -463,9 +463,6 @@ impl Database {
         }
         // Use plan template if available and valid
         if let Some(ref plan_template) = stmt.plan_template {
-            // DEBUG: Plan template cache hit for DML (INSERT/UPDATE/DELETE)
-            #[cfg(debug_assertions)]
-            eprintln!("[tegdb] Plan template cache HIT for DML: {}", stmt.sql());
             let instantiated_plan = instantiate_plan_with_params(plan_template, params);
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
             let transaction = self.storage.begin_transaction();
@@ -539,9 +536,6 @@ impl Database {
         }
         // Use plan template if available and valid
         if let Some(ref plan_template) = stmt.plan_template {
-            // DEBUG: Plan template cache hit for SELECT PK lookup, range scan, or table scan
-            #[cfg(debug_assertions)]
-            eprintln!("[tegdb] Plan template cache HIT for SELECT: {}", stmt.sql());
             let instantiated_plan = instantiate_plan_with_params(plan_template, params);
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
             let transaction = self.storage.begin_transaction();
