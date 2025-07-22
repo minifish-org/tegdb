@@ -24,6 +24,12 @@ pub enum TypeCode {
 
 // Remove LazyRow struct, its methods, and create_lazy_row function
 
+impl Default for StorageFormat {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StorageFormat {
     /// Create a new storage format
     pub fn new() -> Self {

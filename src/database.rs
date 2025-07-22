@@ -868,7 +868,7 @@ fn plan_has_param(plan: &crate::planner::ExecutionPlan) -> bool {
             matches!(pk_value, SqlValue::Parameter(_))
                 || additional_filter
                     .as_ref()
-                    .map_or(false, |c| contains_param_in_condition(c))
+                    .is_some_and(contains_param_in_condition)
         }
         ExecutionPlan::TableRangeScan {
             pk_range,
@@ -878,18 +878,18 @@ fn plan_has_param(plan: &crate::planner::ExecutionPlan) -> bool {
             pk_range
                 .start_bound
                 .as_ref()
-                .map_or(false, |b| matches!(b.value, SqlValue::Parameter(_)))
+                .is_some_and(|b| matches!(b.value, SqlValue::Parameter(_)))
                 || pk_range
                     .end_bound
                     .as_ref()
-                    .map_or(false, |b| matches!(b.value, SqlValue::Parameter(_)))
+                    .is_some_and(|b| matches!(b.value, SqlValue::Parameter(_)))
                 || additional_filter
                     .as_ref()
-                    .map_or(false, |c| contains_param_in_condition(c))
+                    .is_some_and(contains_param_in_condition)
         }
         ExecutionPlan::TableScan { filter, .. } => filter
             .as_ref()
-            .map_or(false, |c| contains_param_in_condition(c)),
+            .is_some_and(contains_param_in_condition),
         ExecutionPlan::Insert { rows, .. } => rows
             .iter()
             .any(|row| row.values().any(|v| matches!(v, SqlValue::Parameter(_)))),
