@@ -33,7 +33,6 @@
 //! ## Performance Tests (`performance/`)
 //! Tests focused on performance and scalability:
 //! - `high_level_api_performance_test.rs` - High-level API performance
-//! - `schema_performance_test.rs` - Schema operations performance
 //!
 //! ## WASM Tests (`wasm/`)
 //! Tests specific to WebAssembly platform:

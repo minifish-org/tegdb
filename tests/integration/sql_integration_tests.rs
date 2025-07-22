@@ -174,3 +174,185 @@ fn test_sql_drop_table() {
         Ok(())
     });
 }
+
+#[test]
+fn test_plan_cache_select_pk_lookup() {
+    let _ = run_with_both_backends("test_plan_cache_select_pk_lookup", |db_path| {
+        let mut db = Database::open(db_path).unwrap();
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")
+            .unwrap();
+        db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob')")
+            .unwrap();
+        let stmt = db.prepare("SELECT name FROM users WHERE id = ?1").unwrap();
+        let result1 = db
+            .query_prepared(&stmt, &[tegdb::SqlValue::Integer(1)])
+            .unwrap();
+        assert_eq!(result1.rows().len(), 1);
+        assert_eq!(
+            result1.rows()[0][0],
+            tegdb::SqlValue::Text("Alice".to_string())
+        );
+        let result2 = db
+            .query_prepared(&stmt, &[tegdb::SqlValue::Integer(2)])
+            .unwrap();
+        assert_eq!(result2.rows().len(), 1);
+        assert_eq!(
+            result2.rows()[0][0],
+            tegdb::SqlValue::Text("Bob".to_string())
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn test_plan_cache_select_pk_range_scan() {
+    let _ = run_with_both_backends("test_plan_cache_select_pk_range_scan", |db_path| {
+        let mut db = Database::open(db_path).unwrap();
+        db.execute("CREATE TABLE nums (id INTEGER PRIMARY KEY, val INTEGER)")
+            .unwrap();
+        for i in 1..=5 {
+            db.execute(&format!(
+                "INSERT INTO nums (id, val) VALUES ({}, {})",
+                i,
+                i * 10
+            ))
+            .unwrap();
+        }
+        let stmt = db
+            .prepare("SELECT id FROM nums WHERE id > ?1 AND id < ?2")
+            .unwrap();
+        let result = db
+            .query_prepared(
+                &stmt,
+                &[tegdb::SqlValue::Integer(1), tegdb::SqlValue::Integer(5)],
+            )
+            .unwrap();
+        let ids: Vec<_> = result.rows().iter().map(|r| r[0].clone()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                tegdb::SqlValue::Integer(2),
+                tegdb::SqlValue::Integer(3),
+                tegdb::SqlValue::Integer(4)
+            ]
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn test_plan_cache_select_table_scan_with_param() {
+    let _ = run_with_both_backends("test_plan_cache_select_table_scan_with_param", |db_path| {
+        let mut db = Database::open(db_path).unwrap();
+        db.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, tag TEXT(32))")
+            .unwrap();
+        db.execute("INSERT INTO items (id, tag) VALUES (1, 'foo'), (2, 'bar'), (3, 'foo')")
+            .unwrap();
+        let stmt = db.prepare("SELECT id FROM items WHERE tag = ?1").unwrap();
+        let result = db
+            .query_prepared(&stmt, &[tegdb::SqlValue::Text("foo".to_string())])
+            .unwrap();
+        let ids: Vec<_> = result.rows().iter().map(|r| r[0].clone()).collect();
+        assert_eq!(
+            ids,
+            vec![tegdb::SqlValue::Integer(1), tegdb::SqlValue::Integer(3)]
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn test_plan_cache_insert_with_params() {
+    let _ = run_with_both_backends("test_plan_cache_insert_with_params", |db_path| {
+        let mut db = Database::open(db_path).unwrap();
+        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT(32))")
+            .unwrap();
+        let stmt = db
+            .prepare("INSERT INTO t (id, val) VALUES (?1, ?2)")
+            .unwrap();
+        let affected = db
+            .execute_prepared(
+                &stmt,
+                &[
+                    tegdb::SqlValue::Integer(1),
+                    tegdb::SqlValue::Text("foo".to_string()),
+                ],
+            )
+            .unwrap();
+        assert_eq!(affected, 1);
+        let affected = db
+            .execute_prepared(
+                &stmt,
+                &[
+                    tegdb::SqlValue::Integer(2),
+                    tegdb::SqlValue::Text("bar".to_string()),
+                ],
+            )
+            .unwrap();
+        assert_eq!(affected, 1);
+        let result1 = db.query("SELECT val FROM t WHERE id = 1").unwrap();
+        assert_eq!(
+            result1.rows()[0][0],
+            tegdb::SqlValue::Text("foo".to_string())
+        );
+        let result2 = db.query("SELECT val FROM t WHERE id = 2").unwrap();
+        assert_eq!(
+            result2.rows()[0][0],
+            tegdb::SqlValue::Text("bar".to_string())
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn test_plan_cache_update_with_params() {
+    let _ = run_with_both_backends("test_plan_cache_update_with_params", |db_path| {
+        let mut db = Database::open(db_path).unwrap();
+        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val INTEGER)")
+            .unwrap();
+        db.execute("INSERT INTO t (id, val) VALUES (1, 10), (2, 20)")
+            .unwrap();
+        let stmt = db.prepare("UPDATE t SET val = ?1 WHERE id = ?2").unwrap();
+        let affected = db
+            .execute_prepared(
+                &stmt,
+                &[tegdb::SqlValue::Integer(100), tegdb::SqlValue::Integer(1)],
+            )
+            .unwrap();
+        assert_eq!(affected, 1);
+        let affected = db
+            .execute_prepared(
+                &stmt,
+                &[tegdb::SqlValue::Integer(200), tegdb::SqlValue::Integer(2)],
+            )
+            .unwrap();
+        assert_eq!(affected, 1);
+        let result1 = db.query("SELECT val FROM t WHERE id = 1").unwrap();
+        assert_eq!(result1.rows()[0][0], tegdb::SqlValue::Integer(100));
+        let result2 = db.query("SELECT val FROM t WHERE id = 2").unwrap();
+        assert_eq!(result2.rows()[0][0], tegdb::SqlValue::Integer(200));
+        Ok(())
+    });
+}
+
+#[test]
+fn test_plan_cache_delete_with_params() {
+    let _ = run_with_both_backends("test_plan_cache_delete_with_params", |db_path| {
+        let mut db = Database::open(db_path).unwrap();
+        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT(32))")
+            .unwrap();
+        db.execute("INSERT INTO t (id, val) VALUES (1, 'foo'), (2, 'bar'), (3, 'baz')")
+            .unwrap();
+        let stmt = db.prepare("DELETE FROM t WHERE id = ?1").unwrap();
+        let affected = db
+            .execute_prepared(&stmt, &[tegdb::SqlValue::Integer(2)])
+            .unwrap();
+        assert_eq!(affected, 1);
+        let result = db.query("SELECT id FROM t").unwrap();
+        let ids: Vec<_> = result.rows().iter().map(|r| r[0].clone()).collect();
+        assert!(ids.contains(&tegdb::SqlValue::Integer(1)));
+        assert!(ids.contains(&tegdb::SqlValue::Integer(3)));
+        assert!(!ids.contains(&tegdb::SqlValue::Integer(2)));
+        Ok(())
+    });
+}

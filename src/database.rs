@@ -21,17 +21,25 @@ pub struct PreparedStatement {
     /// Number of parameters expected
     parameter_count: usize,
     query_schema: Option<QuerySchema>,
+    /// Optional cached plan template for SELECT PK lookup
+    plan_template: Option<crate::planner::ExecutionPlan>,
 }
 
 impl PreparedStatement {
     /// Create a new prepared statement
-    fn new(sql: String, statement: Statement, query_schema: Option<QuerySchema>) -> Self {
+    fn new(
+        sql: String,
+        statement: Statement,
+        query_schema: Option<QuerySchema>,
+        plan_template: Option<crate::planner::ExecutionPlan>,
+    ) -> Self {
         let parameter_count = Self::count_parameters(&statement);
         Self {
             sql,
             statement,
             parameter_count,
             query_schema,
+            plan_template,
         }
     }
 
@@ -422,10 +430,20 @@ impl Database {
         } else {
             None
         };
+        // Attempt to cache a plan template for all statement types with parameter placeholders
+        let plan_template = {
+            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let planner = QueryPlanner::new(schemas);
+            match planner.plan(statement.clone()) {
+                Ok(plan) if plan_has_param(&plan) => Some(plan),
+                _ => None,
+            }
+        };
         Ok(PreparedStatement::new(
             sql.to_string(),
             statement,
             query_schema,
+            plan_template,
         ))
     }
 
@@ -443,33 +461,66 @@ impl Database {
                 params.len()
             )));
         }
-        let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
-        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-        let planner = QueryPlanner::new(schemas.clone());
-        let plan = planner.plan(bound_stmt.clone())?;
-        let transaction = self.storage.begin_transaction();
-        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
-        let result = processor.execute_plan(plan)?;
-        let final_result = match result {
-            crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
-            crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::query_processor::ResultSet::CreateTable => 0,
-            crate::query_processor::ResultSet::DropTable => 0,
-            crate::query_processor::ResultSet::Begin => 0,
-            crate::query_processor::ResultSet::Commit => 0,
-            crate::query_processor::ResultSet::Rollback => 0,
-            crate::query_processor::ResultSet::Select { .. } => {
-                return Err(crate::Error::Other(
-                    "execute_prepared() should not be used for SELECT statements. Use query_prepared() instead."
-                        .to_string(),
-                ))
-            }
-        };
-        drop(result);
-        Self::update_schema_catalog_for_ddl(&mut self.catalog, &bound_stmt);
-        processor.transaction_mut().commit()?;
-        Ok(final_result)
+        // Use plan template if available and valid
+        if let Some(ref plan_template) = stmt.plan_template {
+            // DEBUG: Plan template cache hit for DML (INSERT/UPDATE/DELETE)
+            #[cfg(debug_assertions)]
+            eprintln!("[tegdb] Plan template cache HIT for DML: {}", stmt.sql());
+            let instantiated_plan = instantiate_plan_with_params(plan_template, params);
+            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let transaction = self.storage.begin_transaction();
+            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
+            let result = processor.execute_plan(instantiated_plan)?;
+            let final_result = match result {
+                crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
+                crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
+                crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
+                crate::query_processor::ResultSet::CreateTable => 0,
+                crate::query_processor::ResultSet::DropTable => 0,
+                crate::query_processor::ResultSet::Begin => 0,
+                crate::query_processor::ResultSet::Commit => 0,
+                crate::query_processor::ResultSet::Rollback => 0,
+                crate::query_processor::ResultSet::Select { .. } => {
+                    return Err(crate::Error::Other(
+                        "execute_prepared() should not be used for SELECT statements. Use query_prepared() instead."
+                            .to_string(),
+                    ))
+                }
+            };
+            drop(result);
+            Self::update_schema_catalog_for_ddl(&mut self.catalog, &stmt.statement);
+            processor.transaction_mut().commit()?;
+            Ok(final_result)
+        } else {
+            // Fallback: bind parameters and plan as before
+            let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
+            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let planner = QueryPlanner::new(schemas.clone());
+            let plan = planner.plan(bound_stmt.clone())?;
+            let transaction = self.storage.begin_transaction();
+            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
+            let result = processor.execute_plan(plan)?;
+            let final_result = match result {
+                crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
+                crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
+                crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
+                crate::query_processor::ResultSet::CreateTable => 0,
+                crate::query_processor::ResultSet::DropTable => 0,
+                crate::query_processor::ResultSet::Begin => 0,
+                crate::query_processor::ResultSet::Commit => 0,
+                crate::query_processor::ResultSet::Rollback => 0,
+                crate::query_processor::ResultSet::Select { .. } => {
+                    return Err(crate::Error::Other(
+                        "execute_prepared() should not be used for SELECT statements. Use query_prepared() instead."
+                            .to_string(),
+                    ))
+                }
+            };
+            drop(result);
+            Self::update_schema_catalog_for_ddl(&mut self.catalog, &bound_stmt);
+            processor.transaction_mut().commit()?;
+            Ok(final_result)
+        }
     }
 
     /// Execute a prepared SELECT statement with parameters
@@ -486,28 +537,59 @@ impl Database {
                 params.len()
             )));
         }
-        let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
-        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-        let planner = QueryPlanner::new(schemas.clone());
-        let plan = planner.plan(bound_stmt)?;
-        let transaction = self.storage.begin_transaction();
-        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-        let result = match &stmt.query_schema {
-            Some(query_schema) => processor.execute_plan_with_query_schema(plan, query_schema),
-            None => processor.execute_plan(plan),
-        }?;
-        match result {
-            crate::query_processor::ResultSet::Select { columns, rows } => {
-                let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
-                let final_rows = collected_rows?;
-                Ok(QueryResult {
-                    columns,
-                    rows: final_rows,
-                })
+        // Use plan template if available and valid
+        if let Some(ref plan_template) = stmt.plan_template {
+            // DEBUG: Plan template cache hit for SELECT PK lookup, range scan, or table scan
+            #[cfg(debug_assertions)]
+            eprintln!("[tegdb] Plan template cache HIT for SELECT: {}", stmt.sql());
+            let instantiated_plan = instantiate_plan_with_params(plan_template, params);
+            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let transaction = self.storage.begin_transaction();
+            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
+            let result = match &stmt.query_schema {
+                Some(query_schema) => {
+                    processor.execute_plan_with_query_schema(instantiated_plan, query_schema)
+                }
+                None => processor.execute_plan(instantiated_plan),
+            }?;
+            match result {
+                crate::query_processor::ResultSet::Select { columns, rows } => {
+                    let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
+                    let final_rows = collected_rows?;
+                    Ok(QueryResult {
+                        columns,
+                        rows: final_rows,
+                    })
+                }
+                _ => Err(crate::Error::Other(
+                    "Expected SELECT result but got something else".to_string(),
+                )),
             }
-            _ => Err(crate::Error::Other(
-                "Expected SELECT result but got something else".to_string(),
-            )),
+        } else {
+            // Fallback: bind parameters and plan as before
+            let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
+            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let planner = QueryPlanner::new(schemas.clone());
+            let plan = planner.plan(bound_stmt)?;
+            let transaction = self.storage.begin_transaction();
+            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
+            let result = match &stmt.query_schema {
+                Some(query_schema) => processor.execute_plan_with_query_schema(plan, query_schema),
+                None => processor.execute_plan(plan),
+            }?;
+            match result {
+                crate::query_processor::ResultSet::Select { columns, rows } => {
+                    let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
+                    let final_rows = collected_rows?;
+                    Ok(QueryResult {
+                        columns,
+                        rows: final_rows,
+                    })
+                }
+                _ => Err(crate::Error::Other(
+                    "Expected SELECT result but got something else".to_string(),
+                )),
+            }
         }
     }
 
@@ -757,5 +839,272 @@ impl DatabaseTransaction<'_> {
     /// Rollback the transaction
     pub fn rollback(mut self) -> Result<()> {
         self.processor.transaction_mut().rollback()
+    }
+}
+
+// Helper to check for parameter in a condition
+fn contains_param_in_condition(cond: &crate::parser::Condition) -> bool {
+    use crate::parser::{Condition, SqlValue};
+    match cond {
+        Condition::Comparison { right, .. } => matches!(right, SqlValue::Parameter(_)),
+        Condition::Between { low, high, .. } => {
+            matches!(low, SqlValue::Parameter(_)) || matches!(high, SqlValue::Parameter(_))
+        }
+        Condition::And(left, right) | Condition::Or(left, right) => {
+            contains_param_in_condition(left) || contains_param_in_condition(right)
+        }
+    }
+}
+// Helper to check for parameter in a plan (recursively)
+fn plan_has_param(plan: &crate::planner::ExecutionPlan) -> bool {
+    use crate::parser::SqlValue;
+    use crate::planner::ExecutionPlan;
+    match plan {
+        ExecutionPlan::PrimaryKeyLookup {
+            pk_value,
+            additional_filter,
+            ..
+        } => {
+            matches!(pk_value, SqlValue::Parameter(_))
+                || additional_filter
+                    .as_ref()
+                    .map_or(false, |c| contains_param_in_condition(c))
+        }
+        ExecutionPlan::TableRangeScan {
+            pk_range,
+            additional_filter,
+            ..
+        } => {
+            pk_range
+                .start_bound
+                .as_ref()
+                .map_or(false, |b| matches!(b.value, SqlValue::Parameter(_)))
+                || pk_range
+                    .end_bound
+                    .as_ref()
+                    .map_or(false, |b| matches!(b.value, SqlValue::Parameter(_)))
+                || additional_filter
+                    .as_ref()
+                    .map_or(false, |c| contains_param_in_condition(c))
+        }
+        ExecutionPlan::TableScan { filter, .. } => filter
+            .as_ref()
+            .map_or(false, |c| contains_param_in_condition(c)),
+        ExecutionPlan::Insert { rows, .. } => rows
+            .iter()
+            .any(|row| row.values().any(|v| matches!(v, SqlValue::Parameter(_)))),
+        ExecutionPlan::Update {
+            assignments,
+            scan_plan,
+            ..
+        } => assignments.iter().any(|a| expr_has_param(&a.value)) || plan_has_param(scan_plan),
+        ExecutionPlan::Delete { scan_plan, .. } => plan_has_param(scan_plan),
+        _ => false,
+    }
+}
+// Helper to check for parameter in an expression
+fn expr_has_param(expr: &crate::parser::Expression) -> bool {
+    use crate::parser::Expression;
+    match expr {
+        Expression::Value(crate::parser::SqlValue::Parameter(_)) => true,
+        Expression::Value(_) => false,
+        Expression::Column(_) => false,
+        Expression::BinaryOp { left, right, .. } => expr_has_param(left) || expr_has_param(right),
+    }
+}
+// Extend instantiate_plan_with_params to handle INSERT, UPDATE, DELETE
+fn instantiate_plan_with_params(
+    plan: &crate::planner::ExecutionPlan,
+    params: &[crate::parser::SqlValue],
+) -> crate::planner::ExecutionPlan {
+    use crate::parser::SqlValue;
+    use crate::planner::{Assignment, ExecutionPlan, PkBound, PkRange};
+    match plan {
+        ExecutionPlan::PrimaryKeyLookup {
+            table,
+            pk_value,
+            selected_columns,
+            additional_filter,
+        } => {
+            let pk_value = match pk_value {
+                SqlValue::Parameter(idx) => params.get(*idx).cloned().unwrap_or(SqlValue::Null),
+                v => v.clone(),
+            };
+            ExecutionPlan::PrimaryKeyLookup {
+                table: table.clone(),
+                pk_value,
+                selected_columns: selected_columns.clone(),
+                additional_filter: additional_filter
+                    .clone()
+                    .map(|c| instantiate_condition_with_params(&c, params)),
+            }
+        }
+        ExecutionPlan::TableRangeScan {
+            table,
+            selected_columns,
+            pk_range,
+            additional_filter,
+            limit,
+        } => {
+            let start_bound = pk_range.start_bound.as_ref().map(|b| PkBound {
+                value: match &b.value {
+                    SqlValue::Parameter(idx) => params.get(*idx).cloned().unwrap_or(SqlValue::Null),
+                    v => v.clone(),
+                },
+                inclusive: b.inclusive,
+            });
+            let end_bound = pk_range.end_bound.as_ref().map(|b| PkBound {
+                value: match &b.value {
+                    SqlValue::Parameter(idx) => params.get(*idx).cloned().unwrap_or(SqlValue::Null),
+                    v => v.clone(),
+                },
+                inclusive: b.inclusive,
+            });
+            ExecutionPlan::TableRangeScan {
+                table: table.clone(),
+                selected_columns: selected_columns.clone(),
+                pk_range: PkRange {
+                    start_bound,
+                    end_bound,
+                },
+                additional_filter: additional_filter
+                    .clone()
+                    .map(|c| instantiate_condition_with_params(&c, params)),
+                limit: *limit,
+            }
+        }
+        ExecutionPlan::TableScan {
+            table,
+            selected_columns,
+            filter,
+            limit,
+        } => {
+            let filter = filter
+                .as_ref()
+                .map(|c| instantiate_condition_with_params(c, params));
+            ExecutionPlan::TableScan {
+                table: table.clone(),
+                selected_columns: selected_columns.clone(),
+                filter,
+                limit: *limit,
+            }
+        }
+        ExecutionPlan::Insert {
+            table,
+            rows,
+            conflict_resolution,
+        } => {
+            let new_rows = rows
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .map(|(k, v)| {
+                            let new_v = match v {
+                                SqlValue::Parameter(idx) => {
+                                    params.get(*idx).cloned().unwrap_or(SqlValue::Null)
+                                }
+                                v => v.clone(),
+                            };
+                            (k.clone(), new_v)
+                        })
+                        .collect()
+                })
+                .collect();
+            ExecutionPlan::Insert {
+                table: table.clone(),
+                rows: new_rows,
+                conflict_resolution: conflict_resolution.clone(),
+            }
+        }
+        ExecutionPlan::Update {
+            table,
+            assignments,
+            scan_plan,
+        } => {
+            let new_assignments: Vec<Assignment> = assignments
+                .iter()
+                .map(|a| Assignment {
+                    column: a.column.clone(),
+                    value: instantiate_expr_with_params(&a.value, params),
+                })
+                .collect();
+            ExecutionPlan::Update {
+                table: table.clone(),
+                assignments: new_assignments,
+                scan_plan: Box::new(instantiate_plan_with_params(scan_plan, params)),
+            }
+        }
+        ExecutionPlan::Delete { table, scan_plan } => ExecutionPlan::Delete {
+            table: table.clone(),
+            scan_plan: Box::new(instantiate_plan_with_params(scan_plan, params)),
+        },
+        _ => plan.clone(),
+    }
+}
+// Helper to instantiate parameters in Expression
+fn instantiate_expr_with_params(
+    expr: &crate::parser::Expression,
+    params: &[crate::parser::SqlValue],
+) -> crate::parser::Expression {
+    use crate::parser::Expression;
+    match expr {
+        Expression::Value(crate::parser::SqlValue::Parameter(idx)) => Expression::Value(
+            params
+                .get(*idx)
+                .cloned()
+                .unwrap_or(crate::parser::SqlValue::Null),
+        ),
+        Expression::Value(v) => Expression::Value(v.clone()),
+        Expression::Column(c) => Expression::Column(c.clone()),
+        Expression::BinaryOp {
+            left,
+            operator,
+            right,
+        } => Expression::BinaryOp {
+            left: Box::new(instantiate_expr_with_params(left, params)),
+            operator: *operator,
+            right: Box::new(instantiate_expr_with_params(right, params)),
+        },
+    }
+}
+
+// Helper to instantiate parameters in Condition
+fn instantiate_condition_with_params(
+    cond: &crate::parser::Condition,
+    params: &[crate::parser::SqlValue],
+) -> crate::parser::Condition {
+    use crate::parser::{Condition, SqlValue};
+    match cond {
+        Condition::Comparison {
+            left,
+            operator,
+            right,
+        } => Condition::Comparison {
+            left: left.clone(),
+            operator: *operator,
+            right: match right {
+                SqlValue::Parameter(idx) => params.get(*idx).cloned().unwrap_or(SqlValue::Null),
+                v => v.clone(),
+            },
+        },
+        Condition::Between { column, low, high } => Condition::Between {
+            column: column.clone(),
+            low: match low {
+                SqlValue::Parameter(idx) => params.get(*idx).cloned().unwrap_or(SqlValue::Null),
+                v => v.clone(),
+            },
+            high: match high {
+                SqlValue::Parameter(idx) => params.get(*idx).cloned().unwrap_or(SqlValue::Null),
+                v => v.clone(),
+            },
+        },
+        Condition::And(left, right) => Condition::And(
+            Box::new(instantiate_condition_with_params(left, params)),
+            Box::new(instantiate_condition_with_params(right, params)),
+        ),
+        Condition::Or(left, right) => Condition::Or(
+            Box::new(instantiate_condition_with_params(left, params)),
+            Box::new(instantiate_condition_with_params(right, params)),
+        ),
     }
 }
