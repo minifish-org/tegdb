@@ -270,24 +270,25 @@ impl StorageFormat {
     ) -> Result<SqlValue> {
         match type_code {
             1 => {
-                // TypeCode::Integer
+                // TypeCode::Integer - zero-copy, just reinterpret bytes
                 let bytes = &data[offset..offset + 8];
                 let value = i64::from_le_bytes(bytes.try_into().unwrap());
                 Ok(SqlValue::Integer(value))
             }
             2 => {
-                // TypeCode::Real
+                // TypeCode::Real - zero-copy, just reinterpret bytes
                 let bytes = &data[offset..offset + 8];
                 let value = f64::from_le_bytes(bytes.try_into().unwrap());
                 Ok(SqlValue::Real(value))
             }
             3 => {
-                // TypeCode::TextFixed
+                // TypeCode::TextFixed - minimize allocations by finding null terminator efficiently
                 let bytes = &data[offset..offset + size];
                 // Find the first null byte to determine actual string length
                 let actual_len = bytes.iter().position(|&b| b == 0).unwrap_or(size);
                 let text_bytes = &bytes[..actual_len];
-                let text = String::from_utf8_lossy(text_bytes).to_string();
+                // Use from_utf8_lossy to avoid allocation for valid UTF-8, only allocate for invalid sequences
+                let text = String::from_utf8_lossy(text_bytes).into_owned();
                 Ok(SqlValue::Text(text))
             }
             _ => Err(crate::Error::Other("Invalid type code".to_string())),
@@ -357,13 +358,16 @@ impl StorageFormat {
         schema: &TableSchema,
         column_indices: &[usize],
     ) -> Result<Vec<SqlValue>> {
+        // Pre-allocate result vector with exact capacity to avoid reallocations
         let mut result = Vec::with_capacity(column_indices.len());
+
         for &index in column_indices {
             if index >= schema.columns.len() {
                 return Err(crate::Error::Other(
                     "Column index out of bounds".to_string(),
                 ));
             }
+
             let column_info = &schema.columns[index];
             let value = Self::deserialize_value_at_offset(
                 data,

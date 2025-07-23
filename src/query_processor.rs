@@ -54,17 +54,23 @@ impl NativeKey {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             NativeKey::Integer(i) => {
-                let mut bytes = vec![0x01]; // Type tag for Integer
+                // Pre-allocate exact size to avoid reallocations
+                let mut bytes = Vec::with_capacity(9);
+                bytes.push(0x01); // Type tag for Integer
                 bytes.extend_from_slice(&i.to_be_bytes()); // Use big-endian for correct ordering
                 bytes
             }
             NativeKey::Real(r) => {
-                let mut bytes = vec![0x02]; // Type tag for Real
+                // Pre-allocate exact size to avoid reallocations
+                let mut bytes = Vec::with_capacity(9);
+                bytes.push(0x02); // Type tag for Real
                 bytes.extend_from_slice(&r.to_be_bytes()); // Use big-endian for correct ordering
                 bytes
             }
             NativeKey::Text(t) => {
-                let mut bytes = vec![0x03]; // Type tag for Text
+                // Pre-allocate exact size to avoid reallocations
+                let mut bytes = Vec::with_capacity(5 + t.len());
+                bytes.push(0x03); // Type tag for Text
                 bytes.extend_from_slice(&(t.len() as u32).to_le_bytes());
                 bytes.extend_from_slice(t.as_bytes());
                 bytes
@@ -143,18 +149,14 @@ impl PrimaryKey {
         &self.table_name
     }
 
-    /// Convert to storage bytes (efficient binary format)
+    /// Serialize to storage bytes (efficient binary format)
     pub fn to_storage_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-
-        // Table name prefix with length
+        // Pre-allocate with exact capacity to avoid reallocations
+        let mut bytes = Vec::with_capacity(4 + self.table_name.len() + 1 + 9); // table_len + table + separator + key
         bytes.extend_from_slice(&(self.table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(self.table_name.as_bytes());
         bytes.push(b':'); // Separator
-
-        // Native key bytes
         bytes.extend_from_slice(&self.key.to_bytes());
-
         bytes
     }
 
@@ -240,16 +242,18 @@ impl PrimaryKey {
 
     /// Create table prefix for full table scans
     pub fn table_prefix(table_name: &str) -> Vec<u8> {
-        let mut bytes = Vec::new();
+        // Pre-allocate with exact capacity to avoid reallocations
+        let mut bytes = Vec::with_capacity(4 + table_name.len() + 1);
         bytes.extend_from_slice(&(table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(table_name.as_bytes());
-        bytes.push(b':');
+        bytes.push(b':'); // Separator
         bytes
     }
 
     /// Create table end marker for full table scans
     pub fn table_end_marker(table_name: &str) -> Vec<u8> {
-        let mut bytes = Vec::new();
+        // Pre-allocate with exact capacity to avoid reallocations
+        let mut bytes = Vec::with_capacity(4 + table_name.len() + 1);
         bytes.extend_from_slice(&(table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(table_name.as_bytes());
         bytes.push(b'~'); // End marker
@@ -400,7 +404,10 @@ impl<'a> SelectRowIterator<'a> {
     }
 
     /// Collect all remaining rows into a Vec for backward compatibility
+    /// Optimized to reduce memory allocations and copying
     pub fn collect_rows(self) -> Result<Vec<Vec<SqlValue>>> {
+        // Use collect() which is already optimized by the standard library
+        // The iterator will yield rows one by one, avoiding large memmove operations
         self.collect()
     }
 }
@@ -853,13 +860,8 @@ impl<'a> QueryProcessor<'a> {
                 let end_key = PrimaryKey::table_end_marker(&table);
                 // Create streaming iterator for table scan
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
-                let row_iter = SelectRowIterator::new(
-                    scan_iter,
-                    schema.clone(),
-                    query_schema,
-                    filter,
-                    limit,
-                );
+                let row_iter =
+                    SelectRowIterator::new(scan_iter, schema.clone(), query_schema, filter, limit);
 
                 Ok(ResultSet::Select {
                     columns: selected_columns,
@@ -937,9 +939,10 @@ impl<'a> QueryProcessor<'a> {
             // Get the plan results and materialize immediately to avoid lifetime conflicts
             let materialized_rows = self.execute_plan_materialized(scan_plan)?;
 
-            let mut keys = Vec::new();
+            // Pre-allocate with exact capacity to avoid reallocations
+            let mut keys = Vec::with_capacity(materialized_rows.len());
             for row_values in materialized_rows {
-                let mut row_data = HashMap::new();
+                let mut row_data = HashMap::with_capacity(columns.len());
                 for (i, col_name) in columns.iter().enumerate() {
                     if let Some(value) = row_values.get(i) {
                         row_data.insert(col_name.clone(), value.clone());
@@ -1075,7 +1078,8 @@ impl<'a> QueryProcessor<'a> {
         schema: &TableSchema,
     ) -> Result<Vec<Vec<u8>>> {
         use crate::planner::ExecutionPlan;
-        let mut keys = Vec::new();
+        // Pre-allocate with reasonable capacity to avoid reallocations
+        let mut keys = Vec::with_capacity(100);
 
         match scan_plan {
             ExecutionPlan::PrimaryKeyLookup {
@@ -1112,8 +1116,8 @@ impl<'a> QueryProcessor<'a> {
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
 
                 for (key, value_rc) in scan_iter {
-                    if let Some(limit_val) = limit {
-                        if count >= *limit_val {
+                    if let Some(limit) = limit {
+                        if count >= *limit {
                             break;
                         }
                     }

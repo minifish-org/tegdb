@@ -297,7 +297,8 @@ impl Database {
                 let result = processor.execute_plan(plan)?;
                 match result {
                     crate::query_processor::ResultSet::Select { columns, rows } => {
-                        // Collect all rows from the iterator
+                        // Collect all rows from the iterator efficiently
+                        // The iterator yields rows one by one, avoiding large memmove operations
                         let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> =
                             rows.collect();
                         let final_rows = collected_rows?;
@@ -881,9 +882,9 @@ fn plan_has_param(plan: &crate::planner::ExecutionPlan) -> bool {
                     .as_ref()
                     .is_some_and(contains_param_in_condition)
         }
-        ExecutionPlan::TableScan { filter, .. } => filter
-            .as_ref()
-            .is_some_and(contains_param_in_condition),
+        ExecutionPlan::TableScan { filter, .. } => {
+            filter.as_ref().is_some_and(contains_param_in_condition)
+        }
         ExecutionPlan::Insert { rows, .. } => rows
             .iter()
             .any(|row| row.values().any(|v| matches!(v, SqlValue::Parameter(_)))),

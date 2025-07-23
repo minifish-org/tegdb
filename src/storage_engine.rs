@@ -145,7 +145,7 @@ impl StorageEngine {
         let iter = self
             .key_map
             .range(range)
-            // clone key Vec (small) and clone Rc (cheap refcount increment)
+            // Minimize cloning - only clone key Vec (small) and increment Rc refcount (cheap)
             .map(|(key, value)| (key.clone(), Rc::clone(value)));
         Ok(Box::new(iter))
     }
