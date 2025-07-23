@@ -364,7 +364,7 @@ pub struct SelectRowIterator<'a> {
     /// Iterator over the scan results
     scan_iter: ScanIterator<'a>,
     /// Schema for deserializing rows
-    schema: TableSchema,
+    schema: std::rc::Rc<TableSchema>,
     /// Query schema for fast column access
     query_schema: QuerySchema,
     /// Optional filter condition
@@ -381,7 +381,7 @@ impl<'a> SelectRowIterator<'a> {
     /// Create a new select row iterator
     pub fn new(
         scan_iter: ScanIterator<'a>,
-        schema: TableSchema,
+        schema: std::rc::Rc<TableSchema>,
         query_schema: QuerySchema,
         filter: Option<Condition>,
         limit: Option<u64>,
@@ -801,7 +801,7 @@ impl<'a> QueryProcessor<'a> {
 
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    (*schema).clone(),
+                    schema.clone(),
                     query_schema,
                     additional_filter,
                     Some(1), // PK lookup returns at most 1 row
@@ -829,7 +829,7 @@ impl<'a> QueryProcessor<'a> {
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    (*schema).clone(),
+                    schema.clone(),
                     query_schema,
                     additional_filter,
                     limit,
@@ -855,7 +855,7 @@ impl<'a> QueryProcessor<'a> {
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    (*schema).clone(),
+                    schema.clone(),
                     query_schema,
                     filter,
                     limit,
@@ -1276,7 +1276,7 @@ impl<'a> QueryProcessor<'a> {
                 };
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    (*schema).clone(),
+                    schema.clone(),
                     query_schema.clone(),
                     additional_filter,
                     Some(1),
@@ -1298,7 +1298,7 @@ impl<'a> QueryProcessor<'a> {
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    (*schema).clone(),
+                    schema.clone(),
                     query_schema.clone(),
                     additional_filter,
                     limit,
@@ -1320,7 +1320,7 @@ impl<'a> QueryProcessor<'a> {
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let row_iter = SelectRowIterator::new(
                     scan_iter,
-                    (*schema).clone(),
+                    schema.clone(),
                     query_schema.clone(),
                     filter,
                     limit,
