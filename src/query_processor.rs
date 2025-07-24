@@ -22,6 +22,7 @@ pub enum NativeKey {
     Integer(i64),
     Real(f64),
     Text(String),
+    Vector(Vec<f64>),
     Null,
 }
 
@@ -32,6 +33,7 @@ impl NativeKey {
             SqlValue::Integer(i) => Ok(NativeKey::Integer(*i)),
             SqlValue::Real(r) => Ok(NativeKey::Real(*r)),
             SqlValue::Text(t) => Ok(NativeKey::Text(t.clone())), // Only clone needed
+            SqlValue::Vector(v) => Ok(NativeKey::Vector(v.clone())), // Clone needed for vector
             SqlValue::Null => Ok(NativeKey::Null),
             SqlValue::Parameter(_) => Err(Error::Other(
                 "Parameter placeholder found in key generation - parameter binding failed"
@@ -46,6 +48,7 @@ impl NativeKey {
             NativeKey::Integer(i) => SqlValue::Integer(*i),
             NativeKey::Real(r) => SqlValue::Real(*r),
             NativeKey::Text(t) => SqlValue::Text(t.clone()), // Only clone needed
+            NativeKey::Vector(v) => SqlValue::Vector(v.clone()), // Clone needed for vector
             NativeKey::Null => SqlValue::Null,
         }
     }
@@ -73,6 +76,16 @@ impl NativeKey {
                 bytes.push(0x03); // Type tag for Text
                 bytes.extend_from_slice(&(t.len() as u32).to_le_bytes());
                 bytes.extend_from_slice(t.as_bytes());
+                bytes
+            }
+            NativeKey::Vector(v) => {
+                // Pre-allocate exact size to avoid reallocations
+                let mut bytes = Vec::with_capacity(5 + v.len() * 8);
+                bytes.push(0x04); // Type tag for Vector
+                bytes.extend_from_slice(&(v.len() as u32).to_le_bytes());
+                for &val in v {
+                    bytes.extend_from_slice(&val.to_be_bytes()); // Use big-endian for correct ordering
+                }
                 bytes
             }
             NativeKey::Null => {
@@ -114,6 +127,24 @@ impl NativeKey {
                 let text = String::from_utf8(bytes[5..].to_vec())
                     .map_err(|_| Error::Other("Invalid UTF-8 in text key".to_string()))?;
                 Ok(NativeKey::Text(text))
+            }
+            0x04 => {
+                if bytes.len() < 5 {
+                    return Err(Error::Other("Invalid vector key length".to_string()));
+                }
+                let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
+                let expected_len = 5 + len * 8; // 4 bytes for length + len * 8 bytes for f64 values
+                if bytes.len() != expected_len {
+                    return Err(Error::Other("Vector key length mismatch".to_string()));
+                }
+                let mut vector = Vec::with_capacity(len);
+                for i in 0..len {
+                    let start = 5 + i * 8;
+                    let end = start + 8;
+                    let val = f64::from_be_bytes(bytes[start..end].try_into().unwrap());
+                    vector.push(val);
+                }
+                Ok(NativeKey::Vector(vector))
             }
             _ => Err(Error::Other("Unknown key type".to_string())),
         }
@@ -202,6 +233,12 @@ impl PrimaryKey {
                     // For text, append a character that sorts after the current string
                     s.push('\u{10FFFF}'); // Highest Unicode character
                 }
+                NativeKey::Vector(v) => {
+                    // For vectors, add a small epsilon to the first element
+                    if !v.is_empty() {
+                        v[0] += f64::EPSILON;
+                    }
+                }
                 NativeKey::Null => {
                     // For null, we can't increment, so we'll use a special marker
                     pk.key = NativeKey::Text("".to_string());
@@ -230,6 +267,12 @@ impl PrimaryKey {
             NativeKey::Text(s) => {
                 if inclusive {
                     s.push('\u{10FFFF}');
+                }
+                // else: leave as is for exclusive
+            }
+            NativeKey::Vector(v) => {
+                if inclusive && !v.is_empty() {
+                    v[0] = f64::from_bits(v[0].to_bits() + 1); // next representable float
                 }
                 // else: leave as is for exclusive
             }

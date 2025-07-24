@@ -20,6 +20,7 @@ pub enum TypeCode {
     Integer = 1,   // 8-byte i64
     Real = 2,      // 8-byte f64
     TextFixed = 3, // Fixed-length text (padded with nulls)
+    Vector = 4,    // Vector of f64 values
 }
 
 // Remove LazyRow struct, its methods, and create_lazy_row function
@@ -91,6 +92,19 @@ impl StorageFormat {
                 // Pad with nulls if needed
                 if copy_len < size {
                     buffer[offset + copy_len..offset + size].fill(0);
+                }
+            }
+            (SqlValue::Vector(v), 4) => {
+                // TypeCode::Vector
+                let expected_len = size / 8;
+                if v.len() != expected_len {
+                    return Err(crate::Error::Other(
+                        format!("Vector length {} does not match schema dimension {}", v.len(), expected_len)
+                    ));
+                }
+                for (i, &val) in v.iter().enumerate() {
+                    let val_offset = offset + i * 8;
+                    buffer[val_offset..val_offset + 8].copy_from_slice(&val.to_le_bytes());
                 }
             }
             _ => {
@@ -290,6 +304,18 @@ impl StorageFormat {
                 // Use from_utf8_lossy to avoid allocation for valid UTF-8, only allocate for invalid sequences
                 let text = String::from_utf8_lossy(text_bytes).into_owned();
                 Ok(SqlValue::Text(text))
+            }
+            4 => {
+                // TypeCode::Vector - deserialize vector of f64 values
+                let vector_size = size / 8; // Each f64 is 8 bytes
+                let mut vector = Vec::with_capacity(vector_size);
+                for i in 0..vector_size {
+                    let val_offset = offset + i * 8;
+                    let bytes = &data[val_offset..val_offset + 8];
+                    let value = f64::from_le_bytes(bytes.try_into().unwrap());
+                    vector.push(value);
+                }
+                Ok(SqlValue::Vector(vector))
             }
             _ => Err(crate::Error::Other("Invalid type code".to_string())),
         }

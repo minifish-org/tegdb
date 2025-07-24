@@ -185,6 +185,13 @@ impl Catalog {
             crate::parser::DataType::Text(None) => Err(crate::Error::Other(
                 "Variable-length TEXT not supported in fixed-length format".to_string(),
             )),
+            crate::parser::DataType::Vector(Some(dimension)) => {
+                let size = dimension * 8; // Each f64 is 8 bytes
+                Ok((size, TypeCode::Vector as u8))
+            }
+            crate::parser::DataType::Vector(None) => Err(crate::Error::Other(
+                "Variable-length VECTOR not supported in fixed-length format".to_string(),
+            )),
         }
     }
 }

@@ -109,6 +109,7 @@ pub enum DataType {
     Integer,
     Text(Option<usize>), // None = variable length, Some(n) = fixed length n
     Real,
+    Vector(Option<usize>), // None = variable length, Some(n) = fixed dimension n
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,6 +164,7 @@ pub enum SqlValue {
     Integer(i64),
     Real(f64),
     Text(String),
+    Vector(Vec<f64>), // Vector of f64 values for AI embeddings
     Null,
     Parameter(usize), // Parameter placeholder with index
 }
@@ -353,6 +355,7 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
     alt((
         map(tag_no_case("NULL"), |_| SqlValue::Null),
         map(parse_string_literal, SqlValue::Text),
+        map(parse_vector_literal, SqlValue::Vector),
         map(parse_real, SqlValue::Real),
         map(parse_integer, SqlValue::Integer),
         map(parse_parameter_placeholder, SqlValue::Parameter),
@@ -771,6 +774,14 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
             ),
             |(_, length)| DataType::Text(length),
         ),
+        // Vector with optional dimension: VECTOR(384) or VECTOR
+        map(
+            pair(
+                tag_no_case("VECTOR"),
+                opt(parse_length_specification),
+            ),
+            |(_, dimension)| DataType::Vector(dimension),
+        ),
     ))
     .parse(input)
 }
@@ -842,6 +853,20 @@ fn parse_real(input: &str) -> IResult<&str, f64> {
     let value = parse_f64_safe(real_str)
         .map_err(|_e| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))?;
     Ok((input, value))
+}
+
+// Parse vector literal: [1.0, 2.0, 3.0]
+fn parse_vector_literal(input: &str) -> IResult<&str, Vec<f64>> {
+    let (input, _) = char('[').parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, values) = separated_list0(
+        delimited(multispace0, char(','), multispace0),
+        parse_real,
+    )
+    .parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = char(']').parse(input)?;
+    Ok((input, values))
 }
 
 // Parse expression (supports arithmetic operations)

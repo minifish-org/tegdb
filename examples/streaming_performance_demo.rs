@@ -236,6 +236,7 @@ fn format_sql_value(value: Option<&SqlValue>) -> String {
         Some(SqlValue::Integer(i)) => i.to_string(),
         Some(SqlValue::Real(r)) => format!("{r:.1}"),
         Some(SqlValue::Text(t)) => t.clone(),
+        Some(SqlValue::Vector(v)) => format!("[{}]", v.iter().map(|x| format!("{:.2}", x)).collect::<Vec<_>>().join(", ")),
         Some(SqlValue::Null) => "NULL".to_string(),
         Some(SqlValue::Parameter(idx)) => format!("?{}", idx + 1),
         None => "NULL".to_string(),
