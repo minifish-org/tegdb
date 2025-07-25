@@ -21,19 +21,18 @@ fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
     Ok((input, identifier))
 }
 
-fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<String>> {
+fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<Expression>> {
     let (input, _) = multispace0.parse(input)?;
     // Handle the special case of "*" (all columns)
     if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<&str>>("*").parse(input) {
-        return Ok((input, vec!["*".to_string()]));
+        return Ok((input, vec![Expression::Column("*".to_string())]));
     }
-    // Parse comma-separated list of identifiers
-    let (input, columns) = separated_list1(
+    // Parse comma-separated list of expressions
+    separated_list1(
         delimited(multispace0, char(','), multispace0),
-        parse_identifier_optimized,
+        parse_expression,
     )
-    .parse(input)?;
-    Ok((input, columns))
+    .parse(input)
 }
 
 fn parse_u64_safe(s: &str) -> Result<u64, String> {
@@ -59,7 +58,7 @@ pub enum Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectStatement {
-    pub columns: Vec<String>,
+    pub columns: Vec<Expression>,
     pub table: String,
     pub where_clause: Option<WhereClause>,
     pub limit: Option<u64>, // None means no limit, Some(n) means limit n
@@ -178,6 +177,10 @@ pub enum Expression {
         operator: ArithmeticOperator,
         right: Box<Expression>,
     },
+    FunctionCall {
+        name: String,
+        args: Vec<Expression>,
+    },
 }
 
 impl Expression {
@@ -288,6 +291,10 @@ impl Expression {
                     )),
                 }
             }
+            Expression::FunctionCall { name, args } => {
+                // Stub: function evaluation will be implemented later
+                Err(format!("Function '{name}' evaluation not implemented"))
+            }
         }
     }
 }
@@ -393,7 +400,14 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('(').parse(input)?;
-    let (input, columns) = parse_column_list_optimized.parse(input)?;
+    let (input, columns_expr) = parse_column_list_optimized.parse(input)?;
+    let columns: Vec<String> = columns_expr.into_iter().map(|expr| {
+        if let Expression::Column(name) = expr {
+            name
+        } else {
+            panic!("Only column names are allowed in INSERT column list")
+        }
+    }).collect();
     let (input, _) = char(')').parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = tag_no_case("VALUES").parse(input)?;
@@ -681,6 +695,9 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
         } => {
             format!("{left:?} {op:?} {right:?}")
         }
+        Expression::FunctionCall { name, args } => {
+            format!("{name}({args:?})")
+        }
     };
 
     Ok((
@@ -919,6 +936,21 @@ fn parse_multiplicative_expression(input: &str) -> IResult<&str, Expression> {
 // Parse primary expressions (values, columns, parentheses)
 fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
     alt((
+        // Function call: name(args...)
+        map(
+            pair(
+                parse_identifier_optimized,
+                delimited(
+                    char('('),
+                    separated_list0(
+                        delimited(multispace0, char(','), multispace0),
+                        parse_expression,
+                    ),
+                    char(')'),
+                ),
+            ),
+            |(name, args)| Expression::FunctionCall { name, args },
+        ),
         // Parenthesized expressions
         delimited(
             char('('),

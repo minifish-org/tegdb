@@ -5,6 +5,7 @@
 
 use crate::catalog::Catalog;
 use crate::parser::{parse_sql, SqlValue, Statement};
+use crate::parser::Expression;
 use crate::planner::QueryPlanner;
 use crate::query_processor::{QueryProcessor, QuerySchema, TableSchema};
 use crate::storage_engine::StorageEngine;
@@ -123,6 +124,7 @@ impl PreparedStatement {
                 Self::count_parameters_in_expression(left)
                     + Self::count_parameters_in_expression(right)
             }
+            Expression::FunctionCall { .. } => 0,
         }
     }
 
@@ -424,10 +426,17 @@ impl Database {
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
         let query_schema = if let Statement::Select(ref select) = statement {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+            let columns: Vec<String> = select.columns.iter().map(|expr| {
+                if let Expression::Column(ref name) = expr {
+                    Ok(name.clone())
+                } else {
+                    Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+                }
+            }).collect::<Result<Vec<_>>>()?;
             let schema = schemas.get(&select.table).ok_or_else(|| {
                 crate::Error::Other(format!("Table '{}' not found", &select.table))
             })?;
-            Some(QuerySchema::new(&select.columns, schema))
+            Some(QuerySchema::new(&columns, schema))
         } else {
             None
         };
@@ -625,6 +634,10 @@ impl Database {
                     operator: *operator,
                     right: Box::new(bind_expr(right, params)?),
                 }),
+                Expression::FunctionCall { name, args } => Ok(Expression::FunctionCall {
+                    name: name.clone(),
+                    args: args.iter().map(|arg| bind_expr(arg, params)).collect::<Result<Vec<_>>>()?,
+                }),
             }
         }
         fn bind_condition(
@@ -668,7 +681,7 @@ impl Database {
                     None
                 };
                 Ok(Statement::Select(crate::parser::SelectStatement {
-                    columns: s.columns.clone(),
+                    columns: s.columns.clone(), // Already Vec<Expression>
                     table: s.table.clone(),
                     where_clause,
                     limit: s.limit,
@@ -905,6 +918,7 @@ fn expr_has_param(expr: &crate::parser::Expression) -> bool {
         Expression::Value(_) => false,
         Expression::Column(_) => false,
         Expression::BinaryOp { left, right, .. } => expr_has_param(left) || expr_has_param(right),
+        Expression::FunctionCall { .. } => false,
     }
 }
 // Extend instantiate_plan_with_params to handle INSERT, UPDATE, DELETE
@@ -1049,8 +1063,8 @@ fn instantiate_expr_with_params(
                 .cloned()
                 .unwrap_or(crate::parser::SqlValue::Null),
         ),
-        Expression::Value(v) => Expression::Value(v.clone()),
-        Expression::Column(c) => Expression::Column(c.clone()),
+        Expression::Value(_) => expr.clone(),
+        Expression::Column(_) => expr.clone(),
         Expression::BinaryOp {
             left,
             operator,
@@ -1059,6 +1073,10 @@ fn instantiate_expr_with_params(
             left: Box::new(instantiate_expr_with_params(left, params)),
             operator: *operator,
             right: Box::new(instantiate_expr_with_params(right, params)),
+        },
+        Expression::FunctionCall { name, args } => Expression::FunctionCall {
+            name: name.clone(),
+            args: args.iter().map(|arg| instantiate_expr_with_params(arg, params)).collect(),
         },
     }
 }

@@ -148,8 +148,15 @@ impl QueryPlanner {
             if let Some(pk_value) =
                 self.extract_single_pk_equality(&select.table, &where_clause.condition)?
             {
-                let selected_columns =
+                let expr_columns =
                     self.normalize_selected_columns(&select.table, &select.columns)?;
+                let selected_columns = expr_columns.iter().map(|expr| {
+                    if let crate::parser::Expression::Column(ref name) = expr {
+                        Ok(name.clone())
+                    } else {
+                        Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+                    }
+                }).collect::<Result<Vec<_>>>()?;
                 let additional_filter =
                     self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
                 return Ok(Some(ExecutionPlan::PrimaryKeyLookup {
@@ -210,8 +217,15 @@ impl QueryPlanner {
             {
                 let additional_filter =
                     self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
-                let selected_columns =
+                let expr_columns =
                     self.normalize_selected_columns(&select.table, &select.columns)?;
+                let selected_columns = expr_columns.iter().map(|expr| {
+                    if let crate::parser::Expression::Column(ref name) = expr {
+                        Ok(name.clone())
+                    } else {
+                        Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+                    }
+                }).collect::<Result<Vec<_>>>()?;
 
                 return Ok(Some(ExecutionPlan::TableRangeScan {
                     table: select.table.clone(),
@@ -228,7 +242,14 @@ impl QueryPlanner {
 
     /// Plan table scan (full scan)
     fn plan_table_scan(&self, select: &SelectStatement) -> Result<ExecutionPlan> {
-        let selected_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
+        let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
+        let selected_columns = expr_columns.iter().map(|expr| {
+            if let crate::parser::Expression::Column(ref name) = expr {
+                Ok(name.clone())
+            } else {
+                Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+            }
+        }).collect::<Result<Vec<_>>>()?;
         let filter = select.where_clause.as_ref().map(|w| w.condition.clone());
 
         Ok(ExecutionPlan::TableScan {
@@ -273,7 +294,14 @@ impl QueryPlanner {
             .collect();
 
         // Always expand ["*"] to all columns for scan plan
-        let all_columns = self.normalize_selected_columns(&update.table, &["*".to_string()])?;
+        let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(&update.table, &[crate::parser::Expression::Column("*".to_string())])?;
+        let all_columns: Vec<String> = expr_columns.iter().map(|expr| {
+            if let crate::parser::Expression::Column(ref name) = expr {
+                Ok(name.clone())
+            } else {
+                Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+            }
+        }).collect::<Result<Vec<_>>>()?;
 
         // Create scan plan for the rows to update
         let scan_plan = if let Some(ref where_clause) = update.where_clause {
@@ -351,7 +379,14 @@ impl QueryPlanner {
     /// Plan DELETE statement
     fn plan_delete(&self, delete: DeleteStatement) -> Result<ExecutionPlan> {
         // Always expand ["*"] to all columns for scan plan
-        let all_columns = self.normalize_selected_columns(&delete.table, &["*".to_string()])?;
+        let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(&delete.table, &[crate::parser::Expression::Column("*".to_string())])?;
+        let all_columns: Vec<String> = expr_columns.iter().map(|expr| {
+            if let crate::parser::Expression::Column(ref name) = expr {
+                Ok(name.clone())
+            } else {
+                Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+            }
+        }).collect::<Result<Vec<_>>>()?;
 
         // Create scan plan for the rows to delete
         let scan_plan = if let Some(ref where_clause) = delete.where_clause {
@@ -640,20 +675,23 @@ impl QueryPlanner {
     fn normalize_selected_columns(
         &self,
         table_name: &str,
-        columns: &[String],
-    ) -> Result<Vec<String>> {
-        if columns.len() == 1 && columns[0] == "*" {
-            // Expand * to all columns from the schema
-            if let Some(schema) = self.table_schemas.get(table_name) {
-                Ok(schema.columns.iter().map(|c| c.name.clone()).collect())
-            } else {
-                Err(crate::Error::Other(format!(
-                    "Table '{table_name}' not found for column expansion"
-                )))
+        columns: &[crate::parser::Expression],
+    ) -> Result<Vec<crate::parser::Expression>> {
+        if columns.len() == 1 {
+            if let crate::parser::Expression::Column(ref star) = columns[0] {
+                if star == "*" {
+                    // Expand * to all columns from the schema
+                    if let Some(schema) = self.table_schemas.get(table_name) {
+                        return Ok(schema.columns.iter().map(|c| crate::parser::Expression::Column(c.name.clone())).collect());
+                    } else {
+                        return Err(crate::Error::Other(format!(
+                            "Table '{table_name}' not found for column expansion"
+                        )));
+                    }
+                }
             }
-        } else {
-            Ok(columns.to_vec())
         }
+        Ok(columns.to_vec())
     }
 
     /// Get primary key columns for a table
@@ -824,7 +862,7 @@ mod tests {
 
         let select = SelectStatement {
             table: "users".to_string(),
-            columns: vec!["name".to_string(), "email".to_string()],
+            columns: vec![crate::parser::Expression::Column("name".to_string()), crate::parser::Expression::Column("email".to_string())],
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {
                     left: "id".to_string(),
@@ -855,7 +893,7 @@ mod tests {
 
         let select = SelectStatement {
             table: "users".to_string(),
-            columns: vec!["*".to_string()],
+            columns: vec![crate::parser::Expression::Column("*".to_string())],
             where_clause: Some(WhereClause {
                 condition: Condition::And(
                     Box::new(Condition::Comparison {
@@ -894,7 +932,7 @@ mod tests {
 
         let select = SelectStatement {
             table: "users".to_string(),
-            columns: vec!["*".to_string()],
+            columns: vec![crate::parser::Expression::Column("*".to_string())],
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {
                     left: "name".to_string(),
