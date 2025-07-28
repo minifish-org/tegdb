@@ -6,7 +6,7 @@
 
 use crate::parser::{
     ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
-    InsertStatement, SelectStatement, SqlValue, Statement, UpdateStatement,
+    InsertStatement, OrderByClause, OrderByItem, OrderDirection, SelectStatement, SqlValue, Statement, UpdateStatement,
 };
 use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::Result;
@@ -64,10 +64,34 @@ pub enum ExecutionPlan {
         table: String,
         if_exists: bool,
     },
+    CreateIndex {
+        index_name: String,
+        table_name: String,
+        column_name: String,
+        unique: bool,
+    },
+    DropIndex {
+        index_name: String,
+        if_exists: bool,
+    },
     /// Transaction control
     Begin,
     Commit,
     Rollback,
+    /// Index scan operation plan
+    IndexScan {
+        table: String,
+        index: String,
+        column_value: crate::parser::SqlValue,
+        selected_columns: Vec<String>,
+    },
+    /// Sort operation plan
+    Sort {
+        input_plan: Box<ExecutionPlan>,
+        order_by_items: Vec<OrderByItem>,
+        schema: std::rc::Rc<TableSchema>,
+        query_schema: crate::query_processor::QuerySchema,
+    },
 }
 
 /// Primary key range for range scans
@@ -111,6 +135,60 @@ impl QueryPlanner {
         Self { table_schemas }
     }
 
+    /// Find a suitable index for a WHERE condition
+    fn find_suitable_index(
+        &self,
+        table_name: &str,
+        condition: &crate::parser::Condition,
+    ) -> Option<(String, String, crate::parser::SqlValue)> {
+        // Get table schema
+        let schema = self.table_schemas.get(table_name)?;
+        
+        // Check each index to see if it can be used
+        for index in &schema.indexes {
+            if let Some(value) = self.extract_indexable_value(condition, &index.column_name) {
+                return Some((index.name.clone(), index.column_name.clone(), value));
+            }
+        }
+        None
+    }
+
+    /// Extract a value that can be used for index lookup from a condition
+    fn extract_indexable_value(
+        &self,
+        condition: &crate::parser::Condition,
+        column_name: &str,
+    ) -> Option<crate::parser::SqlValue> {
+        match condition {
+            crate::parser::Condition::Comparison {
+                left,
+                operator,
+                right,
+            } => {
+                if left == column_name && *operator == crate::parser::ComparisonOperator::Equal {
+                    Some(right.clone())
+                } else {
+                    None
+                }
+            }
+            crate::parser::Condition::And(left, right) => {
+                self.extract_indexable_value(left, column_name)
+                    .or_else(|| self.extract_indexable_value(right, column_name))
+            }
+            crate::parser::Condition::Or(left, right) => {
+                // For OR conditions, we need both sides to use the same index
+                let left_val = self.extract_indexable_value(left, column_name)?;
+                let right_val = self.extract_indexable_value(right, column_name)?;
+                if left_val == right_val {
+                    Some(left_val)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     /// Generate an optimized execution plan for a SQL statement
     pub fn plan(&self, statement: Statement) -> Result<ExecutionPlan> {
         match statement {
@@ -120,26 +198,51 @@ impl QueryPlanner {
             Statement::Delete(delete) => self.plan_delete(delete),
             Statement::CreateTable(create) => self.plan_create_table(create),
             Statement::DropTable(drop) => self.plan_drop_table(drop),
+            Statement::CreateIndex(create) => self.plan_create_index(create),
+            Statement::DropIndex(drop) => self.plan_drop_index(drop),
             Statement::Begin => Ok(ExecutionPlan::Begin),
             Statement::Commit => Ok(ExecutionPlan::Commit),
             Statement::Rollback => Ok(ExecutionPlan::Rollback),
         }
     }
 
-    /// Plan SELECT statement with three-tier optimization
+    /// Plan SELECT statement with index optimization
     fn plan_select(&self, select: SelectStatement) -> Result<ExecutionPlan> {
-        // 1. Try primary key lookup first (exact equality on all PK columns)
-        if let Some(pk_plan) = self.try_primary_key_lookup(&select)? {
-            return Ok(pk_plan);
+        // Try primary key lookup first (most efficient)
+        if let Some(plan) = self.try_primary_key_lookup(&select)? {
+            return self.wrap_with_sort(plan, &select.order_by);
         }
 
-        // 2. Try primary key range scan (range conditions on PK columns)
-        if let Some(range_plan) = self.try_primary_key_range_scan(&select)? {
-            return Ok(range_plan);
+        // Try primary key range scan
+        if let Some(plan) = self.try_primary_key_range_scan(&select)? {
+            return self.wrap_with_sort(plan, &select.order_by);
         }
 
-        // 3. Fall back to full table scan
-        self.plan_table_scan(&select)
+        // Try index scan if we have a suitable index
+        if let Some(where_clause) = &select.where_clause {
+            if let Some((index_name, column_name, value)) = self.find_suitable_index(&select.table, &where_clause.condition) {
+                let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
+                let selected_columns = expr_columns.iter().map(|expr| {
+                    if let crate::parser::Expression::Column(ref name) = expr {
+                        Ok(name.clone())
+                    } else {
+                        Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+                    }
+                }).collect::<Result<Vec<_>>>()?;
+                
+                let plan = ExecutionPlan::IndexScan {
+                    table: select.table,
+                    index: index_name,
+                    column_value: value,
+                    selected_columns,
+                };
+                return self.wrap_with_sort(plan, &select.order_by);
+            }
+        }
+
+        // Fall back to table scan
+        let plan = self.plan_table_scan(&select)?;
+        self.wrap_with_sort(plan, &select.order_by)
     }
 
     /// Try to create a primary key lookup plan (exact equality)
@@ -476,6 +579,7 @@ impl QueryPlanner {
                     storage_type_code: 0,
                 })
                 .collect(),
+            indexes: vec![], // Initialize indexes as empty
         };
 
         Ok(ExecutionPlan::CreateTable {
@@ -489,6 +593,36 @@ impl QueryPlanner {
         Ok(ExecutionPlan::DropTable {
             table: drop.table,
             if_exists: drop.if_exists,
+        })
+    }
+
+    /// Plan CREATE INDEX statement
+    fn plan_create_index(&self, create: crate::parser::CreateIndexStatement) -> Result<ExecutionPlan> {
+        let table_name = create.table_name.clone();
+        let column_name = create.column_name.clone();
+        let unique = create.unique;
+
+        if let Some(schema) = self.table_schemas.get(&table_name) {
+            // Note: We don't actually modify the schema here since that's done in the executor
+            return Ok(ExecutionPlan::CreateIndex {
+                index_name: create.index_name,
+                table_name,
+                column_name,
+                unique,
+            });
+        }
+        Err(crate::Error::Other(format!("Table '{}' not found for index creation", table_name)))
+    }
+
+    /// Plan DROP INDEX statement
+    fn plan_drop_index(&self, drop: crate::parser::DropIndexStatement) -> Result<ExecutionPlan> {
+        let index_name = drop.index_name.clone();
+        let if_exists = drop.if_exists;
+
+        // Note: We don't actually modify the schema here since that's done in the executor
+        Ok(ExecutionPlan::DropIndex {
+            index_name,
+            if_exists,
         })
     }
 
@@ -728,6 +862,31 @@ impl QueryPlanner {
     pub fn table_schemas(&self) -> &HashMap<String, Rc<TableSchema>> {
         &self.table_schemas
     }
+
+    /// Wrap a plan with a Sort plan if ORDER BY is present
+    fn wrap_with_sort(&self, plan: ExecutionPlan, order_by: &Option<OrderByClause>) -> Result<ExecutionPlan> {
+        if let Some(order_by_clause) = order_by {
+            let table_name = plan.primary_table().unwrap_or("");
+            let schema = self.table_schemas.get(table_name).unwrap().clone();
+            // Use the selected columns from the plan if possible
+            let selected_columns = match &plan {
+                ExecutionPlan::PrimaryKeyLookup { selected_columns, .. } => selected_columns.clone(),
+                ExecutionPlan::TableRangeScan { selected_columns, .. } => selected_columns.clone(),
+                ExecutionPlan::TableScan { selected_columns, .. } => selected_columns.clone(),
+                ExecutionPlan::IndexScan { selected_columns, .. } => selected_columns.clone(),
+                _ => schema.columns.iter().map(|c| c.name.clone()).collect(),
+            };
+            let query_schema = crate::query_processor::QuerySchema::new(&selected_columns, &schema);
+            Ok(ExecutionPlan::Sort {
+                input_plan: Box::new(plan),
+                order_by_items: order_by_clause.items.clone(),
+                schema,
+                query_schema,
+            })
+        } else {
+            Ok(plan)
+        }
+    }
 }
 
 /// Helper functions for plan analysis and debugging
@@ -743,6 +902,9 @@ impl ExecutionPlan {
             ExecutionPlan::Delete { table, .. } => Some(table),
             ExecutionPlan::CreateTable { table, .. } => Some(table),
             ExecutionPlan::DropTable { table, .. } => Some(table),
+            ExecutionPlan::CreateIndex { table_name, .. } => Some(table_name),
+            ExecutionPlan::IndexScan { table, .. } => Some(table),
+            ExecutionPlan::Sort { input_plan, .. } => input_plan.primary_table(),
             _ => None,
         }
     }
@@ -754,6 +916,8 @@ impl ExecutionPlan {
             ExecutionPlan::TableRangeScan { .. } => true,
             ExecutionPlan::Update { scan_plan, .. } => scan_plan.requires_table_scan(),
             ExecutionPlan::Delete { scan_plan, .. } => scan_plan.requires_table_scan(),
+            ExecutionPlan::IndexScan { .. } => true,
+            ExecutionPlan::Sort { input_plan, .. } => input_plan.requires_table_scan(),
             _ => false,
         }
     }
@@ -801,9 +965,28 @@ impl ExecutionPlan {
             ExecutionPlan::DropTable { table, .. } => {
                 format!("Drop Table {table}")
             }
+            ExecutionPlan::CreateIndex { index_name, table_name, column_name, unique } => {
+                format!("Create Index {index_name} on {table_name} (column: {column_name}, unique: {unique})")
+            }
+            ExecutionPlan::DropIndex { index_name, if_exists } => {
+                format!("Drop Index {index_name} (if_exists: {if_exists})")
+            }
             ExecutionPlan::Begin => "Begin Transaction".to_string(),
             ExecutionPlan::Commit => "Commit Transaction".to_string(),
             ExecutionPlan::Rollback => "Rollback Transaction".to_string(),
+            ExecutionPlan::IndexScan { table, index, column_value, selected_columns } => {
+                format!("Index Scan on {table} (index: {index}, column: {column_value:?}, selected: {})", selected_columns.join(", "))
+            }
+            ExecutionPlan::Sort { input_plan, order_by_items, .. } => {
+                let order_desc = order_by_items.iter().map(|item| {
+                    let expr_str = match &item.expression {
+                        crate::parser::Expression::Column(name) => name.clone(),
+                        _ => format!("{:?}", item.expression),
+                    };
+                    format!("{} {:?}", expr_str, item.direction)
+                }).collect::<Vec<_>>().join(", ");
+                format!("Sort on {} (order: {})", input_plan.describe(), order_desc)
+            }
         }
     }
 }
@@ -848,6 +1031,7 @@ mod tests {
                     storage_type_code: 0,
                 },
             ],
+            indexes: vec![], // Initialize indexes as empty
         };
         let _ = crate::catalog::Catalog::compute_table_metadata(&mut users_schema);
         schemas.insert("users".to_string(), Rc::new(users_schema));
@@ -861,8 +1045,8 @@ mod tests {
         let planner = QueryPlanner::new(schemas);
 
         let select = SelectStatement {
-            table: "users".to_string(),
             columns: vec![crate::parser::Expression::Column("name".to_string()), crate::parser::Expression::Column("email".to_string())],
+            table: "users".to_string(),
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {
                     left: "id".to_string(),
@@ -870,6 +1054,7 @@ mod tests {
                     right: SqlValue::Integer(123),
                 },
             }),
+            order_by: None,
             limit: None,
         };
 
@@ -892,8 +1077,8 @@ mod tests {
         let planner = QueryPlanner::new(schemas);
 
         let select = SelectStatement {
-            table: "users".to_string(),
             columns: vec![crate::parser::Expression::Column("*".to_string())],
+            table: "users".to_string(),
             where_clause: Some(WhereClause {
                 condition: Condition::And(
                     Box::new(Condition::Comparison {
@@ -908,6 +1093,7 @@ mod tests {
                     }),
                 ),
             }),
+            order_by: None,
             limit: Some(10),
         };
 
@@ -931,8 +1117,8 @@ mod tests {
         let planner = QueryPlanner::new(schemas);
 
         let select = SelectStatement {
-            table: "users".to_string(),
             columns: vec![crate::parser::Expression::Column("*".to_string())],
+            table: "users".to_string(),
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {
                     left: "name".to_string(),
@@ -940,6 +1126,7 @@ mod tests {
                     right: SqlValue::Text("John".to_string()),
                 },
             }),
+            order_by: None,
             limit: Some(10),
         };
 

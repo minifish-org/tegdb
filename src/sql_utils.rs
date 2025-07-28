@@ -161,6 +161,7 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
         let mut schema = TableSchema {
             name: table_name.to_string(),
             columns,
+            indexes: vec![], // Initialize indexes as empty
         };
         let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
         Some(schema)
@@ -200,6 +201,7 @@ pub fn deserialize_schema_from_bytes(data: &[u8]) -> crate::Result<TableSchema> 
     let mut schema = TableSchema {
         name: "unknown".to_string(), // Will be set by caller
         columns,
+        indexes: vec![], // Initialize indexes as empty
     };
     let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
     Ok(schema)

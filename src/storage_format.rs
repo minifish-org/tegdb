@@ -1,5 +1,5 @@
-use crate::parser::SqlValue;
-use crate::query_processor::TableSchema;
+use crate::parser::{ColumnConstraint, DataType, SqlValue};
+use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::Result;
 use std::collections::HashMap;
 
@@ -573,7 +573,7 @@ fn evaluate_condition_on_row(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{DataType, SqlValue};
+    use crate::parser::{SqlValue};
     use crate::query_processor::{ColumnInfo, TableSchema};
     use std::collections::HashMap;
 
@@ -584,7 +584,7 @@ mod tests {
                 ColumnInfo {
                     name: "id".to_string(),
                     data_type: DataType::Integer,
-                    constraints: vec![],
+                    constraints: vec![ColumnConstraint::PrimaryKey],
                     storage_offset: 0,
                     storage_size: 8,
                     storage_type_code: TypeCode::Integer as u8,
@@ -606,6 +606,7 @@ mod tests {
                     storage_type_code: TypeCode::Real as u8,
                 },
             ],
+            indexes: vec![], // Initialize indexes as empty
         };
         let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
         schema

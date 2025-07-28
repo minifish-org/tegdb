@@ -250,6 +250,18 @@ impl Database {
             crate::parser::Statement::DropTable(drop_table) => {
                 catalog.remove_table_schema(&drop_table.table);
             }
+            crate::parser::Statement::CreateIndex(create_index) => {
+                let index = crate::catalog::IndexInfo {
+                    name: create_index.index_name.clone(),
+                    table_name: create_index.table_name.clone(),
+                    column_name: create_index.column_name.clone(),
+                    unique: create_index.unique,
+                };
+                let _ = catalog.add_index(index);
+            }
+            crate::parser::Statement::DropIndex(drop_index) => {
+                let _ = catalog.remove_index(&drop_index.index_name);
+            }
             _ => {} // No schema changes for other statements
         }
     }
@@ -349,6 +361,8 @@ impl Database {
             crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
             crate::query_processor::ResultSet::CreateTable => 0,
             crate::query_processor::ResultSet::DropTable => 0,
+            crate::query_processor::ResultSet::CreateIndex => 0,
+            crate::query_processor::ResultSet::DropIndex => 0,
             crate::query_processor::ResultSet::Begin => 0,
             crate::query_processor::ResultSet::Commit => 0,
             crate::query_processor::ResultSet::Rollback => 0,
@@ -484,6 +498,8 @@ impl Database {
                 crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
                 crate::query_processor::ResultSet::CreateTable => 0,
                 crate::query_processor::ResultSet::DropTable => 0,
+                crate::query_processor::ResultSet::CreateIndex => 0,
+                crate::query_processor::ResultSet::DropIndex => 0,
                 crate::query_processor::ResultSet::Begin => 0,
                 crate::query_processor::ResultSet::Commit => 0,
                 crate::query_processor::ResultSet::Rollback => 0,
@@ -513,6 +529,8 @@ impl Database {
                 crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
                 crate::query_processor::ResultSet::CreateTable => 0,
                 crate::query_processor::ResultSet::DropTable => 0,
+                crate::query_processor::ResultSet::CreateIndex => 0,
+                crate::query_processor::ResultSet::DropIndex => 0,
                 crate::query_processor::ResultSet::Begin => 0,
                 crate::query_processor::ResultSet::Commit => 0,
                 crate::query_processor::ResultSet::Rollback => 0,
@@ -684,6 +702,7 @@ impl Database {
                     columns: s.columns.clone(), // Already Vec<Expression>
                     table: s.table.clone(),
                     where_clause,
+                    order_by: None,
                     limit: s.limit,
                 }))
             }
@@ -741,6 +760,8 @@ impl Database {
             }
             Statement::CreateTable(s) => Ok(Statement::CreateTable(s.clone())),
             Statement::DropTable(s) => Ok(Statement::DropTable(s.clone())),
+            Statement::CreateIndex(s) => Ok(Statement::CreateIndex(s.clone())),
+            Statement::DropIndex(s) => Ok(Statement::DropIndex(s.clone())),
             Statement::Begin => Ok(Statement::Begin),
             Statement::Commit => Ok(Statement::Commit),
             Statement::Rollback => Ok(Statement::Rollback),

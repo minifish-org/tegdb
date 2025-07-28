@@ -3,8 +3,10 @@
 //! This module provides the core query execution engine that works directly with the
 //! native binary row format for optimal performance.
 
+use crate::catalog::IndexInfo;
 use crate::parser::{
     ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
+    Expression, OrderByItem, OrderDirection,
 };
 
 use crate::storage_engine::Transaction;
@@ -321,6 +323,7 @@ pub struct ColumnInfo {
 pub struct TableSchema {
     pub name: String,
     pub columns: Vec<ColumnInfo>,
+    pub indexes: Vec<IndexInfo>,
 }
 
 /// Optimized schema validation methods
@@ -369,7 +372,7 @@ impl TableSchema {
 }
 
 /// Query schema for fast column access
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct QuerySchema {
     pub column_names: Vec<String>,
     pub column_indices: Vec<usize>,
@@ -547,6 +550,10 @@ pub enum ResultSet<'a> {
     Commit,
     /// Transaction ROLLBACK result
     Rollback,
+    /// CREATE INDEX result
+    CreateIndex,
+    /// DROP INDEX result
+    DropIndex,
 }
 
 impl<'a> ResultSet<'a> {
@@ -662,6 +669,7 @@ impl<'a> QueryProcessor<'a> {
         let mut schema = TableSchema {
             name: create.table.clone(),
             columns,
+            indexes: vec![], // Initialize indexes as empty
         };
         // Compute storage metadata automatically when adding to catalog
         let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
@@ -748,6 +756,85 @@ impl<'a> QueryProcessor<'a> {
         Ok(ResultSet::DropTable)
     }
 
+    /// Execute CREATE INDEX statement
+    pub fn execute_create_index(&mut self, create: crate::parser::CreateIndexStatement) -> Result<ResultSet<'_>> {
+        // Check if table exists
+        if !self.table_schemas.contains_key(&create.table_name) {
+            return Err(Error::Other(format!(
+                "Table '{}' does not exist",
+                create.table_name
+            )));
+        }
+
+        // Check if column exists in the table
+        let schema = self.get_table_schema(&create.table_name)?;
+        if !schema.has_column(&create.column_name) {
+            return Err(Error::Other(format!(
+                "Column '{}' does not exist in table '{}'",
+                create.column_name, create.table_name
+            )));
+        }
+
+        // Check if index already exists
+        if schema.indexes.iter().any(|idx| idx.name == create.index_name) {
+            return Err(Error::Other(format!(
+                "Index '{}' already exists",
+                create.index_name
+            )));
+        }
+
+        // Create index info
+        let index = crate::catalog::IndexInfo {
+            name: create.index_name.clone(),
+            table_name: create.table_name.clone(),
+            column_name: create.column_name.clone(),
+            unique: create.unique,
+        };
+
+        // Store index metadata
+        let index_key = crate::catalog::Catalog::get_index_storage_key(&create.index_name);
+        let index_data = crate::catalog::Catalog::serialize_index_to_bytes(&index);
+        self.transaction.set(index_key.as_bytes(), index_data)?;
+
+        // Add to in-memory schema
+        let mut schema = schema.as_ref().clone();
+        schema.indexes.push(index);
+        self.table_schemas.insert(create.table_name.clone(), Rc::new(schema));
+
+        Ok(ResultSet::CreateIndex)
+    }
+
+    /// Execute DROP INDEX statement
+    pub fn execute_drop_index(&mut self, drop: crate::parser::DropIndexStatement) -> Result<ResultSet<'_>> {
+        // Find the index in any table
+        let mut found = false;
+        for (table_name, schema_rc) in &self.table_schemas {
+            let schema = schema_rc.as_ref();
+            if schema.indexes.iter().any(|idx| idx.name == drop.index_name) {
+                found = true;
+                
+                // Remove index metadata from storage
+                let index_key = crate::catalog::Catalog::get_index_storage_key(&drop.index_name);
+                self.transaction.delete(index_key.as_bytes())?;
+
+                // Remove from in-memory schema
+                let mut new_schema = schema.clone();
+                new_schema.indexes.retain(|idx| idx.name != drop.index_name);
+                self.table_schemas.insert(table_name.clone(), Rc::new(new_schema));
+                break;
+            }
+        }
+
+        if !found && !drop.if_exists {
+            return Err(Error::Other(format!(
+                "Index '{}' does not exist",
+                drop.index_name
+            )));
+        }
+
+        Ok(ResultSet::DropIndex)
+    }
+
     /// Begin transaction
     pub fn begin_transaction(&mut self) -> Result<ResultSet<'_>> {
         if self.transaction_active {
@@ -791,6 +878,143 @@ impl<'a> QueryProcessor<'a> {
             ExecutionPlan::PrimaryKeyLookup { .. }
             | ExecutionPlan::TableRangeScan { .. }
             | ExecutionPlan::TableScan { .. } => self.execute_select_plan_streaming(plan),
+            ExecutionPlan::IndexScan { table, index, column_value, selected_columns } => {
+                // For now, fall back to table scan since index entries are not yet populated
+                // TODO: Implement actual index scanning when index entries are created
+                let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new(&selected_columns, &schema);
+                
+                // Clone values for the closure
+                let schema_clone = schema.clone();
+                let index_clone = index.clone();
+                let column_value_clone = column_value.clone();
+                let storage_format_clone = self.storage_format.clone();
+                
+                // Use table scan as fallback
+                let start_key = PrimaryKey::table_prefix(&table);
+                let end_key = PrimaryKey::table_end_marker(&table);
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                
+                // Filter by the indexed column value
+                let filtered_iter = scan_iter.filter_map(move |(key, value_rc)| {
+                    let row_data = storage_format_clone.deserialize_row_full(&value_rc, &schema_clone).ok()?;
+                    // Check if the row matches the indexed column value
+                    if let Some(index_info) = schema_clone.indexes.iter().find(|idx| idx.name == index_clone) {
+                        if let Some(row_value) = row_data.get(&index_info.column_name) {
+                            if row_value == &column_value_clone {
+                                return Some((key, value_rc));
+                            }
+                        }
+                    }
+                    None
+                });
+                
+                let row_iter = SelectRowIterator::new(
+                    Box::new(filtered_iter),
+                    schema,
+                    query_schema,
+                    None,
+                    None,
+                );
+
+                Ok(ResultSet::Select {
+                    columns: selected_columns,
+                    rows: Box::new(row_iter),
+                })
+            }
+            ExecutionPlan::Sort { input_plan, order_by_items, schema, query_schema } => {
+                // Clone storage_format before execute_plan to avoid borrow checker issues
+                let storage_format = self.storage_format.clone();
+                
+                // Execute the input plan first
+                let input_result = self.execute_plan(*input_plan.clone())?;
+                
+                match input_result {
+                    ResultSet::Select { columns, rows } => {
+                        // Collect all rows for sorting
+                        let mut row_list: Vec<_> = rows.collect();
+                        
+                        // Clone the order_by_items to avoid borrow checker issues
+                        let order_by_items = order_by_items.clone();
+                        let columns = columns.clone();
+                        let schema = schema.clone();
+                        let query_schema = query_schema.clone();
+                        let schema_for_iter = schema.clone();
+                        let query_schema_for_iter = query_schema.clone();
+                        
+                        // Sort the rows based on order_by_items
+                        row_list.sort_by(|a, b| {
+                            // Handle errors by treating them as equal
+                            let a_values = match a {
+                                Ok(values) => values,
+                                Err(_) => return std::cmp::Ordering::Equal,
+                            };
+                            let b_values = match b {
+                                Ok(values) => values,
+                                Err(_) => return std::cmp::Ordering::Equal,
+                            };
+                            
+                            for item in &order_by_items {
+                                // For now, only support column expressions in ORDER BY
+                                if let Expression::Column(column_name) = &item.expression {
+                                    // Find the column index in the result
+                                    if let Some(col_idx) = columns.iter().position(|c| c == column_name) {
+                                        if col_idx < a_values.len() && col_idx < b_values.len() {
+                                            // Use a simple comparison to avoid borrow checker issues
+                                            let cmp = match (&a_values[col_idx], &b_values[col_idx]) {
+                                                (SqlValue::Integer(a), SqlValue::Integer(b)) => a.cmp(b),
+                                                (SqlValue::Real(a), SqlValue::Real(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+                                                (SqlValue::Text(a), SqlValue::Text(b)) => a.cmp(b),
+                                                (SqlValue::Vector(a), SqlValue::Vector(b)) => {
+                                                    a.iter().zip(b.iter())
+                                                        .map(|(x, y)| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal))
+                                                        .find(|&ord| ord != std::cmp::Ordering::Equal)
+                                                        .unwrap_or_else(|| a.len().cmp(&b.len()))
+                                                }
+                                                (SqlValue::Null, SqlValue::Null) => std::cmp::Ordering::Equal,
+                                                (SqlValue::Null, _) => std::cmp::Ordering::Less,
+                                                (_, SqlValue::Null) => std::cmp::Ordering::Greater,
+                                                _ => std::cmp::Ordering::Equal,
+                                            };
+                                            
+                                            if cmp != std::cmp::Ordering::Equal {
+                                                return match item.direction {
+                                                    OrderDirection::Asc => cmp,
+                                                    OrderDirection::Desc => cmp.reverse(),
+                                                };
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            std::cmp::Ordering::Equal
+                        });
+                        
+                        // Return the sorted results directly
+                        let sorted_rows = row_list.into_iter().filter_map(|r| r.ok()).collect::<Vec<_>>();
+                        
+                        // Create a custom scan iterator that yields the sorted results in the correct format
+                        let sorted_scan_iter = Box::new(sorted_rows.into_iter().map(move |row| {
+                            // Use the real schema and query schema for deserialization
+                            let dummy_key = vec![];
+                            let serialized_row = storage_format.serialize_row(&query_schema_for_iter.column_names.iter().cloned().zip(row.into_iter()).collect::<HashMap<_, _>>(), &schema_for_iter).unwrap_or_default();
+                            (dummy_key, std::rc::Rc::from(serialized_row.into_boxed_slice()))
+                        }));
+                        
+                        Ok(ResultSet::Select {
+                            columns,
+                            rows: Box::new(SelectRowIterator::new(
+                                sorted_scan_iter,
+                                schema,
+                                query_schema,
+                                None,
+                                None,
+                            )),
+                        })
+                    }
+                    _ => Err(crate::Error::Other("Sort can only be applied to SELECT results".to_string())),
+                }
+            }
             // Non-SELECT operations remain the same
             ExecutionPlan::Insert {
                 table,
@@ -810,6 +1034,22 @@ impl<'a> QueryProcessor<'a> {
             }
             ExecutionPlan::DropTable { table, if_exists } => {
                 self.execute_drop_table_plan(&table, if_exists)
+            }
+            ExecutionPlan::CreateIndex { index_name, table_name, column_name, unique } => {
+                let create_stmt = crate::parser::CreateIndexStatement {
+                    index_name,
+                    table_name,
+                    column_name,
+                    unique,
+                };
+                self.execute_create_index(create_stmt)
+            }
+            ExecutionPlan::DropIndex { index_name, if_exists } => {
+                let drop_stmt = crate::parser::DropIndexStatement {
+                    index_name,
+                    if_exists,
+                };
+                self.execute_drop_index(drop_stmt)
             }
             ExecutionPlan::Begin => self.begin_transaction(),
             ExecutionPlan::Commit => self.commit_transaction(),
@@ -1295,6 +1535,89 @@ impl<'a> QueryProcessor<'a> {
         }
 
         Ok((start_key, end_key))
+    }
+
+    /// Evaluate an expression in the context of a row
+    fn evaluate_expression(&self, expression: &Expression, row_data: &HashMap<String, SqlValue>, _row_bytes: &[u8]) -> Result<SqlValue> {
+        match expression {
+            Expression::Value(value) => Ok(value.clone()),
+            Expression::Column(column_name) => {
+                row_data.get(column_name)
+                    .cloned()
+                    .ok_or_else(|| crate::Error::Other(format!("Column '{}' not found", column_name)))
+            }
+            Expression::BinaryOp { left, operator, right } => {
+                let left_val = self.evaluate_expression(left, row_data, _row_bytes)?;
+                let right_val = self.evaluate_expression(right, row_data, _row_bytes)?;
+                
+                match (left_val, right_val) {
+                    (SqlValue::Integer(a), SqlValue::Integer(b)) => {
+                        let result = match operator {
+                            crate::parser::ArithmeticOperator::Add => a + b,
+                            crate::parser::ArithmeticOperator::Subtract => a - b,
+                            crate::parser::ArithmeticOperator::Multiply => a * b,
+                            crate::parser::ArithmeticOperator::Divide => {
+                                if b == 0 {
+                                    return Err(crate::Error::Other("Division by zero".to_string()));
+                                }
+                                a / b
+                            }
+                            crate::parser::ArithmeticOperator::Modulo => {
+                                if b == 0 {
+                                    return Err(crate::Error::Other("Modulo by zero".to_string()));
+                                }
+                                a % b
+                            }
+                        };
+                        Ok(SqlValue::Integer(result))
+                    }
+                    (SqlValue::Real(a), SqlValue::Real(b)) => {
+                        let result = match operator {
+                            crate::parser::ArithmeticOperator::Add => a + b,
+                            crate::parser::ArithmeticOperator::Subtract => a - b,
+                            crate::parser::ArithmeticOperator::Multiply => a * b,
+                            crate::parser::ArithmeticOperator::Divide => {
+                                if b == 0.0 {
+                                    return Err(crate::Error::Other("Division by zero".to_string()));
+                                }
+                                a / b
+                            }
+                            crate::parser::ArithmeticOperator::Modulo => {
+                                if b == 0.0 {
+                                    return Err(crate::Error::Other("Modulo by zero".to_string()));
+                                }
+                                a % b
+                            }
+                        };
+                        Ok(SqlValue::Real(result))
+                    }
+                    _ => Err(crate::Error::Other("Unsupported operation for these types".to_string())),
+                }
+            }
+            Expression::FunctionCall { .. } => {
+                Err(crate::Error::Other("Function calls not supported in ORDER BY".to_string()))
+            }
+        }
+    }
+
+    /// Compare two SqlValues for sorting
+    fn compare_values(&self, a: &SqlValue, b: &SqlValue) -> std::cmp::Ordering {
+        match (a, b) {
+            (SqlValue::Integer(a), SqlValue::Integer(b)) => a.cmp(b),
+            (SqlValue::Real(a), SqlValue::Real(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+            (SqlValue::Text(a), SqlValue::Text(b)) => a.cmp(b),
+            (SqlValue::Vector(a), SqlValue::Vector(b)) => {
+                // For vectors, compare lexicographically
+                a.iter().zip(b.iter())
+                    .map(|(x, y)| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal))
+                    .find(|&ord| ord != std::cmp::Ordering::Equal)
+                    .unwrap_or_else(|| a.len().cmp(&b.len()))
+            }
+            (SqlValue::Null, SqlValue::Null) => std::cmp::Ordering::Equal,
+            (SqlValue::Null, _) => std::cmp::Ordering::Less,
+            (_, SqlValue::Null) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal, // Different types are considered equal
+        }
     }
 
     pub fn execute_plan_with_query_schema(

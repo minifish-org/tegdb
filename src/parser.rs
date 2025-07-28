@@ -51,6 +51,8 @@ pub enum Statement {
     Delete(DeleteStatement),
     CreateTable(CreateTableStatement),
     DropTable(DropTableStatement),
+    CreateIndex(CreateIndexStatement),
+    DropIndex(DropIndexStatement),
     Begin,
     Commit,
     Rollback,
@@ -61,6 +63,7 @@ pub struct SelectStatement {
     pub columns: Vec<Expression>,
     pub table: String,
     pub where_clause: Option<WhereClause>,
+    pub order_by: Option<OrderByClause>,
     pub limit: Option<u64>, // None means no limit, Some(n) means limit n
 }
 
@@ -97,6 +100,20 @@ pub struct DropTableStatement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CreateIndexStatement {
+    pub index_name: String,
+    pub table_name: String,
+    pub column_name: String,
+    pub unique: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropIndexStatement {
+    pub index_name: String,
+    pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ColumnDefinition {
     pub name: String,
     pub data_type: DataType,
@@ -121,6 +138,23 @@ pub enum ColumnConstraint {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WhereClause {
     pub condition: Condition,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderByClause {
+    pub items: Vec<OrderByItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderByItem {
+    pub expression: Expression,
+    pub direction: OrderDirection,
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum OrderDirection {
+    Asc,
+    Desc,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -339,6 +373,8 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
         parse_update,
         parse_delete,
         parse_drop_table,
+        parse_create_index,
+        parse_drop_index,
         parse_begin_transaction,
         parse_commit,
         parse_rollback,
@@ -449,6 +485,8 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
+    let (input, order_by) = opt(parse_order_by_clause).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
     let (input, limit) = opt(parse_limit_with_parameter).parse(input)?;
 
     Ok((
@@ -457,6 +495,7 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
             columns,
             table,
             where_clause,
+            order_by,
             limit: limit.flatten(),
         }),
     ))
@@ -545,6 +584,53 @@ fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
         input,
         Statement::DropTable(DropTableStatement {
             table,
+            if_exists: if_exists.is_some(),
+        }),
+    ))
+}
+
+// Parse CREATE INDEX statement
+fn parse_create_index(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = delimited(multispace0, tag_no_case("CREATE"), multispace1).parse(input)?;
+    let (input, _) = tag_no_case("INDEX").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, index_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("ON").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, table_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = char('(').parse(input)?;
+    let (input, column_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = char(')').parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, unique) = opt(tag_no_case("UNIQUE")).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+
+    Ok((
+        input,
+        Statement::CreateIndex(CreateIndexStatement {
+            index_name,
+            table_name,
+            column_name,
+            unique: unique.is_some(),
+        }),
+    ))
+}
+
+// Parse DROP INDEX statement
+fn parse_drop_index(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = delimited(multispace0, tag_no_case("DROP"), multispace1).parse(input)?;
+    let (input, _) = tag_no_case("INDEX").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, index_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, if_exists) = opt(tag_no_case("IF EXISTS")).parse(input)?;
+
+    Ok((
+        input,
+        Statement::DropIndex(DropIndexStatement {
+            index_name,
             if_exists: if_exists.is_some(),
         }),
     ))
@@ -721,6 +807,41 @@ fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
         map(tag("<"), |_| ComparisonOperator::LessThan),
         map(tag(">"), |_| ComparisonOperator::GreaterThan),
         map(tag_no_case("LIKE"), |_| ComparisonOperator::Like),
+    ))
+    .parse(input)
+}
+
+// Parse ORDER BY clause
+fn parse_order_by_clause(input: &str) -> IResult<&str, OrderByClause> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = tag_no_case("ORDER").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, _) = tag_no_case("BY").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, items) = separated_list0(
+        delimited(multispace0, char(','), multispace0),
+        parse_order_by_item,
+    )
+    .parse(input)?;
+
+    Ok((input, OrderByClause { items }))
+}
+
+// Parse ORDER BY item
+fn parse_order_by_item(input: &str) -> IResult<&str, OrderByItem> {
+    let (input, expression) = parse_expression.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, direction) = opt(parse_order_direction).parse(input)?;
+    let direction = direction.unwrap_or(OrderDirection::Asc);
+
+    Ok((input, OrderByItem { expression, direction }))
+}
+
+// Parse ORDER BY direction (ASC or DESC)
+fn parse_order_direction(input: &str) -> IResult<&str, OrderDirection> {
+    alt((
+        map(tag_no_case("ASC"), |_| OrderDirection::Asc),
+        map(tag_no_case("DESC"), |_| OrderDirection::Desc),
     ))
     .parse(input)
 }

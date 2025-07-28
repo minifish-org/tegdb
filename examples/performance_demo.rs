@@ -14,42 +14,27 @@ fn main() {
                 data_type: DataType::Integer,
                 constraints: vec![ColumnConstraint::PrimaryKey],
                 storage_offset: 0,
-                storage_size: 0,
-                storage_type_code: 0,
+                storage_size: 8,
+                storage_type_code: 1,
             },
             ColumnInfo {
                 name: "name".to_string(),
-                data_type: DataType::Text(Some(50)),
+                data_type: DataType::Text(None),
                 constraints: vec![],
-                storage_offset: 0,
-                storage_size: 0,
-                storage_type_code: 0,
+                storage_offset: 8,
+                storage_size: 32,
+                storage_type_code: 2,
             },
             ColumnInfo {
                 name: "email".to_string(),
-                data_type: DataType::Text(Some(100)),
+                data_type: DataType::Text(None),
                 constraints: vec![],
-                storage_offset: 0,
-                storage_size: 0,
-                storage_type_code: 0,
-            },
-            ColumnInfo {
-                name: "age".to_string(),
-                data_type: DataType::Integer,
-                constraints: vec![],
-                storage_offset: 0,
-                storage_size: 0,
-                storage_type_code: 0,
-            },
-            ColumnInfo {
-                name: "score".to_string(),
-                data_type: DataType::Real,
-                constraints: vec![],
-                storage_offset: 0,
-                storage_size: 0,
-                storage_type_code: 0,
+                storage_offset: 40,
+                storage_size: 64,
+                storage_type_code: 2,
             },
         ],
+        indexes: vec![], // Initialize indexes as empty
     };
     let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
 
@@ -182,6 +167,7 @@ fn main() {
                 storage_type_code: 0,
             },
         ],
+        indexes: vec![], // Initialize indexes as empty
     };
     let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut large_schema);
 

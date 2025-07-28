@@ -26,6 +26,7 @@ mod vector_storage_format_tests {
                     storage_type_code: 0,
                 },
             ],
+            indexes: vec![], // Initialize indexes as empty
         }
     }
 

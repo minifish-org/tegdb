@@ -3,23 +3,23 @@
 With the foundation now in place, the next phases would be:
 
 ## Step 1: Expression Framework
-- [ ] Add a framework for common expressions in queries and functions
-- [ ] Add support for COUNT aggregate function
-- [ ] Add support for SUM aggregate function
+- [x] Add a framework for common expressions in queries and functions
+- [x] Add support for COUNT aggregate function
+- [x] Add support for SUM aggregate function
 
 ## Step 2: Secondary Index Support
-- [ ] Add support for secondary indexes on columns
-- [ ] Support index creation and deletion (CREATE INDEX, DROP INDEX)
-- [ ] Implement index codec for encoding/decoding index entries
-- [ ] Support index scan operations in query execution
-- [ ] Integrate index usage into CBO (Cost-Based Optimizer) planner
-- [ ] Collect and maintain index statistics for optimization
-- [ ] Support index usage in query planning
+- [x] Add support for secondary indexes on columns
+- [x] Support index creation and deletion (CREATE INDEX, DROP INDEX)
+- [x] Implement index codec for encoding/decoding index entries
+- [x] Support index scan operations in query execution
+- [x] Integrate index usage into CBO (Cost-Based Optimizer) planner
+- [x] Collect and maintain index statistics for optimization
+- [x] Support index usage in query planning
 
 ## Step 3: ORDER BY Support
-- [ ] Add support for ORDER BY clause in queries
-- [ ] Add support for ASC (ascending) order
-- [ ] Add support for DESC (descending) order
+- [x] Add support for ORDER BY clause in queries
+- [x] Add support for ASC (ascending) order
+- [x] Add support for DESC (descending) order
 
 ## Step 4: Vector Similarity Functions
 - [ ] COSINE_SIMILARITY(vec1, vec2)
