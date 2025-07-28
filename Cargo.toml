@@ -16,6 +16,7 @@ license = "AGPL-3.0"
 
 [dependencies]
 nom = "8.0.0"   # SQL parser
+fastrand = "2.0.1"  # Fast random number generation for vector indexing
 
 # Native platform dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

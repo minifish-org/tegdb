@@ -5,7 +5,7 @@
 //! optimizations without complex cost estimation.
 
 use crate::parser::{
-    ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
+    ComparisonOperator, Condition, CreateIndexStatement, CreateTableStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
     InsertStatement, OrderByClause, OrderByItem, OrderDirection, SelectStatement, SqlValue, Statement, UpdateStatement,
 };
 use crate::query_processor::{ColumnInfo, TableSchema};
@@ -20,13 +20,13 @@ pub enum ExecutionPlan {
     PrimaryKeyLookup {
         table: String,
         pk_value: SqlValue,
-        selected_columns: Vec<String>,
+        selected_columns: Vec<crate::parser::Expression>,
         additional_filter: Option<Condition>,
     },
     /// Primary key range scan - range conditions on PK column
     TableRangeScan {
         table: String,
-        selected_columns: Vec<String>,
+        selected_columns: Vec<crate::parser::Expression>,
         pk_range: PkRange,
         additional_filter: Option<Condition>,
         limit: Option<u64>,
@@ -34,7 +34,7 @@ pub enum ExecutionPlan {
     /// Full table scan - no PK conditions or non-PK filters
     TableScan {
         table: String,
-        selected_columns: Vec<String>,
+        selected_columns: Vec<crate::parser::Expression>,
         filter: Option<Condition>,
         limit: Option<u64>,
     },
@@ -83,7 +83,7 @@ pub enum ExecutionPlan {
         table: String,
         index: String,
         column_value: crate::parser::SqlValue,
-        selected_columns: Vec<String>,
+        selected_columns: Vec<crate::parser::Expression>,
     },
     /// Sort operation plan
     Sort {
@@ -220,23 +220,19 @@ impl QueryPlanner {
 
         // Try index scan if we have a suitable index
         if let Some(where_clause) = &select.where_clause {
-            if let Some((index_name, column_name, value)) = self.find_suitable_index(&select.table, &where_clause.condition) {
+            if let Some((index_name, _column_name, value)) = self.find_suitable_index(&select.table, &where_clause.condition) {
+                println!("Found suitable index: {} for column value: {:?}", index_name, value);
                 let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-                let selected_columns = expr_columns.iter().map(|expr| {
-                    if let crate::parser::Expression::Column(ref name) = expr {
-                        Ok(name.clone())
-                    } else {
-                        Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
-                    }
-                }).collect::<Result<Vec<_>>>()?;
                 
                 let plan = ExecutionPlan::IndexScan {
                     table: select.table,
                     index: index_name,
                     column_value: value,
-                    selected_columns,
+                    selected_columns: expr_columns,
                 };
                 return self.wrap_with_sort(plan, &select.order_by);
+            } else {
+                println!("No suitable index found for condition: {:?}", where_clause.condition);
             }
         }
 
@@ -253,19 +249,12 @@ impl QueryPlanner {
             {
                 let expr_columns =
                     self.normalize_selected_columns(&select.table, &select.columns)?;
-                let selected_columns = expr_columns.iter().map(|expr| {
-                    if let crate::parser::Expression::Column(ref name) = expr {
-                        Ok(name.clone())
-                    } else {
-                        Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
-                    }
-                }).collect::<Result<Vec<_>>>()?;
                 let additional_filter =
                     self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
                 return Ok(Some(ExecutionPlan::PrimaryKeyLookup {
                     table: select.table.clone(),
                     pk_value,
-                    selected_columns,
+                    selected_columns: expr_columns,
                     additional_filter,
                 }));
             }
@@ -322,17 +311,10 @@ impl QueryPlanner {
                     self.extract_non_pk_conditions(&select.table, &where_clause.condition)?;
                 let expr_columns =
                     self.normalize_selected_columns(&select.table, &select.columns)?;
-                let selected_columns = expr_columns.iter().map(|expr| {
-                    if let crate::parser::Expression::Column(ref name) = expr {
-                        Ok(name.clone())
-                    } else {
-                        Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
-                    }
-                }).collect::<Result<Vec<_>>>()?;
 
                 return Ok(Some(ExecutionPlan::TableRangeScan {
                     table: select.table.clone(),
-                    selected_columns,
+                    selected_columns: expr_columns,
                     pk_range,
                     additional_filter,
                     limit: select.limit,
@@ -346,18 +328,11 @@ impl QueryPlanner {
     /// Plan table scan (full scan)
     fn plan_table_scan(&self, select: &SelectStatement) -> Result<ExecutionPlan> {
         let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-        let selected_columns = expr_columns.iter().map(|expr| {
-            if let crate::parser::Expression::Column(ref name) = expr {
-                Ok(name.clone())
-            } else {
-                Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
-            }
-        }).collect::<Result<Vec<_>>>()?;
         let filter = select.where_clause.as_ref().map(|w| w.condition.clone());
 
         Ok(ExecutionPlan::TableScan {
             table: select.table.clone(),
-            selected_columns,
+            selected_columns: expr_columns,
             filter,
             limit: select.limit,
         })
@@ -398,13 +373,6 @@ impl QueryPlanner {
 
         // Always expand ["*"] to all columns for scan plan
         let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(&update.table, &[crate::parser::Expression::Column("*".to_string())])?;
-        let all_columns: Vec<String> = expr_columns.iter().map(|expr| {
-            if let crate::parser::Expression::Column(ref name) = expr {
-                Ok(name.clone())
-            } else {
-                Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
-            }
-        }).collect::<Result<Vec<_>>>()?;
 
         // Create scan plan for the rows to update
         let scan_plan = if let Some(ref where_clause) = update.where_clause {
@@ -417,7 +385,7 @@ impl QueryPlanner {
                     ExecutionPlan::PrimaryKeyLookup {
                         table: update.table.clone(),
                         pk_value,
-                        selected_columns: all_columns.clone(),
+                        selected_columns: expr_columns.clone(),
                         additional_filter: None,
                     }
                 } else {
@@ -427,7 +395,7 @@ impl QueryPlanner {
                     {
                         ExecutionPlan::TableRangeScan {
                             table: update.table.clone(),
-                            selected_columns: all_columns.clone(),
+                            selected_columns: expr_columns.clone(),
                             pk_range,
                             additional_filter: None,
                             limit: None,
@@ -435,7 +403,7 @@ impl QueryPlanner {
                     } else {
                         ExecutionPlan::TableScan {
                             table: update.table.clone(),
-                            selected_columns: all_columns.clone(),
+                            selected_columns: expr_columns.clone(),
                             filter: Some(where_clause.condition.clone()),
                             limit: None,
                         }
@@ -448,7 +416,7 @@ impl QueryPlanner {
                 {
                     ExecutionPlan::TableRangeScan {
                         table: update.table.clone(),
-                        selected_columns: all_columns.clone(),
+                        selected_columns: expr_columns.clone(),
                         pk_range,
                         additional_filter: None,
                         limit: None,
@@ -456,7 +424,7 @@ impl QueryPlanner {
                 } else {
                     ExecutionPlan::TableScan {
                         table: update.table.clone(),
-                        selected_columns: all_columns.clone(),
+                        selected_columns: expr_columns.clone(),
                         filter: Some(where_clause.condition.clone()),
                         limit: None,
                     }
@@ -466,7 +434,7 @@ impl QueryPlanner {
             // No WHERE clause - scan all rows
             ExecutionPlan::TableScan {
                 table: update.table.clone(),
-                selected_columns: all_columns.clone(),
+                selected_columns: expr_columns.clone(),
                 filter: None,
                 limit: None,
             }
@@ -483,13 +451,6 @@ impl QueryPlanner {
     fn plan_delete(&self, delete: DeleteStatement) -> Result<ExecutionPlan> {
         // Always expand ["*"] to all columns for scan plan
         let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(&delete.table, &[crate::parser::Expression::Column("*".to_string())])?;
-        let all_columns: Vec<String> = expr_columns.iter().map(|expr| {
-            if let crate::parser::Expression::Column(ref name) = expr {
-                Ok(name.clone())
-            } else {
-                Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
-            }
-        }).collect::<Result<Vec<_>>>()?;
 
         // Create scan plan for the rows to delete
         let scan_plan = if let Some(ref where_clause) = delete.where_clause {
@@ -502,7 +463,7 @@ impl QueryPlanner {
                     ExecutionPlan::PrimaryKeyLookup {
                         table: delete.table.clone(),
                         pk_value,
-                        selected_columns: all_columns.clone(),
+                        selected_columns: expr_columns.clone(),
                         additional_filter: None,
                     }
                 } else {
@@ -512,7 +473,7 @@ impl QueryPlanner {
                     {
                         ExecutionPlan::TableRangeScan {
                             table: delete.table.clone(),
-                            selected_columns: all_columns.clone(),
+                            selected_columns: expr_columns.clone(),
                             pk_range,
                             additional_filter: None,
                             limit: None,
@@ -520,7 +481,7 @@ impl QueryPlanner {
                     } else {
                         ExecutionPlan::TableScan {
                             table: delete.table.clone(),
-                            selected_columns: all_columns.clone(),
+                            selected_columns: expr_columns.clone(),
                             filter: Some(where_clause.condition.clone()),
                             limit: None,
                         }
@@ -533,7 +494,7 @@ impl QueryPlanner {
                 {
                     ExecutionPlan::TableRangeScan {
                         table: delete.table.clone(),
-                        selected_columns: all_columns.clone(),
+                        selected_columns: expr_columns.clone(),
                         pk_range,
                         additional_filter: None,
                         limit: None,
@@ -541,7 +502,7 @@ impl QueryPlanner {
                 } else {
                     ExecutionPlan::TableScan {
                         table: delete.table.clone(),
-                        selected_columns: all_columns.clone(),
+                        selected_columns: expr_columns.clone(),
                         filter: Some(where_clause.condition.clone()),
                         limit: None,
                     }
@@ -551,7 +512,7 @@ impl QueryPlanner {
             // No WHERE clause - scan all rows
             ExecutionPlan::TableScan {
                 table: delete.table.clone(),
-                selected_columns: all_columns.clone(),
+                selected_columns: expr_columns.clone(),
                 filter: None,
                 limit: None,
             }
@@ -602,7 +563,7 @@ impl QueryPlanner {
         let column_name = create.column_name.clone();
         let unique = create.unique;
 
-        if let Some(schema) = self.table_schemas.get(&table_name) {
+        if let Some(_schema) = self.table_schemas.get(&table_name) {
             // Note: We don't actually modify the schema here since that's done in the executor
             return Ok(ExecutionPlan::CreateIndex {
                 index_name: create.index_name,
@@ -825,7 +786,45 @@ impl QueryPlanner {
                 }
             }
         }
-        Ok(columns.to_vec())
+        
+        // Analyze function calls to extract referenced columns
+        let mut all_columns = Vec::new();
+        let mut referenced_columns = std::collections::HashSet::new();
+        
+        for expr in columns {
+            all_columns.push(expr.clone());
+            self.extract_columns_from_expression(expr, &mut referenced_columns);
+        }
+        
+        // Add any referenced columns that aren't already in the selection
+        for column_name in referenced_columns {
+            let column_expr = crate::parser::Expression::Column(column_name);
+            if !all_columns.iter().any(|expr| expr == &column_expr) {
+                all_columns.push(column_expr);
+            }
+        }
+        
+        Ok(all_columns)
+    }
+    
+    fn extract_columns_from_expression(&self, expr: &crate::parser::Expression, columns: &mut std::collections::HashSet<String>) {
+        match expr {
+            crate::parser::Expression::Column(name) => {
+                columns.insert(name.clone());
+            }
+            crate::parser::Expression::FunctionCall { args, .. } => {
+                for arg in args {
+                    self.extract_columns_from_expression(arg, columns);
+                }
+            }
+            crate::parser::Expression::BinaryOp { left, right, .. } => {
+                self.extract_columns_from_expression(left, columns);
+                self.extract_columns_from_expression(right, columns);
+            }
+            crate::parser::Expression::Value(_) => {
+                // No columns to extract from literal values
+            }
+        }
     }
 
     /// Get primary key columns for a table
@@ -874,9 +873,10 @@ impl QueryPlanner {
                 ExecutionPlan::TableRangeScan { selected_columns, .. } => selected_columns.clone(),
                 ExecutionPlan::TableScan { selected_columns, .. } => selected_columns.clone(),
                 ExecutionPlan::IndexScan { selected_columns, .. } => selected_columns.clone(),
-                _ => schema.columns.iter().map(|c| c.name.clone()).collect(),
+                _ => schema.columns.iter().map(|c| crate::parser::Expression::Column(c.name.clone())).collect(),
             };
-            let query_schema = crate::query_processor::QuerySchema::new(&selected_columns, &schema);
+            let query_schema = crate::query_processor::QuerySchema::new_with_expressions(&selected_columns, &schema);
+            
             Ok(ExecutionPlan::Sort {
                 input_plan: Box::new(plan),
                 order_by_items: order_by_clause.items.clone(),
@@ -943,8 +943,14 @@ impl ExecutionPlan {
                 };
                 format!("Table Range Scan on {table} ({range_desc})")
             }
-            ExecutionPlan::TableScan { table, .. } => {
-                format!("Table Scan on {table}")
+            ExecutionPlan::TableScan { table, selected_columns, filter, limit } => {
+                let columns_str = selected_columns.iter().map(|expr| {
+                    match expr {
+                        crate::parser::Expression::Column(name) => name.clone(),
+                        _ => format!("{:?}", expr),
+                    }
+                }).collect::<Vec<_>>().join(", ");
+                format!("TableScan({table}, columns=[{columns_str}], filter={filter:?}, limit={limit:?})")
             }
             ExecutionPlan::Insert { table, rows, .. } => {
                 format!("Insert into {} ({} rows)", table, rows.len())
@@ -975,7 +981,13 @@ impl ExecutionPlan {
             ExecutionPlan::Commit => "Commit Transaction".to_string(),
             ExecutionPlan::Rollback => "Rollback Transaction".to_string(),
             ExecutionPlan::IndexScan { table, index, column_value, selected_columns } => {
-                format!("Index Scan on {table} (index: {index}, column: {column_value:?}, selected: {})", selected_columns.join(", "))
+                let columns_str = selected_columns.iter().map(|expr| {
+                    match expr {
+                        crate::parser::Expression::Column(name) => name.clone(),
+                        _ => format!("{:?}", expr),
+                    }
+                }).collect::<Vec<_>>().join(", ");
+                format!("Index Scan on {table} (index: {index}, column: {column_value:?}, selected: {})", columns_str)
             }
             ExecutionPlan::Sort { input_plan, order_by_items, .. } => {
                 let order_desc = order_by_items.iter().map(|item| {

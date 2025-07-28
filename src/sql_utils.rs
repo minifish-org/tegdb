@@ -127,6 +127,22 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
                     }
                 }
                 "Text" | "TEXT" => DataType::Text(None), // Default to variable length
+                vector_type if vector_type.starts_with("Vector(") => {
+                    // Parse Vector(Some(n)) format
+                    if let Some(dimension_str) = vector_type
+                        .strip_prefix("Vector(Some(")
+                        .and_then(|s| s.strip_suffix("))"))
+                    {
+                        if let Ok(dimension) = dimension_str.parse::<usize>() {
+                            DataType::Vector(Some(dimension))
+                        } else {
+                            DataType::Vector(None)
+                        }
+                    } else {
+                        DataType::Vector(None)
+                    }
+                }
+                "Vector" => DataType::Vector(None), // Default to variable dimension
                 _ => continue,                           // Skip unknown types
             };
 
@@ -233,6 +249,22 @@ fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo
                 }
             }
             "Text" | "TEXT" => DataType::Text(None), // Default to variable length
+            vector_type if vector_type.starts_with("Vector(") => {
+                // Parse Vector(Some(n)) format
+                if let Some(dimension_str) = vector_type
+                    .strip_prefix("Vector(Some(")
+                    .and_then(|s| s.strip_suffix("))"))
+                {
+                    if let Ok(dimension) = dimension_str.parse::<usize>() {
+                        DataType::Vector(Some(dimension))
+                    } else {
+                        DataType::Vector(None)
+                    }
+                } else {
+                    DataType::Vector(None)
+                }
+            }
+            "Vector" => DataType::Vector(None), // Default to variable dimension
             _ => DataType::Text(None),               // Default fallback
         };
 

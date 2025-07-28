@@ -55,6 +55,7 @@ pub mod protocol_utils;
 pub mod sql_utils;
 pub mod storage_engine;
 pub mod storage_format;
+pub mod vector_index;
 
 // Make these modules public when dev feature is enabled or when running tests
 #[cfg(any(feature = "dev", test))]
@@ -91,6 +92,8 @@ pub use query_processor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
 pub use storage_engine::{EngineConfig, StorageEngine, Transaction};
 #[cfg(feature = "dev")]
 pub use storage_format::StorageFormat;
+#[cfg(feature = "dev")]
+pub use vector_index::{HNSWIndex, IVFIndex, LSHIndex};
 
 // Export SqlValue unconditionally as it's needed for working with query results
 pub use parser::SqlValue;

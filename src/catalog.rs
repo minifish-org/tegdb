@@ -334,7 +334,7 @@ impl Default for Catalog {
 }
 
 /// Helper to serialize SqlValue for index key
-fn sql_value_to_index_string(val: &crate::parser::SqlValue) -> String {
+pub fn sql_value_to_index_string(val: &crate::parser::SqlValue) -> String {
     match val {
         crate::parser::SqlValue::Integer(i) => i.to_string(),
         crate::parser::SqlValue::Real(f) => f.to_string(),

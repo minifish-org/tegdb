@@ -202,6 +202,15 @@ pub enum SqlValue {
     Parameter(usize), // Parameter placeholder with index
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum ArithmeticOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Value(SqlValue),
@@ -326,20 +335,105 @@ impl Expression {
                 }
             }
             Expression::FunctionCall { name, args } => {
-                // Stub: function evaluation will be implemented later
-                Err(format!("Function '{name}' evaluation not implemented"))
+                match name.to_uppercase().as_str() {
+                    "COSINE_SIMILARITY" => {
+                        if args.len() != 2 {
+                            return Err("COSINE_SIMILARITY requires exactly 2 arguments".to_string());
+                        }
+                        let vec1 = args[0].evaluate(context)?;
+                        let vec2 = args[1].evaluate(context)?;
+                        
+                        match (vec1, vec2) {
+                            (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
+                                if v1.len() != v2.len() {
+                                    return Err("Vectors must have the same dimension for cosine similarity".to_string());
+                                }
+                                
+                                // Calculate dot product
+                                let dot_product: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+                                
+                                // Calculate magnitudes
+                                let mag1: f64 = v1.iter().map(|x| x * x).sum::<f64>().sqrt();
+                                let mag2: f64 = v2.iter().map(|x| x * x).sum::<f64>().sqrt();
+                                
+                                if mag1 == 0.0 || mag2 == 0.0 {
+                                    return Err("Cannot calculate cosine similarity with zero vectors".to_string());
+                                }
+                                
+                                let similarity = dot_product / (mag1 * mag2);
+                                Ok(SqlValue::Real(similarity))
+                            }
+                            _ => Err("COSINE_SIMILARITY requires vector arguments".to_string()),
+                        }
+                    }
+                    "EUCLIDEAN_DISTANCE" => {
+                        if args.len() != 2 {
+                            return Err("EUCLIDEAN_DISTANCE requires exactly 2 arguments".to_string());
+                        }
+                        let vec1 = args[0].evaluate(context)?;
+                        let vec2 = args[1].evaluate(context)?;
+                        
+                        match (vec1, vec2) {
+                            (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
+                                if v1.len() != v2.len() {
+                                    return Err("Vectors must have the same dimension for euclidean distance".to_string());
+                                }
+                                
+                                let distance: f64 = v1.iter()
+                                    .zip(v2.iter())
+                                    .map(|(a, b)| (a - b).powi(2))
+                                    .sum::<f64>()
+                                    .sqrt();
+                                
+                                Ok(SqlValue::Real(distance))
+                            }
+                            _ => Err("EUCLIDEAN_DISTANCE requires vector arguments".to_string()),
+                        }
+                    }
+                    "DOT_PRODUCT" => {
+                        if args.len() != 2 {
+                            return Err("DOT_PRODUCT requires exactly 2 arguments".to_string());
+                        }
+                        let vec1 = args[0].evaluate(context)?;
+                        let vec2 = args[1].evaluate(context)?;
+                        
+                        match (vec1, vec2) {
+                            (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
+                                if v1.len() != v2.len() {
+                                    return Err("Vectors must have the same dimension for dot product".to_string());
+                                }
+                                
+                                let dot_product: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+                                Ok(SqlValue::Real(dot_product))
+                            }
+                            _ => Err("DOT_PRODUCT requires vector arguments".to_string()),
+                        }
+                    }
+                    "L2_NORMALIZE" => {
+                        if args.len() != 1 {
+                            return Err("L2_NORMALIZE requires exactly 1 argument".to_string());
+                        }
+                        let vec = args[0].evaluate(context)?;
+                        
+                        match vec {
+                            SqlValue::Vector(v) => {
+                                let magnitude: f64 = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+                                
+                                if magnitude == 0.0 {
+                                    return Err("Cannot normalize zero vector".to_string());
+                                }
+                                
+                                let normalized: Vec<f64> = v.iter().map(|x| x / magnitude).collect();
+                                Ok(SqlValue::Vector(normalized))
+                            }
+                            _ => Err("L2_NORMALIZE requires vector argument".to_string()),
+                        }
+                    }
+                    _ => Err(format!("Function '{name}' evaluation not implemented")),
+                }
             }
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub enum ArithmeticOperator {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
 }
 
 /// Parse SQL and assign unique parameter indices

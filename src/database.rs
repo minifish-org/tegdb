@@ -440,11 +440,12 @@ impl Database {
             parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
         let query_schema = if let Statement::Select(ref select) = statement {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-            let columns: Vec<String> = select.columns.iter().map(|expr| {
+            let columns: Vec<String> = select.columns.iter().enumerate().map(|(i, expr)| {
                 if let Expression::Column(ref name) = expr {
                     Ok(name.clone())
                 } else {
-                    Err(crate::Error::Other("Only column names are supported in SELECT for now".to_string()))
+                    // For function calls and other expressions, use a placeholder name
+                    Ok(format!("expr_{}", i))
                 }
             }).collect::<Result<Vec<_>>>()?;
             let schema = schemas.get(&select.table).ok_or_else(|| {

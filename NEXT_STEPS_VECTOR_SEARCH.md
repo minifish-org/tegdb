@@ -21,21 +21,21 @@ With the foundation now in place, the next phases would be:
 - [x] Add support for ASC (ascending) order
 - [x] Add support for DESC (descending) order
 
-## Step 4: Vector Similarity Functions
-- [ ] COSINE_SIMILARITY(vec1, vec2)
-- [ ] EUCLIDEAN_DISTANCE(vec1, vec2)
-- [ ] DOT_PRODUCT(vec1, vec2)
-- [ ] L2_NORMALIZE(vec)
+## Step 4: Vector Similarity Functions ✅
+- [x] COSINE_SIMILARITY(vec1, vec2)
+- [x] EUCLIDEAN_DISTANCE(vec1, vec2)
+- [x] DOT_PRODUCT(vec1, vec2)
+- [x] L2_NORMALIZE(vec)
 
-## Step 5: Vector Search Operations
-- [ ] K-NN queries: `SELECT * FROM embeddings ORDER BY COSINE_SIMILARITY(embedding, [0.1, 0.2, ...]) DESC LIMIT 10`
-- [ ] Similarity thresholds: `WHERE COSINE_SIMILARITY(embedding, query_vector) > 0.8`
-- [ ] Range queries: `WHERE EUCLIDEAN_DISTANCE(embedding, query_vector) < 0.5`
+## Step 5: Vector Search Operations ✅
+- [x] K-NN queries: `SELECT * FROM embeddings ORDER BY COSINE_SIMILARITY(embedding, [0.1, 0.2, ...]) DESC LIMIT 10`
+- [x] Similarity thresholds: `WHERE COSINE_SIMILARITY(embedding, query_vector) > 0.8`
+- [x] Range queries: `WHERE EUCLIDEAN_DISTANCE(embedding, query_vector) < 0.5`
 
-## Step 6: Vector Indexing
-- [ ] HNSW (Hierarchical Navigable Small World): For approximate nearest neighbor search
-- [ ] IVF (Inverted File Index): For clustering-based search
-- [ ] LSH (Locality Sensitive Hashing): For high-dimensional similarity search
+## Step 6: Vector Indexing ✅
+- [x] HNSW (Hierarchical Navigable Small World): For approximate nearest neighbor search
+- [x] IVF (Inverted File Index): For clustering-based search
+- [x] LSH (Locality Sensitive Hashing): For high-dimensional similarity search
 
 ## Step 7: AI Integration
 - [ ] Embedding generation: Integration with embedding models
