@@ -49,6 +49,7 @@ fn create_test_schema() -> TableSchema {
                 storage_type_code: 0,
             },
         ],
+        indexes: Vec::new(),
     }
 }
 

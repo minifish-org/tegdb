@@ -67,6 +67,7 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
                 storage_type_code: 0,
             },
         ],
+        indexes: Vec::new(),
     };
     let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut test_schema);
 

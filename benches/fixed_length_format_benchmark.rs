@@ -59,6 +59,7 @@ fn create_fixed_length_schema() -> TableSchema {
                 storage_type_code: 0,
             },
         ],
+        indexes: Vec::new(),
     }
 }
 
@@ -214,6 +215,7 @@ fn fixed_length_format_benchmark(c: &mut Criterion) {
                 storage_type_code: 0,
             },
         ],
+        indexes: Vec::new(),
     };
     let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut large_schema);
 

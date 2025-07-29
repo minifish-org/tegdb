@@ -157,6 +157,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
                     storage_type_code: 0,
                 },
             ],
+            indexes: Vec::new(),
         };
         let _ = tegdb::catalog::Catalog::compute_table_metadata(&mut schema);
         schema
