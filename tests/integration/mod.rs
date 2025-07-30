@@ -17,3 +17,4 @@ pub mod sql_integration_tests;
 // Removed sql_parser_tests module
 pub mod transaction_parsing_tests;
 pub mod transaction_tests;
+pub mod vector_search_tests;

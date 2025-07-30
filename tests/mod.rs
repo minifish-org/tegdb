@@ -29,6 +29,7 @@
 //! - `backend_compatibility_test.rs` - Multi-backend compatibility
 //! - `commit_marker_tests.rs` - Commit marker functionality
 //! - `drop_table_integration_test.rs` - Table dropping integration
+//! - `vector_search_tests.rs` - Vector search and similarity functionality
 //!
 //! ## Performance Tests (`performance/`)
 //! Tests focused on performance and scalability:
@@ -90,6 +91,7 @@
 //! 4. **WASM Tests**: Ensure WASM-specific functionality works correctly
 //! 5. **Arithmetic Tests**: Validate mathematical expression handling
 //! 6. **Test Helpers**: Provide reusable utilities and documentation
+//! 7. **Vector Tests**: Validate vector search and similarity functionality
 //!
 //! ## Adding New Tests
 //!
@@ -98,6 +100,7 @@
 //! 1. **Unit Tests**: Place in `unit/` for testing individual functions or small components
 //! 2. **Integration Tests**: Place in `integration/` for testing component interactions
 //! 3. **Performance Tests**: Place in `performance/` for benchmarking and performance validation
+//! 4. **Vector Tests**: Place in `integration/` for vector search and similarity functionality
 //! 4. **WASM Tests**: Place in `wasm/` for WASM-specific functionality
 //! 5. **Arithmetic Tests**: Place in `arithmetic/` for mathematical expression handling
 //!
