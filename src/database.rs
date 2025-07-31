@@ -124,7 +124,12 @@ impl PreparedStatement {
                 Self::count_parameters_in_expression(left)
                     + Self::count_parameters_in_expression(right)
             }
-            Expression::FunctionCall { .. } => 0,
+            Expression::FunctionCall { args, .. } => {
+                args.iter().map(|arg| Self::count_parameters_in_expression(arg)).sum()
+            }
+            Expression::AggregateFunction { arg, .. } => {
+                Self::count_parameters_in_expression(arg)
+            }
         }
     }
 
@@ -657,6 +662,10 @@ impl Database {
                     name: name.clone(),
                     args: args.iter().map(|arg| bind_expr(arg, params)).collect::<Result<Vec<_>>>()?,
                 }),
+                Expression::AggregateFunction { name, arg } => Ok(Expression::AggregateFunction {
+                    name: name.clone(),
+                    arg: Box::new(bind_expr(arg, params)?),
+                }),
             }
         }
         fn bind_condition(
@@ -940,7 +949,8 @@ fn expr_has_param(expr: &crate::parser::Expression) -> bool {
         Expression::Value(_) => false,
         Expression::Column(_) => false,
         Expression::BinaryOp { left, right, .. } => expr_has_param(left) || expr_has_param(right),
-        Expression::FunctionCall { .. } => false,
+        Expression::FunctionCall { args, .. } => args.iter().any(|arg| expr_has_param(arg)),
+        Expression::AggregateFunction { arg, .. } => expr_has_param(arg),
     }
 }
 // Extend instantiate_plan_with_params to handle INSERT, UPDATE, DELETE
@@ -1099,6 +1109,10 @@ fn instantiate_expr_with_params(
         Expression::FunctionCall { name, args } => Expression::FunctionCall {
             name: name.clone(),
             args: args.iter().map(|arg| instantiate_expr_with_params(arg, params)).collect(),
+        },
+        Expression::AggregateFunction { name, arg } => Expression::AggregateFunction {
+            name: name.clone(),
+            arg: Box::new(instantiate_expr_with_params(arg, params)),
         },
     }
 }

@@ -35,6 +35,48 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<Expression>> {
     .parse(input)
 }
 
+// Parse aggregate function: COUNT(*), SUM(column), etc.
+fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, func_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = char('(').parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    
+    // Only treat these as aggregate functions
+    let is_aggregate = matches!(func_name.to_uppercase().as_str(), "COUNT" | "SUM" | "AVG" | "MAX" | "MIN");
+    
+    if !is_aggregate {
+        // Not an aggregate function, let the regular function parser handle it
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
+    }
+    
+    // Handle COUNT(*) specially
+    if func_name.to_uppercase() == "COUNT" {
+        if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<&str>>("*").parse(input) {
+            let (input, _) = multispace0.parse(input)?;
+            let (input, _) = char(')').parse(input)?;
+            return Ok((input, Expression::AggregateFunction {
+                name: func_name,
+                arg: Box::new(Expression::Column("*".to_string())),
+            }));
+        }
+    }
+    
+    // Parse the argument as an expression
+    let (input, arg) = parse_expression.parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = char(')').parse(input)?;
+    
+    Ok((input, Expression::AggregateFunction {
+        name: func_name,
+        arg: Box::new(arg),
+    }))
+}
+
 fn parse_u64_safe(s: &str) -> Result<u64, String> {
     s.parse::<u64>().map_err(|e| format!("Invalid u64: {e}"))
 }
@@ -105,6 +147,15 @@ pub struct CreateIndexStatement {
     pub table_name: String,
     pub column_name: String,
     pub unique: bool,
+    pub index_type: Option<IndexType>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum IndexType {
+    BTree,  // Default for regular indexes
+    HNSW,   // Hierarchical Navigable Small World for vector similarity
+    IVF,    // Inverted File Index for vector clustering
+    LSH,    // Locality Sensitive Hashing for vector search
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -161,7 +212,7 @@ pub enum OrderDirection {
 pub enum Condition {
     /// Comparison: left operator right (e.g., id = 1)
     Comparison {
-        left: String,
+        left: Expression,
         operator: ComparisonOperator,
         right: SqlValue,
     },
@@ -223,6 +274,10 @@ pub enum Expression {
     FunctionCall {
         name: String,
         args: Vec<Expression>,
+    },
+    AggregateFunction {
+        name: String,
+        arg: Box<Expression>,
     },
 }
 
@@ -429,7 +484,32 @@ impl Expression {
                             _ => Err("L2_NORMALIZE requires vector argument".to_string()),
                         }
                     }
+                    "ABS" => {
+                        if args.len() != 1 {
+                            return Err("ABS requires exactly 1 argument".to_string());
+                        }
+                        let value = args[0].evaluate(context)?;
+                        
+                        match value {
+                            SqlValue::Integer(i) => Ok(SqlValue::Integer(i.abs())),
+                            SqlValue::Real(f) => Ok(SqlValue::Real(f.abs())),
+                            _ => Err("ABS requires numeric argument".to_string()),
+                        }
+                    }
                     _ => Err(format!("Function '{name}' evaluation not implemented")),
+                }
+            }
+            Expression::AggregateFunction { name, arg } => {
+                // For now, we'll evaluate the argument but not perform aggregation
+                // This will be handled by the query processor during execution
+                let _arg_value = arg.evaluate(context)?;
+                match name.to_uppercase().as_str() {
+                    "COUNT" => Ok(SqlValue::Integer(1)), // Placeholder
+                    "SUM" => Ok(SqlValue::Integer(0)),   // Placeholder
+                    "AVG" => Ok(SqlValue::Real(0.0)),    // Placeholder
+                    "MAX" => Ok(SqlValue::Integer(0)),   // Placeholder
+                    "MIN" => Ok(SqlValue::Integer(0)),   // Placeholder
+                    _ => Err(format!("Aggregate function '{name}' not implemented")),
                 }
             }
         }
@@ -708,6 +788,7 @@ fn parse_create_index(input: &str) -> IResult<&str, Statement> {
             table_name,
             column_name,
             unique: unique.is_some(),
+            index_type: None, // Default to BTree for now
         }),
     ))
 }
@@ -864,26 +945,10 @@ fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     let (input, _) = multispace0.parse(input)?;
     let (input, right) = parse_sql_value.parse(input)?;
 
-    // Convert the left expression to a string representation for the condition
-    let left = match left_expr {
-        Expression::Column(name) => name,
-        Expression::Value(value) => format!("{value:?}"),
-        Expression::BinaryOp {
-            left,
-            operator: op,
-            right,
-        } => {
-            format!("{left:?} {op:?} {right:?}")
-        }
-        Expression::FunctionCall { name, args } => {
-            format!("{name}({args:?})")
-        }
-    };
-
     Ok((
         input,
         Condition::Comparison {
-            left,
+            left: left_expr,
             operator,
             right,
         },
@@ -1151,6 +1216,8 @@ fn parse_multiplicative_expression(input: &str) -> IResult<&str, Expression> {
 // Parse primary expressions (values, columns, parentheses)
 fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
     alt((
+        // Aggregate function: COUNT(*), SUM(column), etc.
+        parse_aggregate_function,
         // Function call: name(args...)
         map(
             pair(

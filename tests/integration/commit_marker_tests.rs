@@ -531,7 +531,7 @@ fn test_function_call_parsing() {
 
 #[test]
 fn test_select_with_where_parsing() {
-    use tegdb::parser::{parse_sql, Statement, Expression};
+    use tegdb::parser::{parse_sql, Statement};
     
     // Test the exact SELECT statement that's failing
     let result = parse_sql("SELECT COSINE_SIMILARITY(embedding, [1.0, 0.0, 0.0]) FROM vectors WHERE id = 1");

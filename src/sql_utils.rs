@@ -49,8 +49,38 @@ pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &Sq
         Like => {
             match (left, right) {
                 (SqlValue::Text(text), SqlValue::Text(pattern)) => {
-                    // Simple pattern matching - could be enhanced with regex
-                    text.contains(pattern)
+                    // Simple LIKE pattern matching with % wildcards
+                    println!("DEBUG LIKE: text='{}', pattern='{}'", text, pattern);
+                    
+                    if pattern == "%" {
+                        println!("DEBUG LIKE: pattern is just %, returning true");
+                        return true; // % matches everything
+                    }
+                    
+                    if pattern.starts_with('%') && pattern.ends_with('%') {
+                        // %pattern% - contains pattern
+                        let inner_pattern = &pattern[1..pattern.len()-1];
+                        println!("DEBUG LIKE: %pattern% case, inner_pattern='{}'", inner_pattern);
+                        let result = text.contains(inner_pattern);
+                        println!("DEBUG LIKE: text.contains('{}') = {}", inner_pattern, result);
+                        result
+                    } else if pattern.starts_with('%') {
+                        // %pattern - ends with pattern
+                        let inner_pattern = &pattern[1..];
+                        println!("DEBUG LIKE: %pattern case, inner_pattern='{}'", inner_pattern);
+                        text.ends_with(inner_pattern)
+                    } else if pattern.ends_with('%') {
+                        // pattern% - starts with pattern
+                        let inner_pattern = &pattern[..pattern.len()-1];
+                        println!("DEBUG LIKE: pattern% case, inner_pattern='{}'", inner_pattern);
+                        text.starts_with(inner_pattern)
+                    } else {
+                        // exact match
+                        println!("DEBUG LIKE: exact match case");
+                        let result = text == pattern;
+                        println!("DEBUG LIKE: text == pattern = {}", result);
+                        result
+                    }
                 }
                 _ => false,
             }
@@ -66,9 +96,20 @@ pub fn evaluate_condition(condition: &Condition, row_data: &HashMap<String, SqlV
             operator,
             right,
         } => {
-            // Use get() with default to avoid HashMap lookup overhead
-            let row_value = row_data.get(left).unwrap_or(&SqlValue::Null);
-            compare_values(row_value, operator, right)
+            // Evaluate the left expression
+            let row_value = match left.evaluate(row_data) {
+                Ok(val) => {
+                    println!("DEBUG CONDITION: left expression evaluated to {:?}", val);
+                    val
+                },
+                Err(e) => {
+                    println!("DEBUG CONDITION: left expression evaluation failed: {}", e);
+                    SqlValue::Null // If evaluation fails, use null
+                }
+            };
+            let result = compare_values(&row_value, operator, right);
+            println!("DEBUG CONDITION: compare_values({:?}, {:?}, {:?}) = {}", row_value, operator, right, result);
+            result
         }
         Condition::Between { column, low, high } => {
             let row_value = row_data.get(column).unwrap_or(&SqlValue::Null);

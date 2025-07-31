@@ -74,10 +74,9 @@ impl HNSWIndex {
         }
 
         // Search and connect at each layer from min(layer, max_layer) down to 0
-        let mut neighbors = Vec::new();
         for layer_idx in (0..=layer.min(self.max_layer)).rev() {
             let layer_neighbors = self.search_layer(&vector, current_ep, layer_idx, self.max_connections)?;
-            neighbors = self.select_neighbors(&vector, &layer_neighbors, self.max_connections)?;
+            let neighbors = self.select_neighbors(&vector, &layer_neighbors, self.max_connections)?;
             
             // Connect the new node to its neighbors
             self.connect_node(node_id, &neighbors, layer_idx)?;

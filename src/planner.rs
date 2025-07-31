@@ -5,8 +5,9 @@
 //! optimizations without complex cost estimation.
 
 use crate::parser::{
-    ComparisonOperator, Condition, CreateIndexStatement, CreateTableStatement, DeleteStatement, DropIndexStatement, DropTableStatement,
-    InsertStatement, OrderByClause, OrderByItem, OrderDirection, SelectStatement, SqlValue, Statement, UpdateStatement,
+    ComparisonOperator, Condition,
+    CreateTableStatement, DeleteStatement, DropTableStatement, InsertStatement,
+    OrderByClause, OrderByItem, SelectStatement, SqlValue, Statement, UpdateStatement,
 };
 use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::Result;
@@ -84,6 +85,7 @@ pub enum ExecutionPlan {
         index: String,
         column_value: crate::parser::SqlValue,
         selected_columns: Vec<crate::parser::Expression>,
+        additional_filter: Option<Condition>,
     },
     /// Sort operation plan
     Sort {
@@ -91,6 +93,7 @@ pub enum ExecutionPlan {
         order_by_items: Vec<OrderByItem>,
         schema: std::rc::Rc<TableSchema>,
         query_schema: crate::query_processor::QuerySchema,
+        limit: Option<u64>,
     },
 }
 
@@ -165,8 +168,12 @@ impl QueryPlanner {
                 operator,
                 right,
             } => {
-                if left == column_name && *operator == crate::parser::ComparisonOperator::Equal {
-                    Some(right.clone())
+                if let crate::parser::Expression::Column(col_name) = left {
+                    if col_name == column_name && *operator == crate::parser::ComparisonOperator::Equal {
+                        Some(right.clone())
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -224,11 +231,15 @@ impl QueryPlanner {
                 println!("Found suitable index: {} for column value: {:?}", index_name, value);
                 let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
                 
+                // Extract additional filter conditions (non-indexed conditions)
+                let additional_filter = self.extract_non_index_conditions(&select.table, &where_clause.condition, &index_name)?;
+                
                 let plan = ExecutionPlan::IndexScan {
                     table: select.table,
                     index: index_name,
                     column_value: value,
                     selected_columns: expr_columns,
+                    additional_filter,
                 };
                 return self.wrap_with_sort(plan, &select.order_by);
             } else {
@@ -286,8 +297,10 @@ impl QueryPlanner {
                 operator,
                 right,
             } => {
-                if left == pk_col && matches!(operator, ComparisonOperator::Equal) {
-                    *found = Some(right.clone());
+                if let crate::parser::Expression::Column(col_name) = left {
+                    if col_name == pk_col && matches!(operator, ComparisonOperator::Equal) {
+                        *found = Some(right.clone());
+                    }
                 }
             }
             Condition::And(left, right) => {
@@ -669,11 +682,13 @@ impl QueryPlanner {
                 operator,
                 right,
             } => {
-                if pk_columns.contains(left) {
-                    pk_conditions
-                        .entry(left.clone())
-                        .or_default()
-                        .push((*operator, right.clone()));
+                if let crate::parser::Expression::Column(col_name) = left {
+                    if pk_columns.contains(&col_name) {
+                        pk_conditions
+                            .entry(col_name.clone())
+                            .or_default()
+                            .push((*operator, right.clone()));
+                    }
                 }
             }
             Condition::Between {
@@ -721,10 +736,14 @@ impl QueryPlanner {
                     operator: _,
                     right: _,
                 } => {
-                    if pk_columns.contains(left) {
-                        None // This is a PK condition, filter it out
+                    if let crate::parser::Expression::Column(col_name) = left {
+                        if pk_columns.contains(&col_name) {
+                            None // This is a PK condition, filter it out
+                        } else {
+                            Some(condition.clone()) // Keep non-PK conditions
+                        }
                     } else {
-                        Some(condition.clone()) // Keep non-PK conditions
+                        Some(condition.clone()) // Keep complex expressions
                     }
                 }
                 Condition::Between {
@@ -764,6 +783,85 @@ impl QueryPlanner {
         }
 
         Ok(filter_non_pk_conditions(condition, &pk_columns))
+    }
+
+    /// Extract non-indexed conditions for additional filtering
+    fn extract_non_index_conditions(
+        &self,
+        table_name: &str,
+        condition: &Condition,
+        index_name: &str,
+    ) -> Result<Option<Condition>> {
+        // Get the indexed column name
+        let schema = self.table_schemas.get(table_name).ok_or_else(|| {
+            crate::Error::Other(format!("Table '{}' not found", table_name))
+        })?;
+        
+        let indexed_column = schema.indexes.iter()
+            .find(|idx| idx.name == index_name)
+            .map(|idx| idx.column_name.clone())
+            .ok_or_else(|| {
+                crate::Error::Other(format!("Index '{}' not found", index_name))
+            })?;
+        
+        // Filter out conditions that use the indexed column
+        Ok(Self::filter_non_indexed_conditions(condition, &indexed_column))
+    }
+
+    fn filter_non_indexed_conditions(
+        condition: &Condition,
+        indexed_column: &str,
+    ) -> Option<Condition> {
+        match condition {
+            Condition::Comparison {
+                left,
+                operator: _,
+                right: _,
+            } => {
+                if let crate::parser::Expression::Column(col_name) = left {
+                    if col_name == indexed_column {
+                        None // This is an indexed condition, filter it out
+                    } else {
+                        Some(condition.clone()) // Keep non-indexed conditions
+                    }
+                } else {
+                    Some(condition.clone()) // Keep complex expressions
+                }
+            }
+            Condition::Between {
+                column: _column,
+                low: _low,
+                high: _high,
+            } => {
+                if _column == indexed_column {
+                    None // This is an indexed condition, filter it out
+                } else {
+                    Some(condition.clone()) // Keep non-indexed conditions
+                }
+            }
+            Condition::And(left, right) => {
+                let left_filtered = Self::filter_non_indexed_conditions(left, indexed_column);
+                let right_filtered = Self::filter_non_indexed_conditions(right, indexed_column);
+
+                match (left_filtered, right_filtered) {
+                    (Some(l), Some(r)) => Some(Condition::And(Box::new(l), Box::new(r))),
+                    (Some(l), None) => Some(l),
+                    (None, Some(r)) => Some(r),
+                    (None, None) => None,
+                }
+            }
+            Condition::Or(left, right) => {
+                let left_filtered = Self::filter_non_indexed_conditions(left, indexed_column);
+                let right_filtered = Self::filter_non_indexed_conditions(right, indexed_column);
+
+                match (left_filtered, right_filtered) {
+                    (Some(l), Some(r)) => Some(Condition::Or(Box::new(l), Box::new(r))),
+                    (Some(l), None) => Some(l),
+                    (None, Some(r)) => Some(r),
+                    (None, None) => None,
+                }
+            }
+        }
     }
 
     /// Normalize selected columns: if ["*"] is given, expand to all columns from the schema
@@ -824,6 +922,9 @@ impl QueryPlanner {
             crate::parser::Expression::Value(_) => {
                 // No columns to extract from literal values
             }
+            crate::parser::Expression::AggregateFunction { arg, .. } => {
+                self.extract_columns_from_expression(arg, columns);
+            }
         }
     }
 
@@ -877,11 +978,19 @@ impl QueryPlanner {
             };
             let query_schema = crate::query_processor::QuerySchema::new_with_expressions(&selected_columns, &schema);
             
+            // Extract LIMIT from the input plan
+            let limit = match &plan {
+                ExecutionPlan::TableScan { limit, .. } => *limit,
+                ExecutionPlan::TableRangeScan { limit, .. } => *limit,
+                _ => None,
+            };
+            
             Ok(ExecutionPlan::Sort {
                 input_plan: Box::new(plan),
                 order_by_items: order_by_clause.items.clone(),
                 schema,
                 query_schema,
+                limit,
             })
         } else {
             Ok(plan)
@@ -980,7 +1089,7 @@ impl ExecutionPlan {
             ExecutionPlan::Begin => "Begin Transaction".to_string(),
             ExecutionPlan::Commit => "Commit Transaction".to_string(),
             ExecutionPlan::Rollback => "Rollback Transaction".to_string(),
-            ExecutionPlan::IndexScan { table, index, column_value, selected_columns } => {
+            ExecutionPlan::IndexScan { table, index, column_value, selected_columns, additional_filter: _ } => {
                 let columns_str = selected_columns.iter().map(|expr| {
                     match expr {
                         crate::parser::Expression::Column(name) => name.clone(),
@@ -1061,7 +1170,7 @@ mod tests {
             table: "users".to_string(),
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {
-                    left: "id".to_string(),
+                    left: crate::parser::Expression::Column("id".to_string()),
                     operator: ComparisonOperator::Equal,
                     right: SqlValue::Integer(123),
                 },
@@ -1094,12 +1203,12 @@ mod tests {
             where_clause: Some(WhereClause {
                 condition: Condition::And(
                     Box::new(Condition::Comparison {
-                        left: "id".to_string(),
+                        left: crate::parser::Expression::Column("id".to_string()),
                         operator: ComparisonOperator::GreaterThan,
                         right: SqlValue::Integer(1),
                     }),
                     Box::new(Condition::Comparison {
-                        left: "id".to_string(),
+                        left: crate::parser::Expression::Column("id".to_string()),
                         operator: ComparisonOperator::LessThan,
                         right: SqlValue::Integer(10),
                     }),
@@ -1133,7 +1242,7 @@ mod tests {
             table: "users".to_string(),
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {
-                    left: "name".to_string(),
+                    left: crate::parser::Expression::Column("name".to_string()),
                     operator: ComparisonOperator::Equal,
                     right: SqlValue::Text("John".to_string()),
                 },

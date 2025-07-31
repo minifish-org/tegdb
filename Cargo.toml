@@ -17,6 +17,7 @@ license = "AGPL-3.0"
 [dependencies]
 nom = "8.0.0"   # SQL parser
 fastrand = "2.0.1"  # Fast random number generation for vector indexing
+once_cell = "1.19"  # For static initialization in tests
 
 # Native platform dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -130,6 +131,28 @@ name = "fixed_length_format_benchmark"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "vector_search_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "vector_index_performance_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bin]]
+name = "test_aggregate"
+path = "test_aggregate.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "test_aggregate_execution"
+path = "test_aggregate_execution.rs"
+required-features = ["dev"]
+
+
+
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []
@@ -203,6 +226,11 @@ required-features = ["dev"]
 [[test]]
 name = "commit_marker_tests"
 path = "tests/integration/commit_marker_tests.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "integration_vector_features_test"
+path = "tests/integration_vector_features_test.rs"
 required-features = ["dev"]
 
 [[test]]
