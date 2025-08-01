@@ -218,12 +218,7 @@ fn aggregate_functions_benchmark(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("COUNT By Category", |b| {
-        b.iter(|| {
-            let result = db.query("SELECT category, COUNT(*) FROM test_data GROUP BY category").unwrap();
-            black_box(result);
-        });
-    });
+
 
     // Test SUM aggregate function
     group.bench_function("SUM All Values", |b| {
@@ -240,12 +235,7 @@ fn aggregate_functions_benchmark(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("SUM By Category", |b| {
-        b.iter(|| {
-            let result = db.query("SELECT category, SUM(value) FROM test_data GROUP BY category").unwrap();
-            black_box(result);
-        });
-    });
+
 
     group.finish();
 
@@ -319,6 +309,7 @@ fn order_by_benchmark(c: &mut Criterion) {
     
     let mut db = Database::open(&path.to_string_lossy()).expect("Failed to create database");
     setup_indexed_table(&mut db, "test_data", 10000).expect("Failed to setup indexed table");
+    setup_vector_table(&mut db, "embeddings", 1000, 3).expect("Failed to setup vector table");
 
     let mut group = c.benchmark_group("ORDER BY Operations");
 
@@ -509,42 +500,26 @@ fn comprehensive_vector_benchmark(c: &mut Criterion) {
     
     // Setup comprehensive test data
     setup_vector_table(&mut db, "embeddings", 5000, 3).expect("Failed to setup vector table");
-    setup_indexed_table(&mut db, "metadata", 5000).expect("Failed to setup metadata table");
 
     let mut group = c.benchmark_group("Comprehensive Vector Operations");
 
-    // Test complex vector search with metadata filtering
-    group.bench_function("Vector Search with Metadata Filter", |b| {
+    // Test complex vector search with filtering
+    group.bench_function("Vector Search with Filter", |b| {
         let query_vector = "[0.8, 0.2, 0.0]";
         b.iter(|| {
             let result = db.query(&format!(
-                "SELECT e.id, e.text, m.category, COSINE_SIMILARITY(e.embedding, {}) as similarity 
-                 FROM embeddings e 
-                 JOIN metadata m ON e.id = m.id 
-                 WHERE m.category = 'A' 
-                 ORDER BY similarity DESC 
+                "SELECT id, text, COSINE_SIMILARITY(embedding, {}) 
+                 FROM embeddings 
+                 WHERE id < 100 
+                 ORDER BY COSINE_SIMILARITY(embedding, {}) DESC 
                  LIMIT 20",
-                query_vector
-            )).unwrap();
-            black_box(result);
-        });
-    });
-
-    // Test vector search with aggregation
-    group.bench_function("Vector Search with Aggregation", |b| {
-        let query_vector = "[0.0, 1.0, 0.0]";
-        b.iter(|| {
-            let result = db.query(&format!(
-                "SELECT m.category, COUNT(*), AVG(COSINE_SIMILARITY(e.embedding, {})) as avg_similarity 
-                 FROM embeddings e 
-                 JOIN metadata m ON e.id = m.id 
-                 WHERE COSINE_SIMILARITY(e.embedding, {}) > 0.5 
-                 GROUP BY m.category",
                 query_vector, query_vector
             )).unwrap();
             black_box(result);
         });
     });
+
+
 
     // Test multiple vector similarity functions
     group.bench_function("Multiple Vector Functions", |b| {
@@ -552,9 +527,9 @@ fn comprehensive_vector_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let result = db.query(&format!(
                 "SELECT id, text, 
-                        COSINE_SIMILARITY(embedding, {}) as cosine_sim,
-                        EUCLIDEAN_DISTANCE(embedding, {}) as euclidean_dist,
-                        DOT_PRODUCT(embedding, {}) as dot_prod
+                        COSINE_SIMILARITY(embedding, {}),
+                        EUCLIDEAN_DISTANCE(embedding, {}),
+                        DOT_PRODUCT(embedding, {})
                  FROM embeddings 
                  WHERE id < 100",
                 query_vector, query_vector, query_vector

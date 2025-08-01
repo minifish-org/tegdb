@@ -141,6 +141,31 @@ name = "vector_index_performance_benchmark"
 harness = false
 required-features = ["dev"]
 
+[[bench]]
+name = "lazy_storage_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "native_row_format_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "query_optimizer_benchmark"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "query_prepared_breakdown"
+harness = false
+required-features = ["dev"]
+
+[[bench]]
+name = "streaming_performance_benchmark"
+harness = false
+required-features = ["dev"]
+
 [[bin]]
 name = "test_aggregate"
 path = "test_aggregate.rs"

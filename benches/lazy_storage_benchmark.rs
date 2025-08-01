@@ -39,28 +39,28 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     }
 
     let storage_format = tegdb::storage_format::StorageFormat::new();
-    let mut test_schema = tegdb::query_processor::TableSchema {
+    let mut test_schema = tegdb::TableSchema {
         name: "test".to_string(),
         columns: vec![
-            tegdb::query_processor::ColumnInfo {
+            tegdb::ColumnInfo {
                 name: "id".to_string(),
-                data_type: tegdb::parser::DataType::Integer,
-                constraints: vec![tegdb::parser::ColumnConstraint::PrimaryKey],
+                data_type: tegdb::DataType::Integer,
+                constraints: vec![tegdb::ColumnConstraint::PrimaryKey],
                 storage_offset: 0,
                 storage_size: 0,
                 storage_type_code: 0,
             },
-            tegdb::query_processor::ColumnInfo {
+            tegdb::ColumnInfo {
                 name: "value".to_string(),
-                data_type: tegdb::parser::DataType::Integer,
+                data_type: tegdb::DataType::Integer,
                 constraints: vec![],
                 storage_offset: 0,
                 storage_size: 0,
                 storage_type_code: 0,
             },
-            tegdb::query_processor::ColumnInfo {
+            tegdb::ColumnInfo {
                 name: "name".to_string(),
-                data_type: tegdb::parser::DataType::Text(Some(10)),
+                data_type: tegdb::DataType::Text(Some(10)),
                 constraints: vec![],
                 storage_offset: 0,
                 storage_size: 0,
@@ -74,11 +74,11 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     // Create test row data
     let test_row_data = {
         let mut row = HashMap::new();
-        row.insert("id".to_string(), tegdb::parser::SqlValue::Integer(123));
-        row.insert("value".to_string(), tegdb::parser::SqlValue::Integer(456));
+        row.insert("id".to_string(), tegdb::SqlValue::Integer(123));
+        row.insert("value".to_string(), tegdb::SqlValue::Integer(456));
         row.insert(
             "name".to_string(),
-            tegdb::parser::SqlValue::Text("test".to_string()),
+            tegdb::SqlValue::Text("test".to_string()),
         );
         row
     };
@@ -122,10 +122,10 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     });
 
     // 7. Condition evaluation (zero-copy)
-    let simple_condition = tegdb::parser::Condition::Comparison {
-        left: "id".to_string(),
-        operator: tegdb::parser::ComparisonOperator::Equal,
-        right: tegdb::parser::SqlValue::Integer(123),
+    let simple_condition = tegdb::Condition::Comparison {
+        left: tegdb::Expression::Column("id".to_string()),
+        operator: tegdb::ComparisonOperator::Equal,
+        right: tegdb::SqlValue::Integer(123),
     };
 
     c.bench_function("lazy_condition_evaluation", |b| {
@@ -141,16 +141,16 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     });
 
     // 8. Complex condition evaluation (fallback to full deserialization)
-    let complex_condition = tegdb::parser::Condition::And(
-        Box::new(tegdb::parser::Condition::Comparison {
-            left: "id".to_string(),
-            operator: tegdb::parser::ComparisonOperator::Equal,
-            right: tegdb::parser::SqlValue::Integer(123),
+    let complex_condition = tegdb::Condition::And(
+        Box::new(tegdb::Condition::Comparison {
+            left: tegdb::Expression::Column("id".to_string()),
+            operator: tegdb::ComparisonOperator::Equal,
+            right: tegdb::SqlValue::Integer(123),
         }),
-        Box::new(tegdb::parser::Condition::Comparison {
-            left: "value".to_string(),
-            operator: tegdb::parser::ComparisonOperator::GreaterThan,
-            right: tegdb::parser::SqlValue::Integer(100),
+        Box::new(tegdb::Condition::Comparison {
+            left: tegdb::Expression::Column("value".to_string()),
+            operator: tegdb::ComparisonOperator::GreaterThan,
+            right: tegdb::SqlValue::Integer(100),
         }),
     );
 

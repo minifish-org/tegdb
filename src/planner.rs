@@ -228,7 +228,7 @@ impl QueryPlanner {
         // Try index scan if we have a suitable index
         if let Some(where_clause) = &select.where_clause {
             if let Some((index_name, _column_name, value)) = self.find_suitable_index(&select.table, &where_clause.condition) {
-                println!("Found suitable index: {} for column value: {:?}", index_name, value);
+        
                 let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
                 
                 // Extract additional filter conditions (non-indexed conditions)
@@ -243,7 +243,7 @@ impl QueryPlanner {
                 };
                 return self.wrap_with_sort(plan, &select.order_by);
             } else {
-                println!("No suitable index found for condition: {:?}", where_clause.condition);
+        
             }
         }
 

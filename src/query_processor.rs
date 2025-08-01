@@ -1068,18 +1068,15 @@ impl<'a> QueryProcessor<'a> {
                 let index_end = format!("I:{}:{}:{}~", table, index, column_value_str);
                 let index_end_bytes = index_end.as_bytes().to_vec();
                 
-                println!("Index scan: table={}, index={}, column_value={:?}", table, index, column_value);
-                println!("Index prefix: {}", index_prefix);
-                println!("Index start: {:?}", String::from_utf8_lossy(&index_start));
-                println!("Index end: {:?}", String::from_utf8_lossy(&index_end_bytes));
+                
                 
                 // Scan index entries to get primary keys
                 let mut primary_keys = Vec::new();
-                println!("Scanning index entries...");
+        
                 for (key, _value) in self.transaction.scan(index_start..index_end_bytes)? {
-                    println!("Found index key: {:?}", String::from_utf8_lossy(&key));
+
                     if let Some((_table, _index, _col_val, pk_str)) = crate::catalog::decode_index_key(&key) {
-                        println!("Decoded index key: table={}, index={}, col_val={}, pk={}", _table, _index, _col_val, pk_str);
+
                         // Parse the primary key string back to SqlValue
                         let pk_value = if let Ok(pk_int) = pk_str.parse::<i64>() {
                             crate::parser::SqlValue::Integer(pk_int)
@@ -1089,10 +1086,10 @@ impl<'a> QueryProcessor<'a> {
                         let pk_key = self.build_primary_key_from_value(&table, &pk_value);
                         primary_keys.push(pk_key.to_storage_bytes());
                     } else {
-                        println!("Failed to decode index key");
+
                     }
                 }
-                println!("Found {} primary keys from index scan", primary_keys.len());
+        
                 
                 // Create an iterator that fetches the actual rows using the primary keys
                 let scan_iter = if primary_keys.is_empty() {

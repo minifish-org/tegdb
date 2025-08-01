@@ -204,9 +204,9 @@ fn bottleneck_analysis(c: &mut Criterion) {
     let mut group = c.benchmark_group("Condition Evaluation Breakdown");
 
     // Test condition evaluation overhead
-    let condition = tegdb::parser::Condition::Comparison {
-        left: "id".to_string(),
-        operator: tegdb::parser::ComparisonOperator::Equal,
+    let condition = tegdb::Condition::Comparison {
+        left: tegdb::Expression::Column("id".to_string()),
+        operator: tegdb::ComparisonOperator::Equal,
         right: tegdb::SqlValue::Integer(500),
     };
 
