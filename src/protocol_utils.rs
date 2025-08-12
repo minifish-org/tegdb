@@ -3,6 +3,18 @@
 //! This module provides utilities for parsing protocol-based identifiers
 //! consistently across different storage backends.
 
+/// Known backend protocol prefixes
+pub const PROTOCOL_FILE: &str = "file://";
+pub const PROTOCOL_BROWSER: &str = "browser://";
+pub const PROTOCOL_LOCALSTORAGE: &str = "localstorage://";
+pub const PROTOCOL_INDEXEDDB: &str = "indexeddb://";
+
+/// Canonical protocol names (without ://)
+pub const PROTOCOL_NAME_FILE: &str = "file";
+pub const PROTOCOL_NAME_BROWSER: &str = "browser";
+pub const PROTOCOL_NAME_LOCALSTORAGE: &str = "localstorage";
+pub const PROTOCOL_NAME_INDEXEDDB: &str = "indexeddb";
+
 /// Parse a storage identifier to extract the protocol and path
 ///
 /// Supports the following protocols:
@@ -30,20 +42,20 @@
 /// assert_eq!(path, "my_database.db");
 /// ```
 pub fn parse_storage_identifier(identifier: &str) -> (&str, &str) {
-    if identifier.starts_with("file://") {
-        ("file", identifier.trim_start_matches("file://"))
-    } else if identifier.starts_with("browser://") {
-        ("browser", identifier.trim_start_matches("browser://"))
-    } else if identifier.starts_with("localstorage://") {
+    if identifier.starts_with(PROTOCOL_FILE) {
+        (PROTOCOL_NAME_FILE, identifier.trim_start_matches(PROTOCOL_FILE))
+    } else if identifier.starts_with(PROTOCOL_BROWSER) {
+        (PROTOCOL_NAME_BROWSER, identifier.trim_start_matches(PROTOCOL_BROWSER))
+    } else if identifier.starts_with(PROTOCOL_LOCALSTORAGE) {
         (
-            "localstorage",
-            identifier.trim_start_matches("localstorage://"),
+            PROTOCOL_NAME_LOCALSTORAGE,
+            identifier.trim_start_matches(PROTOCOL_LOCALSTORAGE),
         )
-    } else if identifier.starts_with("indexeddb://") {
-        ("indexeddb", identifier.trim_start_matches("indexeddb://"))
+    } else if identifier.starts_with(PROTOCOL_INDEXEDDB) {
+        (PROTOCOL_NAME_INDEXEDDB, identifier.trim_start_matches(PROTOCOL_INDEXEDDB))
     } else {
         // Default to file protocol for backward compatibility
-        ("file", identifier)
+        (PROTOCOL_NAME_FILE, identifier)
     }
 }
 

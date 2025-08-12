@@ -21,6 +21,18 @@ pub const INDEX_KEY_END: &str = "I~";
 /// Default table name for unknown schemas during deserialization
 pub const UNKNOWN_TABLE_NAME: &str = "unknown";
 
+// Common separators and tokens for encoding/decoding
+pub const STORAGE_SEPARATOR: u8 = b':' ;
+pub const FIELD_SEPARATOR: u8 = b'|';
+pub const CONSTRAINT_SEP: u8 = b',';
+pub const UNIQUE_STR: &str = "UNIQUE";
+pub const NON_UNIQUE_STR: &str = "NON_UNIQUE";
+pub const CONSTRAINT_PRIMARY_KEY_STR: &str = "PRIMARY_KEY";
+pub const CONSTRAINT_NOT_NULL_STR: &str = "NOT_NULL";
+pub const CONSTRAINT_UNIQUE_STR: &str = "UNIQUE";
+/// End sentinel used to mark table scan upper bound
+pub const TABLE_END_SENTINEL: u8 = b'~';
+
 /// Index information for table schema
 #[derive(Debug, Clone)]
 pub struct IndexInfo {
@@ -202,23 +214,23 @@ impl Catalog {
 
         for (i, col) in schema.columns.iter().enumerate() {
             if i > 0 {
-                schema_data.push(b'|');
+                schema_data.push(FIELD_SEPARATOR);
             }
             schema_data.extend_from_slice(col.name.as_bytes());
-            schema_data.push(b':');
+            schema_data.push(STORAGE_SEPARATOR);
             let type_str = format!("{:?}", col.data_type);
             schema_data.extend_from_slice(type_str.as_bytes());
 
             if !col.constraints.is_empty() {
-                schema_data.push(b':');
+                schema_data.push(STORAGE_SEPARATOR);
                 for (j, constraint) in col.constraints.iter().enumerate() {
                     if j > 0 {
-                        schema_data.push(b',');
+                        schema_data.push(CONSTRAINT_SEP);
                     }
                     let constraint_str = match constraint {
-                        crate::parser::ColumnConstraint::PrimaryKey => "PRIMARY_KEY",
-                        crate::parser::ColumnConstraint::NotNull => "NOT_NULL",
-                        crate::parser::ColumnConstraint::Unique => "UNIQUE",
+                        crate::parser::ColumnConstraint::PrimaryKey => CONSTRAINT_PRIMARY_KEY_STR,
+                        crate::parser::ColumnConstraint::NotNull => CONSTRAINT_NOT_NULL_STR,
+                        crate::parser::ColumnConstraint::Unique => CONSTRAINT_UNIQUE_STR,
                     };
                     schema_data.extend_from_slice(constraint_str.as_bytes());
                 }
@@ -242,25 +254,21 @@ impl Catalog {
     pub fn serialize_index_to_bytes(index: &IndexInfo) -> Vec<u8> {
         let mut index_data = Vec::new();
         index_data.extend_from_slice(index.table_name.as_bytes());
-        index_data.push(b'|');
+        index_data.push(FIELD_SEPARATOR);
         index_data.extend_from_slice(index.column_name.as_bytes());
-        index_data.push(b'|');
-        if index.unique {
-            index_data.extend_from_slice(b"UNIQUE");
-        } else {
-            index_data.extend_from_slice(b"NON_UNIQUE");
-        }
+        index_data.push(FIELD_SEPARATOR);
+        index_data.extend_from_slice(if index.unique { UNIQUE_STR } else { NON_UNIQUE_STR }.as_bytes());
         index_data
     }
 
     /// Deserialize an index from bytes
     pub fn deserialize_index_from_bytes(index_name: &str, data: &[u8]) -> Option<IndexInfo> {
         let data_str = String::from_utf8_lossy(data);
-        let parts: Vec<&str> = data_str.split('|').collect();
+        let parts: Vec<&str> = data_str.split(FIELD_SEPARATOR as char).collect();
         if parts.len() == 3 {
             let table_name = parts[0].to_string();
             let column_name = parts[1].to_string();
-            let unique = parts[2] == "UNIQUE";
+            let unique = parts[2] == UNIQUE_STR;
             Some(IndexInfo {
                 name: index_name.to_string(),
                 table_name,
@@ -351,13 +359,42 @@ pub fn encode_index_key(table: &str, index: &str, column_value: &crate::parser::
     let mut key = Vec::new();
     key.extend_from_slice(INDEX_KEY_PREFIX.as_bytes());
     key.extend_from_slice(table.as_bytes());
-    key.push(b':');
+    key.push(STORAGE_SEPARATOR);
     key.extend_from_slice(index.as_bytes());
-    key.push(b':');
+    key.push(STORAGE_SEPARATOR);
     key.extend_from_slice(sql_value_to_index_string(column_value).as_bytes());
-    key.push(b':');
+    key.push(STORAGE_SEPARATOR);
     key.extend_from_slice(sql_value_to_index_string(pk).as_bytes());
     key
+}
+
+/// Build the byte range (start, end) for scanning all entries of an index for a given column value
+pub fn index_prefix_range(
+    table: &str,
+    index: &str,
+    column_value: &crate::parser::SqlValue,
+) -> (Vec<u8>, Vec<u8>) {
+    let column_value_str = sql_value_to_index_string(column_value);
+    let prefix = format!(
+        "{}{}:{}:{}{}",
+        INDEX_KEY_PREFIX,
+        table,
+        index,
+        column_value_str,
+        STORAGE_SEPARATOR as char
+    );
+    let start = prefix.as_bytes().to_vec();
+    let end = format!(
+        "{}{}:{}:{}{}",
+        INDEX_KEY_PREFIX,
+        table,
+        index,
+        column_value_str,
+        TABLE_END_SENTINEL as char
+    )
+    .as_bytes()
+    .to_vec();
+    (start, end)
 }
 
 /// Decode an index entry key
@@ -368,7 +405,7 @@ pub fn decode_index_key(key: &[u8]) -> Option<(String, String, String, String)> 
         return None;
     }
     let s = &s[INDEX_KEY_PREFIX.len()..];
-    let parts: Vec<&str> = s.splitn(4, ':').collect();
+    let parts: Vec<&str> = s.splitn(4, STORAGE_SEPARATOR as char).collect();
     if parts.len() == 4 {
         Some((parts[0].to_string(), parts[1].to_string(), parts[2].to_string(), parts[3].to_string()))
     } else {

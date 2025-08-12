@@ -37,7 +37,12 @@ impl LogBackend for BrowserLogBackend {
         let (protocol, db_name) = parse_storage_identifier(&identifier);
 
         // Validate protocol for browser backend
-        if !matches!(protocol, "browser" | "localstorage" | "indexeddb") {
+        if !matches!(
+            protocol,
+            crate::protocol_utils::PROTOCOL_NAME_BROWSER
+                | crate::protocol_utils::PROTOCOL_NAME_LOCALSTORAGE
+                | crate::protocol_utils::PROTOCOL_NAME_INDEXEDDB
+        ) {
             return Err(Error::Other(format!(
                 "BrowserLogBackend only supports 'browser://', 'localstorage://', or 'indexeddb://' protocols, got '{}://'",
                 protocol
@@ -59,7 +64,7 @@ impl LogBackend for BrowserLogBackend {
 
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
         let mut key_map = KeyMap::new();
-        let log_key = format!("{}:log", self.db_name);
+        let log_key = format!("{}{}", self.db_name, crate::log::BROWSER_LOG_SUFFIX);
 
         // Load existing log data from localStorage
         if let Ok(Some(log_data)) = self.storage.get_item(&log_key) {
@@ -107,7 +112,7 @@ impl LogBackend for BrowserLogBackend {
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
-        if key.len() > 1024 || value.len() > 256 * 1024 {
+        if key.len() > crate::log::DEFAULT_MAX_KEY_SIZE || value.len() > crate::log::DEFAULT_MAX_VALUE_SIZE {
             return Err(Error::Other(format!(
                 "Key or value length exceeds limits: key_len={}, value_len={}",
                 key.len(),
@@ -115,7 +120,7 @@ impl LogBackend for BrowserLogBackend {
             )));
         }
 
-        let log_key = format!("{}:log", self.db_name);
+        let log_key = format!("{}{}", self.db_name, crate::log::BROWSER_LOG_SUFFIX);
 
         // Read existing log
         let mut entries: Vec<LogEntry> = if let Ok(Some(data)) = self.storage.get_item(&log_key) {
@@ -149,7 +154,7 @@ impl LogBackend for BrowserLogBackend {
     fn set_len(&mut self, size: u64) -> Result<()> {
         if size == 0 {
             // Clear all data for this database
-            let log_key = format!("{}:log", self.db_name);
+        let log_key = format!("{}{}", self.db_name, LOG_SUFFIX);
             self.storage
                 .remove_item(&log_key)
                 .map_err(|_| Error::Other("Failed to clear storage".to_string()))?;
@@ -159,13 +164,13 @@ impl LogBackend for BrowserLogBackend {
 
     fn rename_to(&mut self, new_identifier: String) -> Result<()> {
         let new_db_name = new_identifier
-            .trim_start_matches("browser://")
-            .trim_start_matches("localstorage://")
-            .trim_start_matches("indexeddb://")
+            .trim_start_matches(crate::protocol_utils::PROTOCOL_BROWSER)
+            .trim_start_matches(crate::protocol_utils::PROTOCOL_LOCALSTORAGE)
+            .trim_start_matches(crate::protocol_utils::PROTOCOL_INDEXEDDB)
             .to_string();
 
-        let old_log_key = format!("{}:log", self.db_name);
-        let new_log_key = format!("{}:log", new_db_name);
+        let old_log_key = format!("{}{}", self.db_name, crate::log::BROWSER_LOG_SUFFIX);
+        let new_log_key = format!("{}{}", new_db_name, crate::log::BROWSER_LOG_SUFFIX);
 
         // Copy data from old key to new key
         if let Ok(Some(data)) = self.storage.get_item(&old_log_key) {

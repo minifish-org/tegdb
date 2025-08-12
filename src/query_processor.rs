@@ -188,7 +188,7 @@ impl PrimaryKey {
         let mut bytes = Vec::with_capacity(4 + self.table_name.len() + 1 + 9); // table_len + table + separator + key
         bytes.extend_from_slice(&(self.table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(self.table_name.as_bytes());
-        bytes.push(b':'); // Separator
+        bytes.push(crate::catalog::STORAGE_SEPARATOR); // Separator
         bytes.extend_from_slice(&self.key.to_bytes());
         bytes
     }
@@ -211,7 +211,7 @@ impl PrimaryKey {
             .map_err(|_| Error::Other("Invalid UTF-8 in table name".to_string()))?;
 
         // Check separator
-        if bytes[4 + table_name_len] != b':' {
+        if bytes[4 + table_name_len] != crate::catalog::STORAGE_SEPARATOR {
             return Err(Error::Other("Invalid primary key separator".to_string()));
         }
 
@@ -291,7 +291,7 @@ impl PrimaryKey {
         let mut bytes = Vec::with_capacity(4 + table_name.len() + 1);
         bytes.extend_from_slice(&(table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(table_name.as_bytes());
-        bytes.push(b':'); // Separator
+        bytes.push(crate::catalog::STORAGE_SEPARATOR); // Separator
         bytes
     }
 
@@ -301,7 +301,7 @@ impl PrimaryKey {
         let mut bytes = Vec::with_capacity(4 + table_name.len() + 1);
         bytes.extend_from_slice(&(table_name.len() as u32).to_le_bytes());
         bytes.extend_from_slice(table_name.as_bytes());
-        bytes.push(b'~'); // End marker
+        bytes.push(crate::catalog::TABLE_END_SENTINEL); // End marker
         bytes
     }
 }
@@ -847,48 +847,15 @@ impl<'a> QueryProcessor<'a> {
             columns,
             indexes: vec![], // Initialize indexes as empty
         };
-        // Compute storage metadata automatically when adding to catalog
+        // Compute storage metadata and persist schema via central serializer
         let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
-
-        // Store schema metadata (use simple string serialization for now)
-        let schema_key = format!("S:{}", create.table);
-
-        // Optimized schema serialization to reduce allocations
-        let mut schema_data = Vec::new();
-        for (i, col) in create.columns.iter().enumerate() {
-            if i > 0 {
-                schema_data.push(b'|');
-            }
-            schema_data.extend_from_slice(col.name.as_bytes());
-            schema_data.push(b':');
-            let type_str = format!("{:?}", col.data_type);
-            schema_data.extend_from_slice(type_str.as_bytes());
-
-            if !col.constraints.is_empty() {
-                schema_data.push(b':');
-                for (j, constraint) in col.constraints.iter().enumerate() {
-                    if j > 0 {
-                        schema_data.push(b',');
-                    }
-                    let constraint_str = match constraint {
-                        crate::parser::ColumnConstraint::PrimaryKey => "PRIMARY_KEY",
-                        crate::parser::ColumnConstraint::NotNull => "NOT_NULL",
-                        crate::parser::ColumnConstraint::Unique => "UNIQUE",
-                    };
-                    schema_data.extend_from_slice(constraint_str.as_bytes());
-                }
-            }
-        }
-
-        // Store schema
+        let schema_key = crate::catalog::Catalog::get_schema_storage_key(&create.table);
+        let schema_data = crate::catalog::Catalog::serialize_schema_to_bytes(&schema);
         self.transaction.set(schema_key.as_bytes(), schema_data)?;
 
         // Add to in-memory schemas and validation cache
         let schema_rc = Rc::new(schema.clone());
         self.table_schemas.insert(create.table.clone(), schema_rc);
-
-        // Compute storage metadata automatically when adding to catalog
-        let _ = crate::catalog::Catalog::compute_table_metadata(&mut schema);
 
         Ok(ResultSet::CreateTable)
     }
@@ -907,13 +874,12 @@ impl<'a> QueryProcessor<'a> {
 
         if table_existed {
             // Delete schema metadata
-            let schema_key = format!("S:{}", drop.table);
+            let schema_key = crate::catalog::Catalog::get_schema_storage_key(&drop.table);
             self.transaction.delete(schema_key.as_bytes())?;
 
-            // Delete all table data
-            let table_prefix = format!("{}:", drop.table);
-            let start_key = table_prefix.as_bytes().to_vec();
-            let end_key = format!("{}~", drop.table).as_bytes().to_vec();
+            // Delete all table data using canonical key range helpers
+            let start_key = PrimaryKey::table_prefix(&drop.table);
+            let end_key = PrimaryKey::table_end_marker(&drop.table);
 
             let keys_to_delete: Vec<_> = self
                 .transaction
@@ -1062,11 +1028,11 @@ impl<'a> QueryProcessor<'a> {
                 let query_schema = QuerySchema::new_with_expressions(&selected_columns, &schema);
                 
                 // Build the index prefix to scan for all entries with this column value
-                let column_value_str = crate::catalog::sql_value_to_index_string(&column_value);
-                let index_prefix = format!("I:{}:{}:{}:", table, index, column_value_str);
-                let index_start = index_prefix.as_bytes().to_vec();
-                let index_end = format!("I:{}:{}:{}~", table, index, column_value_str);
-                let index_end_bytes = index_end.as_bytes().to_vec();
+                let (index_start, index_end_bytes) = crate::catalog::index_prefix_range(
+                    &table,
+                    &index,
+                    &column_value,
+                );
                 
                 
                 

@@ -10,6 +10,15 @@ pub type KeyMap = BTreeMap<Vec<u8>, Rc<[u8]>>;
 /// Transaction commit marker - special marker that won't be part of keymap
 pub const TX_COMMIT_MARKER: &[u8] = b"__TX_COMMIT__";
 
+/// Default size limits for keys and values
+pub const DEFAULT_MAX_KEY_SIZE: usize = 1024; // 1KB
+pub const DEFAULT_MAX_VALUE_SIZE: usize = 256 * 1024; // 256KB
+/// Byte width of the length fields in the log format
+pub const LENGTH_FIELD_BYTES: usize = 4;
+
+/// Browser storage key suffix for the log array in localStorage/IndexedDB
+pub const BROWSER_LOG_SUFFIX: &str = ":log";
+
 /// Config options for the log
 #[derive(Debug, Clone)]
 pub struct LogConfig {

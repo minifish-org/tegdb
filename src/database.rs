@@ -177,7 +177,7 @@ impl Database {
         #[cfg(not(target_arch = "wasm32"))]
         {
             // On native platforms, only support file protocol
-            if protocol != "file" {
+            if protocol != crate::protocol_utils::PROTOCOL_NAME_FILE {
                 return Err(crate::Error::Other(format!(
                     "Unsupported protocol: {protocol}. Only 'file://' protocol is supported on native platforms."
                 )));
@@ -203,7 +203,9 @@ impl Database {
         {
             // On WASM platforms, support browser protocols
             match protocol {
-                "browser" | "localstorage" | "indexeddb" => {
+                crate::protocol_utils::PROTOCOL_NAME_BROWSER
+                | crate::protocol_utils::PROTOCOL_NAME_LOCALSTORAGE
+                | crate::protocol_utils::PROTOCOL_NAME_INDEXEDDB => {
                     // For browser backends, we use the full identifier string
                     let storage = StorageEngine::new_with_identifier(path_str.to_string())?;
 
@@ -212,7 +214,7 @@ impl Database {
 
                     Ok(Self { storage, catalog })
                 }
-                "file" => {
+                crate::protocol_utils::PROTOCOL_NAME_FILE => {
                     // File protocol is not supported on WASM
                     return Err(crate::Error::Other(format!(
                         "File protocol is not supported on WASM. Use 'browser://', 'localstorage://', or 'indexeddb://' protocols instead."
@@ -340,6 +342,25 @@ impl Database {
         }
     }
 
+    /// Helper: extract rows_affected from non-SELECT results
+    fn extract_rows_affected(result: &crate::query_processor::ResultSet<'_>) -> Result<usize> {
+        match result {
+            crate::query_processor::ResultSet::Insert { rows_affected }
+            | crate::query_processor::ResultSet::Update { rows_affected }
+            | crate::query_processor::ResultSet::Delete { rows_affected } => Ok(*rows_affected),
+            crate::query_processor::ResultSet::CreateTable
+            | crate::query_processor::ResultSet::DropTable
+            | crate::query_processor::ResultSet::CreateIndex
+            | crate::query_processor::ResultSet::DropIndex
+            | crate::query_processor::ResultSet::Begin
+            | crate::query_processor::ResultSet::Commit
+            | crate::query_processor::ResultSet::Rollback => Ok(0),
+            crate::query_processor::ResultSet::Select { .. } => Err(crate::Error::Other(
+                "execute()/execute_prepared should not be used for SELECT statements. Use query()/query_prepared instead.".to_string(),
+            )),
+        }
+    }
+
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let statement =
@@ -360,24 +381,7 @@ impl Database {
         let result = processor.execute_plan(plan)?;
 
         // Process the result immediately to avoid lifetime conflicts
-        let final_result = match result {
-            crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
-            crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
-            crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
-            crate::query_processor::ResultSet::CreateTable => 0,
-            crate::query_processor::ResultSet::DropTable => 0,
-            crate::query_processor::ResultSet::CreateIndex => 0,
-            crate::query_processor::ResultSet::DropIndex => 0,
-            crate::query_processor::ResultSet::Begin => 0,
-            crate::query_processor::ResultSet::Commit => 0,
-            crate::query_processor::ResultSet::Rollback => 0,
-            crate::query_processor::ResultSet::Select { .. } => {
-                return Err(crate::Error::Other(
-                    "execute() should not be used for SELECT statements. Use query() instead."
-                        .to_string(),
-                ))
-            }
-        };
+        let final_result = Self::extract_rows_affected(&result)?;
         // Drop the result to release the borrow
         drop(result);
 
@@ -498,24 +502,7 @@ impl Database {
             let transaction = self.storage.begin_transaction();
             let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
             let result = processor.execute_plan(instantiated_plan)?;
-            let final_result = match result {
-                crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
-                crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
-                crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
-                crate::query_processor::ResultSet::CreateTable => 0,
-                crate::query_processor::ResultSet::DropTable => 0,
-                crate::query_processor::ResultSet::CreateIndex => 0,
-                crate::query_processor::ResultSet::DropIndex => 0,
-                crate::query_processor::ResultSet::Begin => 0,
-                crate::query_processor::ResultSet::Commit => 0,
-                crate::query_processor::ResultSet::Rollback => 0,
-                crate::query_processor::ResultSet::Select { .. } => {
-                    return Err(crate::Error::Other(
-                        "execute_prepared() should not be used for SELECT statements. Use query_prepared() instead."
-                            .to_string(),
-                    ))
-                }
-            };
+            let final_result = Self::extract_rows_affected(&result)?;
             drop(result);
             Self::update_schema_catalog_for_ddl(&mut self.catalog, &stmt.statement);
             processor.transaction_mut().commit()?;
@@ -529,24 +516,7 @@ impl Database {
             let transaction = self.storage.begin_transaction();
             let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
             let result = processor.execute_plan(plan)?;
-            let final_result = match result {
-                crate::query_processor::ResultSet::Insert { rows_affected } => rows_affected,
-                crate::query_processor::ResultSet::Update { rows_affected } => rows_affected,
-                crate::query_processor::ResultSet::Delete { rows_affected } => rows_affected,
-                crate::query_processor::ResultSet::CreateTable => 0,
-                crate::query_processor::ResultSet::DropTable => 0,
-                crate::query_processor::ResultSet::CreateIndex => 0,
-                crate::query_processor::ResultSet::DropIndex => 0,
-                crate::query_processor::ResultSet::Begin => 0,
-                crate::query_processor::ResultSet::Commit => 0,
-                crate::query_processor::ResultSet::Rollback => 0,
-                crate::query_processor::ResultSet::Select { .. } => {
-                    return Err(crate::Error::Other(
-                        "execute_prepared() should not be used for SELECT statements. Use query_prepared() instead."
-                            .to_string(),
-                    ))
-                }
-            };
+            let final_result = Self::extract_rows_affected(&result)?;
             drop(result);
             Self::update_schema_catalog_for_ddl(&mut self.catalog, &bound_stmt);
             processor.transaction_mut().commit()?;

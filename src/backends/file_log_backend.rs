@@ -23,7 +23,7 @@ impl LogBackend for FileLogBackend {
         let (protocol, path_str) = parse_storage_identifier(&identifier);
 
         // Validate protocol for file backend
-        if protocol != "file" {
+        if protocol != crate::protocol_utils::PROTOCOL_NAME_FILE {
             return Err(Error::Other(format!(
                 "FileLogBackend only supports 'file://' protocol, got '{protocol}://'"
             )));
@@ -57,7 +57,7 @@ impl LogBackend for FileLogBackend {
         let file_len = self.file.metadata()?.len();
         let mut reader = std::io::BufReader::new(&mut self.file);
         let mut pos = reader.seek(SeekFrom::Start(0))?;
-        let mut len_buf = [0u8; 4];
+        let mut len_buf = [0u8; crate::log::LENGTH_FIELD_BYTES];
         let mut committed = false;
 
         while pos < file_len {
@@ -123,7 +123,7 @@ impl LogBackend for FileLogBackend {
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
-        if key.len() > 1024 || value.len() > 256 * 1024 {
+        if key.len() > crate::log::DEFAULT_MAX_KEY_SIZE || value.len() > crate::log::DEFAULT_MAX_VALUE_SIZE {
             return Err(Error::Other(format!(
                 "Key or value length exceeds limits: key_len={}, value_len={}",
                 key.len(),
@@ -134,7 +134,7 @@ impl LogBackend for FileLogBackend {
         // Calculate entry size
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
-        let len = 4 + 4 + key_len + value_len;
+        let len = (crate::log::LENGTH_FIELD_BYTES * 2) as u32 + key_len + value_len;
 
         // Prepare buffer with same binary format as original TegDB
         let mut buffer = Vec::with_capacity(len as usize);

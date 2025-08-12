@@ -24,6 +24,16 @@ pub enum TypeCode {
     Vector = 4,    // Vector of f64 values
 }
 
+// Shared byte widths for primitive numeric types
+pub const BYTES_PER_I64: usize = 8;
+pub const BYTES_PER_F64: usize = 8;
+
+// Canonical numeric representations of type codes to avoid magic numbers
+const TYPE_CODE_INTEGER: u8 = TypeCode::Integer as u8;
+const TYPE_CODE_REAL: u8 = TypeCode::Real as u8;
+const TYPE_CODE_TEXT_FIXED: u8 = TypeCode::TextFixed as u8;
+const TYPE_CODE_VECTOR: u8 = TypeCode::Vector as u8;
+
 // Remove LazyRow struct, its methods, and create_lazy_row function
 
 impl Default for StorageFormat {
@@ -77,15 +87,17 @@ impl StorageFormat {
         type_code: u8,
     ) -> Result<()> {
         match (value, type_code) {
-            (SqlValue::Integer(i), 1) => {
+            (SqlValue::Integer(i), TYPE_CODE_INTEGER) => {
                 // TypeCode::Integer
-                buffer[offset..offset + 8].copy_from_slice(&i.to_le_bytes());
+                buffer[offset..offset + BYTES_PER_I64]
+                    .copy_from_slice(&i.to_le_bytes());
             }
-            (SqlValue::Real(r), 2) => {
+            (SqlValue::Real(r), TYPE_CODE_REAL) => {
                 // TypeCode::Real
-                buffer[offset..offset + 8].copy_from_slice(&r.to_le_bytes());
+                buffer[offset..offset + BYTES_PER_F64]
+                    .copy_from_slice(&r.to_le_bytes());
             }
-            (SqlValue::Text(s), 3) => {
+            (SqlValue::Text(s), TYPE_CODE_TEXT_FIXED) => {
                 // TypeCode::TextFixed
                 let bytes = s.as_bytes();
                 let copy_len = bytes.len().min(size);
@@ -95,9 +107,9 @@ impl StorageFormat {
                     buffer[offset + copy_len..offset + size].fill(0);
                 }
             }
-            (SqlValue::Vector(v), 4) => {
+            (SqlValue::Vector(v), TYPE_CODE_VECTOR) => {
                 // TypeCode::Vector
-                let expected_len = size / 8;
+                let expected_len = size / BYTES_PER_F64;
                 if v.len() != expected_len {
                     return Err(crate::Error::Other(
                         format!("Vector length {} does not match schema dimension {}", v.len(), expected_len)
@@ -108,8 +120,9 @@ impl StorageFormat {
                     return Ok(());
                 }
                 for (i, &val) in v.iter().enumerate() {
-                    let val_offset = offset + i * 8;
-                    buffer[val_offset..val_offset + 8].copy_from_slice(&val.to_le_bytes());
+                    let val_offset = offset + i * BYTES_PER_F64;
+                    buffer[val_offset..val_offset + BYTES_PER_F64]
+                        .copy_from_slice(&val.to_le_bytes());
                 }
             }
             _ => {
@@ -121,55 +134,27 @@ impl StorageFormat {
         Ok(())
     }
 
-    /// Get a single column value by name (zero-copy) using embedded metadata
+    /// Get a single column value by name (zero-copy). Delegates to metadata-aware variant.
     pub fn get_column_value(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_name: &str,
     ) -> Result<SqlValue> {
-        if let Some((index, _)) = schema
-            .columns
-            .iter()
-            .enumerate()
-            .find(|(_, col)| col.name == column_name)
-        {
-            let column_info = &schema.columns[index];
-            Self::deserialize_value_at_offset(
-                data,
-                column_info.storage_offset,
-                column_info.storage_size,
-                column_info.storage_type_code,
-            )
-        } else {
-            Err(crate::Error::Other(format!(
-                "Column '{column_name}' not found"
-            )))
-        }
+        self.get_column_value_with_metadata(data, schema, column_name)
     }
 
-    /// Get a single column value by index (zero-copy) using pre-computed metadata
+    /// Get a single column value by index (zero-copy). Delegates to metadata-aware variant.
     pub fn get_column_by_index(
         &self,
         data: &[u8],
         schema: &TableSchema,
         column_index: usize,
     ) -> Result<SqlValue> {
-        if column_index >= schema.columns.len() {
-            return Err(crate::Error::Other(
-                "Column index out of bounds".to_string(),
-            ));
-        }
-        let column_info = &schema.columns[column_index];
-        Self::deserialize_value_at_offset(
-            data,
-            column_info.storage_offset,
-            column_info.storage_size,
-            column_info.storage_type_code,
-        )
+        self.get_column_by_index_with_metadata(data, schema, column_index)
     }
 
-    /// Get multiple columns by name (zero-copy) using pre-computed metadata
+    /// Get multiple columns by name (zero-copy). Delegates to single-column metadata-aware calls.
     pub fn get_columns(
         &self,
         data: &[u8],
@@ -178,115 +163,28 @@ impl StorageFormat {
     ) -> Result<Vec<SqlValue>> {
         let mut result = Vec::with_capacity(column_names.len());
         for &column_name in column_names {
-            result.push(self.get_column_value(data, schema, column_name)?);
+            result.push(self.get_column_value_with_metadata(data, schema, column_name)?);
         }
         Ok(result)
     }
 
-    /// Evaluate a condition (zero-copy where possible)
+    /// Evaluate a condition (zero-copy where possible). Delegates to metadata-aware variant.
     pub fn matches_condition(
         &self,
         data: &[u8],
         schema: &TableSchema,
         condition: &crate::parser::Condition,
     ) -> Result<bool> {
-        match condition {
-            crate::parser::Condition::Comparison {
-                left,
-                operator,
-                right,
-            } => {
-                // For simple column references, try to get the value directly
-                if let crate::parser::Expression::Column(column_name) = left {
-                    if let Ok(left_val) = self.get_column_value(data, schema, column_name) {
-                        match (left_val, right) {
-                            (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
-                                crate::parser::ComparisonOperator::Equal => Ok(l == *r),
-                                crate::parser::ComparisonOperator::NotEqual => Ok(l != *r),
-                                crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
-                                crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
-                                crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
-                                crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
-                                _ => Ok(false),
-                            },
-                            (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
-                                crate::parser::ComparisonOperator::Equal => {
-                                    Ok((l - *r).abs() < f64::EPSILON)
-                                }
-                                crate::parser::ComparisonOperator::NotEqual => {
-                                    Ok((l - *r).abs() >= f64::EPSILON)
-                                }
-                                crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
-                                crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
-                                crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
-                                crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
-                                _ => Ok(false),
-                            },
-                            (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
-                                crate::parser::ComparisonOperator::Equal => Ok(l == *r),
-                                crate::parser::ComparisonOperator::NotEqual => Ok(l != *r),
-                                crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
-                                crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
-                                crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
-                                crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
-                                crate::parser::ComparisonOperator::Like => Ok(crate::sql_utils::compare_values(&SqlValue::Text(l.clone()), &crate::parser::ComparisonOperator::Like, &SqlValue::Text(r.clone()))),
-                            },
-                            _ => Ok(false),
-                        }
-                    } else {
-                        // Fallback to full deserialization for complex cases
-                        let row_data = self.deserialize_row_full(data, schema)?;
-                        Ok(evaluate_condition(condition, &row_data))
-                    }
-                } else {
-                    // For complex expressions (like function calls), fall back to full deserialization
-                    let row_data = self.deserialize_row_full(data, schema)?;
-                    Ok(evaluate_condition(condition, &row_data))
-                }
-            }
-            crate::parser::Condition::Between { column, low, high } => {
-                if let Ok(val) = self.get_column_value(data, schema, column) {
-                    let ge = crate::sql_utils::compare_values(
-                        &val,
-                        &crate::parser::ComparisonOperator::GreaterThanOrEqual,
-                        low,
-                    );
-                    let le = crate::sql_utils::compare_values(
-                        &val,
-                        &crate::parser::ComparisonOperator::LessThanOrEqual,
-                        high,
-                    );
-                    Ok(ge && le)
-                } else {
-                    let row_data = self.deserialize_row_full(data, schema)?;
-                    Ok(evaluate_condition(condition, &row_data))
-                }
-            }
-            _ => {
-                // For complex conditions, fall back to full deserialization
-                let row_data = self.deserialize_row_full(data, schema)?;
-                Ok(evaluate_condition(condition, &row_data))
-            }
-        }
+        self.matches_condition_with_metadata(data, schema, condition)
     }
 
-    /// Deserialize full row using embedded metadata
+    /// Deserialize full row. Delegates to metadata-aware variant.
     pub fn deserialize_row_full(
         &self,
         data: &[u8],
         schema: &TableSchema,
     ) -> Result<HashMap<String, SqlValue>> {
-        let mut result = HashMap::with_capacity(schema.columns.len());
-        for column in &schema.columns {
-            let value = Self::deserialize_value_at_offset(
-                data,
-                column.storage_offset,
-                column.storage_size,
-                column.storage_type_code,
-            )?;
-            result.insert(column.name.clone(), value);
-        }
-        Ok(result)
+        self.deserialize_row_full_with_metadata(data, schema)
     }
 
     /// Deserialize a value at a specific offset with bounds checking
@@ -299,7 +197,7 @@ impl StorageFormat {
         // Handle zero-size values (like zero-dimension vectors)
         if size == 0 {
             match type_code {
-                4 => return Ok(SqlValue::Vector(vec![])), // Zero-dimension vector
+                TYPE_CODE_VECTOR => return Ok(SqlValue::Vector(vec![])), // Zero-dimension vector
                 _ => return Err(crate::Error::Other("Zero size not supported for this type".to_string())),
             }
         }
@@ -316,31 +214,31 @@ impl StorageFormat {
         }
 
         match type_code {
-            1 => {
+            TYPE_CODE_INTEGER => {
                 // TypeCode::Integer
-                if size < 8 {
+                if size < BYTES_PER_I64 {
                     return Err(crate::Error::Other("Invalid size for integer".to_string()));
                 }
-                let bytes = &data[offset..offset + 8];
+                let bytes = &data[offset..offset + BYTES_PER_I64];
                 let value = i64::from_le_bytes([
                     bytes[0], bytes[1], bytes[2], bytes[3],
                     bytes[4], bytes[5], bytes[6], bytes[7],
                 ]);
                 Ok(SqlValue::Integer(value))
             }
-            2 => {
+            TYPE_CODE_REAL => {
                 // TypeCode::Real
-                if size < 8 {
+                if size < BYTES_PER_F64 {
                     return Err(crate::Error::Other("Invalid size for real".to_string()));
                 }
-                let bytes = &data[offset..offset + 8];
+                let bytes = &data[offset..offset + BYTES_PER_F64];
                 let value = f64::from_le_bytes([
                     bytes[0], bytes[1], bytes[2], bytes[3],
                     bytes[4], bytes[5], bytes[6], bytes[7],
                 ]);
                 Ok(SqlValue::Real(value))
             }
-            3 => {
+            TYPE_CODE_TEXT_FIXED => {
                 // TypeCode::TextFixed
                 let bytes = &data[offset..offset + size];
                 // Find the first null byte or use the full size
@@ -349,10 +247,10 @@ impl StorageFormat {
                 let text = String::from_utf8_lossy(text_bytes).to_string();
                 Ok(SqlValue::Text(text))
             }
-            4 => {
+            TYPE_CODE_VECTOR => {
                 // TypeCode::Vector
-                let vector_size = size / 8;
-                if size % 8 != 0 {
+                let vector_size = size / BYTES_PER_F64;
+                if size % BYTES_PER_F64 != 0 {
                     return Err(crate::Error::Other("Invalid vector size".to_string()));
                 }
                 // Handle zero-dimension vectors
@@ -361,11 +259,11 @@ impl StorageFormat {
                 }
                 let mut vector = Vec::with_capacity(vector_size);
                 for i in 0..vector_size {
-                    let val_offset = offset + i * 8;
-                    if val_offset + 8 > data.len() {
+                    let val_offset = offset + i * BYTES_PER_F64;
+                    if val_offset + BYTES_PER_F64 > data.len() {
                         return Err(crate::Error::Other("Vector element out of bounds".to_string()));
                     }
-                    let bytes = &data[val_offset..val_offset + 8];
+                    let bytes = &data[val_offset..val_offset + BYTES_PER_F64];
                     let value = f64::from_le_bytes([
                         bytes[0], bytes[1], bytes[2], bytes[3],
                         bytes[4], bytes[5], bytes[6], bytes[7],

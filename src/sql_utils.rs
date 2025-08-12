@@ -183,9 +183,9 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
                 constraints_str
                     .split(',')
                     .filter_map(|c| match c {
-                        "PRIMARY_KEY" => Some(ColumnConstraint::PrimaryKey),
-                        "NOT_NULL" => Some(ColumnConstraint::NotNull),
-                        "UNIQUE" => Some(ColumnConstraint::Unique),
+                        x if x == crate::catalog::CONSTRAINT_PRIMARY_KEY_STR => Some(ColumnConstraint::PrimaryKey),
+                        x if x == crate::catalog::CONSTRAINT_NOT_NULL_STR => Some(ColumnConstraint::NotNull),
+                        x if x == crate::catalog::CONSTRAINT_UNIQUE_STR => Some(ColumnConstraint::Unique),
                         _ => None,
                     })
                     .collect()
@@ -224,14 +224,14 @@ pub fn deserialize_schema_from_bytes(data: &[u8]) -> crate::Result<TableSchema> 
 
     // Pre-count columns to avoid reallocations
     for &byte in data {
-        if byte == b'|' {
+        if byte == crate::catalog::FIELD_SEPARATOR {
             column_count += 1;
         }
     }
     columns.reserve(column_count + 1);
 
     for (i, &byte) in data.iter().enumerate() {
-        if byte == b'|' {
+        if byte == crate::catalog::FIELD_SEPARATOR {
             if i > start {
                 let column_part = &data[start..i];
                 parse_column_part_from_bytes(column_part, &mut columns);
@@ -256,7 +256,7 @@ pub fn deserialize_schema_from_bytes(data: &[u8]) -> crate::Result<TableSchema> 
 
 /// Helper to parse a single column entry from binary data
 fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo>) {
-    let mut parts = column_part.splitn(3, |&b| b == b':');
+    let mut parts = column_part.splitn(3, |&b| b == crate::catalog::STORAGE_SEPARATOR);
     if let (Some(name_bytes), Some(type_bytes)) = (parts.next(), parts.next()) {
         let name = String::from_utf8_lossy(name_bytes).to_string();
         let type_str = String::from_utf8_lossy(type_bytes);
@@ -300,13 +300,21 @@ fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo
         };
 
         let constraints = if let Some(constraints_bytes) = parts.next() {
+            let primary = crate::catalog::CONSTRAINT_PRIMARY_KEY_STR.as_bytes();
+            let not_null = crate::catalog::CONSTRAINT_NOT_NULL_STR.as_bytes();
+            let unique = crate::catalog::CONSTRAINT_UNIQUE_STR.as_bytes();
             constraints_bytes
-                .split(|&b| b == b',')
-                .filter_map(|c| match c {
-                    b"PRIMARY_KEY" => Some(ColumnConstraint::PrimaryKey),
-                    b"NOT_NULL" => Some(ColumnConstraint::NotNull),
-                    b"UNIQUE" => Some(ColumnConstraint::Unique),
-                    _ => None,
+                .split(|&b| b == crate::catalog::CONSTRAINT_SEP)
+                .filter_map(|c| {
+                    if c == primary {
+                        Some(ColumnConstraint::PrimaryKey)
+                    } else if c == not_null {
+                        Some(ColumnConstraint::NotNull)
+                    } else if c == unique {
+                        Some(ColumnConstraint::Unique)
+                    } else {
+                        None
+                    }
                 })
                 .collect()
         } else {

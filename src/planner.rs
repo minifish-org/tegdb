@@ -718,6 +718,53 @@ impl QueryPlanner {
         }
     }
 
+    /// Extract non-PK or non-indexed conditions by excluding a set of column names.
+    fn extract_conditions_excluding_columns(
+        excluded_columns: &std::collections::HashSet<String>,
+        condition: &Condition,
+    ) -> Option<Condition> {
+        match condition {
+            Condition::Comparison { left, .. } => {
+                if let crate::parser::Expression::Column(col_name) = left {
+                    if excluded_columns.contains(col_name) {
+                        None
+                    } else {
+                        Some(condition.clone())
+                    }
+                } else {
+                    Some(condition.clone())
+                }
+            }
+            Condition::Between { column, .. } => {
+                if excluded_columns.contains(column) {
+                    None
+                } else {
+                    Some(condition.clone())
+                }
+            }
+            Condition::And(left, right) => {
+                let l = Self::extract_conditions_excluding_columns(excluded_columns, left);
+                let r = Self::extract_conditions_excluding_columns(excluded_columns, right);
+                match (l, r) {
+                    (Some(lc), Some(rc)) => Some(Condition::And(Box::new(lc), Box::new(rc))),
+                    (Some(lc), None) => Some(lc),
+                    (None, Some(rc)) => Some(rc),
+                    (None, None) => None,
+                }
+            }
+            Condition::Or(left, right) => {
+                let l = Self::extract_conditions_excluding_columns(excluded_columns, left);
+                let r = Self::extract_conditions_excluding_columns(excluded_columns, right);
+                match (l, r) {
+                    (Some(lc), Some(rc)) => Some(Condition::Or(Box::new(lc), Box::new(rc))),
+                    (Some(lc), None) => Some(lc),
+                    (None, Some(rc)) => Some(rc),
+                    (None, None) => None,
+                }
+            }
+        }
+    }
+
     /// Extract non-primary key conditions for additional filtering
     fn extract_non_pk_conditions(
         &self,
@@ -725,64 +772,8 @@ impl QueryPlanner {
         condition: &Condition,
     ) -> Result<Option<Condition>> {
         let pk_columns = self.get_primary_key_columns(table_name)?;
-
-        fn filter_non_pk_conditions(
-            condition: &Condition,
-            pk_columns: &[String],
-        ) -> Option<Condition> {
-            match condition {
-                Condition::Comparison {
-                    left,
-                    operator: _,
-                    right: _,
-                } => {
-                    if let crate::parser::Expression::Column(col_name) = left {
-                        if pk_columns.contains(&col_name) {
-                            None // This is a PK condition, filter it out
-                        } else {
-                            Some(condition.clone()) // Keep non-PK conditions
-                        }
-                    } else {
-                        Some(condition.clone()) // Keep complex expressions
-                    }
-                }
-                Condition::Between {
-                    column: _column,
-                    low: _low,
-                    high: _high,
-                } => {
-                    if pk_columns.contains(_column) {
-                        None // This is a PK condition, filter it out
-                    } else {
-                        Some(condition.clone()) // Keep non-PK conditions
-                    }
-                }
-                Condition::And(left, right) => {
-                    let left_filtered = filter_non_pk_conditions(left, pk_columns);
-                    let right_filtered = filter_non_pk_conditions(right, pk_columns);
-
-                    match (left_filtered, right_filtered) {
-                        (Some(l), Some(r)) => Some(Condition::And(Box::new(l), Box::new(r))),
-                        (Some(l), None) => Some(l),
-                        (None, Some(r)) => Some(r),
-                        (None, None) => None,
-                    }
-                }
-                Condition::Or(left, right) => {
-                    let left_filtered = filter_non_pk_conditions(left, pk_columns);
-                    let right_filtered = filter_non_pk_conditions(right, pk_columns);
-
-                    match (left_filtered, right_filtered) {
-                        (Some(l), Some(r)) => Some(Condition::Or(Box::new(l), Box::new(r))),
-                        (Some(l), None) => Some(l),
-                        (None, Some(r)) => Some(r),
-                        (None, None) => None,
-                    }
-                }
-            }
-        }
-
-        Ok(filter_non_pk_conditions(condition, &pk_columns))
+        let excluded: std::collections::HashSet<String> = pk_columns.into_iter().collect();
+        Ok(Self::extract_conditions_excluding_columns(&excluded, condition))
     }
 
     /// Extract non-indexed conditions for additional filtering
@@ -792,76 +783,18 @@ impl QueryPlanner {
         condition: &Condition,
         index_name: &str,
     ) -> Result<Option<Condition>> {
-        // Get the indexed column name
         let schema = self.table_schemas.get(table_name).ok_or_else(|| {
             crate::Error::Other(format!("Table '{}' not found", table_name))
         })?;
-        
-        let indexed_column = schema.indexes.iter()
+        let indexed_column = schema
+            .indexes
+            .iter()
             .find(|idx| idx.name == index_name)
             .map(|idx| idx.column_name.clone())
-            .ok_or_else(|| {
-                crate::Error::Other(format!("Index '{}' not found", index_name))
-            })?;
-        
-        // Filter out conditions that use the indexed column
-        Ok(Self::filter_non_indexed_conditions(condition, &indexed_column))
-    }
-
-    fn filter_non_indexed_conditions(
-        condition: &Condition,
-        indexed_column: &str,
-    ) -> Option<Condition> {
-        match condition {
-            Condition::Comparison {
-                left,
-                operator: _,
-                right: _,
-            } => {
-                if let crate::parser::Expression::Column(col_name) = left {
-                    if col_name == indexed_column {
-                        None // This is an indexed condition, filter it out
-                    } else {
-                        Some(condition.clone()) // Keep non-indexed conditions
-                    }
-                } else {
-                    Some(condition.clone()) // Keep complex expressions
-                }
-            }
-            Condition::Between {
-                column: _column,
-                low: _low,
-                high: _high,
-            } => {
-                if _column == indexed_column {
-                    None // This is an indexed condition, filter it out
-                } else {
-                    Some(condition.clone()) // Keep non-indexed conditions
-                }
-            }
-            Condition::And(left, right) => {
-                let left_filtered = Self::filter_non_indexed_conditions(left, indexed_column);
-                let right_filtered = Self::filter_non_indexed_conditions(right, indexed_column);
-
-                match (left_filtered, right_filtered) {
-                    (Some(l), Some(r)) => Some(Condition::And(Box::new(l), Box::new(r))),
-                    (Some(l), None) => Some(l),
-                    (None, Some(r)) => Some(r),
-                    (None, None) => None,
-                }
-            }
-            Condition::Or(left, right) => {
-                let left_filtered = Self::filter_non_indexed_conditions(left, indexed_column);
-                let right_filtered = Self::filter_non_indexed_conditions(right, indexed_column);
-
-                match (left_filtered, right_filtered) {
-                    (Some(l), Some(r)) => Some(Condition::Or(Box::new(l), Box::new(r))),
-                    (Some(l), None) => Some(l),
-                    (None, Some(r)) => Some(r),
-                    (None, None) => None,
-                }
-            }
-        }
+            .ok_or_else(|| crate::Error::Other(format!("Index '{}' not found", index_name)))?;
+        let mut excluded = std::collections::HashSet::new();
+        excluded.insert(indexed_column);
+        Ok(Self::extract_conditions_excluding_columns(&excluded, condition))
     }
 
     /// Normalize selected columns: if ["*"] is given, expand to all columns from the schema

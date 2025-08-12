@@ -24,8 +24,8 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            max_key_size: 1024,
-            max_value_size: 256 * 1024,
+            max_key_size: crate::log::DEFAULT_MAX_KEY_SIZE,
+            max_value_size: crate::log::DEFAULT_MAX_VALUE_SIZE,
             sync_on_write: false, // Changed: only sync on explicit commits, not every write
             auto_compact: true,
         }
