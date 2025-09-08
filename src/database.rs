@@ -273,17 +273,6 @@ impl Database {
         }
     }
 
-    /// Centralized query execution helper to eliminate duplication
-    /// Executes SELECT statements and returns QueryResult
-    fn execute_query_with_processor(
-        mut processor: QueryProcessor<'_>,
-        sql: &str,
-        schemas: &HashMap<String, Rc<TableSchema>>,
-    ) -> Result<QueryResult> {
-        // Get schemas in Rc format for the planner
-        let rc_schemas = Self::get_schemas_rc(schemas);
-        Self::execute_query_core(&mut processor, sql, &rc_schemas)
-    }
 
     /// Centralized query execution helper for mutable reference
     /// Executes SELECT statements and returns QueryResult
@@ -361,56 +350,83 @@ impl Database {
         }
     }
 
-    /// Execute SQL statement, return number of affected rows
-    pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
-
-        // Use a single transaction for this operation
+    /// 核心执行函数：接收一个执行计划，处理事务、执行和 schema 更新。
+    /// 封装了 execute 和 execute_prepared 的公共逻辑。
+    fn _execute_plan(&mut self, plan: crate::planner::ExecutionPlan, statement: &Statement) -> Result<usize> {
         let transaction = self.storage.begin_transaction();
-
-        // Get schemas in Rc format for shared ownership (no cloning needed)
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-
-        // Use the new planner pipeline with executor
-        let planner = QueryPlanner::new(schemas.clone());
         let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
 
-        // Generate and execute the plan (no need to begin transaction as it's already started)
-        let plan = planner.plan(statement.clone())?;
+        // 执行计划
         let result = processor.execute_plan(plan)?;
-
-        // Process the result immediately to avoid lifetime conflicts
         let final_result = Self::extract_rows_affected(&result)?;
-        // Drop the result to release the borrow
+        
+        // 释放对 result 的借用
         drop(result);
 
-        // Update our shared schemas cache for DDL operations using centralized helper
-        Self::update_schema_catalog_for_ddl(&mut self.catalog, &statement);
+        // 如果是 DDL 操作，更新 catalog
+        Self::update_schema_catalog_for_ddl(&mut self.catalog, statement);
 
-        // Actually commit the engine transaction
+        // 提交事务
         processor.transaction_mut().commit()?;
 
         Ok(final_result)
     }
 
+    /// 核心查询函数：接收一个执行计划，处理事务、执行并返回最终结果。
+    /// 封装了 query 和 query_prepared 的公共逻辑。
+    fn _query_plan(&mut self, plan: crate::planner::ExecutionPlan, query_schema: Option<&QuerySchema>) -> Result<QueryResult> {
+        let transaction = self.storage.begin_transaction();
+        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
+
+        // 执行计划
+        let result = match query_schema {
+            Some(schema) => processor.execute_plan_with_query_schema(plan, schema)?,
+            None => processor.execute_plan(plan)?,
+        };
+        
+        match result {
+            crate::query_processor::ResultSet::Select { columns, rows } => {
+                // 将流式结果收集起来
+                let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> =
+                    rows.collect();
+                Ok(QueryResult {
+                    columns,
+                    rows: collected_rows?,
+                })
+            }
+            _ => Err(crate::Error::Other(
+                "Expected SELECT result but got something else".to_string(),
+            )),
+        }
+    }
+
+    /// Execute SQL statement, return number of affected rows
+    pub fn execute(&mut self, sql: &str) -> Result<usize> {
+        let statement =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+
+        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+        let planner = QueryPlanner::new(schemas);
+        let plan = planner.plan(statement.clone())?;
+
+        // 调用核心执行函数
+        self._execute_plan(plan, &statement)
+    }
+
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        // Get schemas in Rc format for shared ownership (no cloning needed)
+        let statement =
+            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+        let planner = QueryPlanner::new(schemas);
+        let plan = planner.plan(statement)?;
 
-        // Use a single transaction for this operation
-        let transaction = self.storage.begin_transaction();
-
-        // Create executor with schemas
-        let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-
-        // Use centralized query execution helper
-        let result =
-            Self::execute_query_with_processor(processor, sql, self.catalog.get_all_schemas())?;
-
-        Ok(result)
+        // 调用核心查询函数
+        self._query_plan(plan, None)
     }
 
     /// Begin a new database transaction
@@ -495,32 +511,21 @@ impl Database {
                 params.len()
             )));
         }
+        
         // Use plan template if available and valid
         if let Some(ref plan_template) = stmt.plan_template {
             let instantiated_plan = instantiate_plan_with_params(plan_template, params);
-            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-            let transaction = self.storage.begin_transaction();
-            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
-            let result = processor.execute_plan(instantiated_plan)?;
-            let final_result = Self::extract_rows_affected(&result)?;
-            drop(result);
-            Self::update_schema_catalog_for_ddl(&mut self.catalog, &stmt.statement);
-            processor.transaction_mut().commit()?;
-            Ok(final_result)
+            // 调用核心执行函数
+            self._execute_plan(instantiated_plan, &stmt.statement)
         } else {
             // Fallback: bind parameters and plan as before
             let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-            let planner = QueryPlanner::new(schemas.clone());
+            let planner = QueryPlanner::new(schemas);
             let plan = planner.plan(bound_stmt.clone())?;
-            let transaction = self.storage.begin_transaction();
-            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-            let result = processor.execute_plan(plan)?;
-            let final_result = Self::extract_rows_affected(&result)?;
-            drop(result);
-            Self::update_schema_catalog_for_ddl(&mut self.catalog, &bound_stmt);
-            processor.transaction_mut().commit()?;
-            Ok(final_result)
+            
+            // 调用核心执行函数
+            self._execute_plan(plan, &bound_stmt)
         }
     }
 
@@ -538,56 +543,21 @@ impl Database {
                 params.len()
             )));
         }
+        
         // Use plan template if available and valid
         if let Some(ref plan_template) = stmt.plan_template {
             let instantiated_plan = instantiate_plan_with_params(plan_template, params);
-            let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-            let transaction = self.storage.begin_transaction();
-            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-            let result = match &stmt.query_schema {
-                Some(query_schema) => {
-                    processor.execute_plan_with_query_schema(instantiated_plan, query_schema)
-                }
-                None => processor.execute_plan(instantiated_plan),
-            }?;
-            match result {
-                crate::query_processor::ResultSet::Select { columns, rows } => {
-                    let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
-                    let final_rows = collected_rows?;
-                    Ok(QueryResult {
-                        columns,
-                        rows: final_rows,
-                    })
-                }
-                _ => Err(crate::Error::Other(
-                    "Expected SELECT result but got something else".to_string(),
-                )),
-            }
+            // 调用核心查询函数
+            self._query_plan(instantiated_plan, stmt.query_schema.as_ref())
         } else {
             // Fallback: bind parameters and plan as before
             let bound_stmt = Self::bind_parameters_to_statement(&stmt.statement, params)?;
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-            let planner = QueryPlanner::new(schemas.clone());
+            let planner = QueryPlanner::new(schemas);
             let plan = planner.plan(bound_stmt)?;
-            let transaction = self.storage.begin_transaction();
-            let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas.clone());
-            let result = match &stmt.query_schema {
-                Some(query_schema) => processor.execute_plan_with_query_schema(plan, query_schema),
-                None => processor.execute_plan(plan),
-            }?;
-            match result {
-                crate::query_processor::ResultSet::Select { columns, rows } => {
-                    let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
-                    let final_rows = collected_rows?;
-                    Ok(QueryResult {
-                        columns,
-                        rows: final_rows,
-                    })
-                }
-                _ => Err(crate::Error::Other(
-                    "Expected SELECT result but got something else".to_string(),
-                )),
-            }
+            
+            // 调用核心查询函数
+            self._query_plan(plan, stmt.query_schema.as_ref())
         }
     }
 
