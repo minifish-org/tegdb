@@ -14,11 +14,13 @@ use nom::{
 };
 use std::collections::HashMap;
 
-fn parse_identifier_optimized(input: &str) -> IResult<&str, String> {
-    let (input, first_char) = alpha1.parse(input)?;
-    let (input, rest) = many0(alt((alphanumeric1, tag("_")))).parse(input)?;
-    let identifier = format!("{}{}", first_char, rest.join(""));
-    Ok((input, identifier))
+fn parse_identifier_optimized(input: &str) -> IResult<&str, &str> {
+    recognize(
+        pair(
+            alpha1,
+            many0(alt((alphanumeric1, tag("_")))),
+        )
+    ).parse(input)
 }
 
 fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<Expression>> {
@@ -60,7 +62,7 @@ fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
             let (input, _) = multispace0.parse(input)?;
             let (input, _) = char(')').parse(input)?;
             return Ok((input, Expression::AggregateFunction {
-                name: func_name,
+                name: func_name.to_string(),
                 arg: Box::new(Expression::Column("*".to_string())),
             }));
         }
@@ -72,7 +74,7 @@ fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
     let (input, _) = char(')').parse(input)?;
     
     Ok((input, Expression::AggregateFunction {
-        name: func_name,
+        name: func_name.to_string(),
         arg: Box::new(arg),
     }))
 }
@@ -597,7 +599,7 @@ fn parse_create_table(input: &str) -> IResult<&str, Statement> {
 
     Ok((
         input,
-        Statement::CreateTable(CreateTableStatement { table, columns }),
+        Statement::CreateTable(CreateTableStatement { table: table.to_string(), columns }),
     ))
 }
 
@@ -640,7 +642,7 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     Ok((
         input,
         Statement::Insert(InsertStatement {
-            table,
+            table: table.to_string(),
             columns,
             values,
         }),
@@ -667,7 +669,7 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
         input,
         Statement::Select(SelectStatement {
             columns,
-            table,
+            table: table.to_string(),
             where_clause,
             order_by,
             limit: limit.flatten(),
@@ -718,7 +720,7 @@ fn parse_update(input: &str) -> IResult<&str, Statement> {
     Ok((
         input,
         Statement::Update(UpdateStatement {
-            table,
+            table: table.to_string(),
             assignments,
             where_clause,
         }),
@@ -738,7 +740,7 @@ fn parse_delete(input: &str) -> IResult<&str, Statement> {
     Ok((
         input,
         Statement::Delete(DeleteStatement {
-            table,
+            table: table.to_string(),
             where_clause,
         }),
     ))
@@ -757,7 +759,7 @@ fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
     Ok((
         input,
         Statement::DropTable(DropTableStatement {
-            table,
+            table: table.to_string(),
             if_exists: if_exists.is_some(),
         }),
     ))
@@ -784,9 +786,9 @@ fn parse_create_index(input: &str) -> IResult<&str, Statement> {
     Ok((
         input,
         Statement::CreateIndex(CreateIndexStatement {
-            index_name,
-            table_name,
-            column_name,
+            index_name: index_name.to_string(),
+            table_name: table_name.to_string(),
+            column_name: column_name.to_string(),
             unique: unique.is_some(),
             index_type: None, // Default to BTree for now
         }),
@@ -805,7 +807,7 @@ fn parse_drop_index(input: &str) -> IResult<&str, Statement> {
     Ok((
         input,
         Statement::DropIndex(DropIndexStatement {
-            index_name,
+            index_name: index_name.to_string(),
             if_exists: if_exists.is_some(),
         }),
     ))
@@ -1035,7 +1037,7 @@ fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
     let (input, _) = multispace0.parse(input)?;
     let (input, value) = parse_expression.parse(input)?;
 
-    Ok((input, Assignment { column, value }))
+    Ok((input, Assignment { column: column.to_string(), value }))
 }
 
 // Parse column definition
@@ -1049,7 +1051,7 @@ fn parse_column_definition(input: &str) -> IResult<&str, ColumnDefinition> {
     Ok((
         input,
         ColumnDefinition {
-            name,
+            name: name.to_string(),
             data_type,
             constraints,
         },
@@ -1231,7 +1233,7 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
                     char(')'),
                 ),
             ),
-            |(name, args)| Expression::FunctionCall { name, args },
+            |(name, args)| Expression::FunctionCall { name: name.to_string(), args },
         ),
         // Parenthesized expressions
         delimited(
@@ -1240,7 +1242,7 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
             char(')'),
         ),
         // Column references
-        map(parse_identifier_optimized, Expression::Column),
+        map(parse_identifier_optimized, |name| Expression::Column(name.to_string())),
         // Literal values
         map(parse_sql_value, Expression::Value),
     ))
