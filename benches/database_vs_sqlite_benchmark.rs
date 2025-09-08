@@ -83,7 +83,7 @@ fn database_benchmark(c: &mut Criterion) {
                 .execute_prepared(
                     &stmt,
                     &[
-                        tegdb::SqlValue::Integer((id % 1000000) as i64),
+                        tegdb::SqlValue::Integer(id as i64),
                         tegdb::SqlValue::Text(format!("prepared_test_{id}")),
                         tegdb::SqlValue::Integer(((id % 1000) * 10) as i64),
                     ],
@@ -294,7 +294,7 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
                 .execute(
                     "INSERT INTO benchmark_test (id, name, value) VALUES (?, ?, ?)",
                     params![
-                        (id % 1000000) as i64,
+                        id as i64,
                         format!("prepared_test_{}", id),
                         ((id % 1000) * 10) as i64
                     ],
