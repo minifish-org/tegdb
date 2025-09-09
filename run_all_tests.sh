@@ -176,7 +176,7 @@ run_browser_tests() {
     install_wasm_bindgen
     
     # Generate JavaScript bindings for browser tests
-    WASM_FILE=$(find target/wasm32-unknown-unknown/debug/deps -name "tegdb-*.wasm" -type f | head -1)
+    WASM_FILE=$(find target/wasm32-unknown-unknown/debug/deps -name "*.wasm" ! -name "*_bg.wasm" -type f | head -1)
     
     if [ -z "$WASM_FILE" ]; then
         print_error "No WASM file found for browser tests"
