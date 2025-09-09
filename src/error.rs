@@ -14,6 +14,16 @@ pub enum Error {
     FileLocked(String),
     /// Error when file is corrupted
     Corrupted(String),
+    /// SQL parsing, planning, or execution error
+    SqlError(String),
+    /// Error during SQL parsing
+    ParseError(String),
+    /// Error during query planning
+    PlanError(String),
+    /// Table not found
+    TableNotFound(String),
+    /// Column not found
+    ColumnNotFound(String),
     /// Other database errors
     Other(String),
 }
@@ -26,6 +36,11 @@ impl fmt::Display for Error {
             Error::ValueTooLarge(size) => write!(f, "Value too large: {size} bytes (max 256KB)"),
             Error::FileLocked(msg) => write!(f, "Database file is locked: {msg}"),
             Error::Corrupted(msg) => write!(f, "Database corrupted: {msg}"),
+            Error::SqlError(msg) => write!(f, "SQL error: {msg}"),
+            Error::ParseError(msg) => write!(f, "SQL parse error: {msg}"),
+            Error::PlanError(msg) => write!(f, "Query planning error: {msg}"),
+            Error::TableNotFound(table) => write!(f, "Table '{table}' not found"),
+            Error::ColumnNotFound(column) => write!(f, "Column '{column}' not found"),
             Error::Other(msg) => write!(f, "Database error: {msg}"),
         }
     }

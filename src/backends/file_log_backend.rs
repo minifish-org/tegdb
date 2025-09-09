@@ -1,13 +1,12 @@
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use fs2::FileExt;
 
 use crate::error::{Error, Result};
-use crate::log::LogBackend;
-use crate::log::{KeyMap, LogConfig, TX_COMMIT_MARKER};
+use crate::log::{LogBackend, KeyMap, LogConfig, TX_COMMIT_MARKER};
 use crate::protocol_utils::parse_storage_identifier;
+use std::rc::Rc;
 
 /// File-based storage backend for native platforms
 #[cfg(not(target_arch = "wasm32"))]

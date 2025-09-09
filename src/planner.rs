@@ -280,8 +280,8 @@ impl QueryPlanner {
     ) -> Result<Option<SqlValue>> {
         let pk_columns = self.get_primary_key_columns(table_name)?;
         if pk_columns.len() != 1 {
-            return Err(crate::Error::Other(
-                "Composite primary keys are not supported".to_string(),
+            return Err(crate::Error::SqlError(
+                "Composite primary keys are not supported for this operation".to_string(),
             ));
         }
         let pk_col = &pk_columns[0];
@@ -585,7 +585,7 @@ impl QueryPlanner {
                 unique,
             });
         }
-        Err(crate::Error::Other(format!("Table '{}' not found for index creation", table_name)))
+        Err(crate::Error::TableNotFound(table_name))
     }
 
     /// Plan DROP INDEX statement
@@ -875,9 +875,7 @@ impl QueryPlanner {
                 .collect();
             Ok(pk_columns)
         } else {
-            Err(crate::Error::Other(format!(
-                "Table '{table_name}' not found"
-            )))
+            Err(crate::Error::TableNotFound(table_name.to_string()))
         }
     }
 

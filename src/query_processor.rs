@@ -37,7 +37,7 @@ impl NativeKey {
             SqlValue::Text(t) => Ok(NativeKey::Text(t.clone())), // Only clone needed
             SqlValue::Vector(v) => Ok(NativeKey::Vector(v.clone())), // Clone needed for vector
             SqlValue::Null => Ok(NativeKey::Null),
-            SqlValue::Parameter(_) => Err(Error::Other(
+            SqlValue::Parameter(_) => Err(Error::SqlError(
                 "Parameter placeholder found in key generation - parameter binding failed"
                     .to_string(),
             )),
@@ -99,45 +99,45 @@ impl NativeKey {
     /// Deserialize from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.is_empty() {
-            return Err(Error::Other("Empty key bytes".to_string()));
+            return Err(Error::Corrupted("Empty key bytes".to_string()));
         }
 
         match bytes[0] {
             0x00 => Ok(NativeKey::Null),
             0x01 => {
                 if bytes.len() != 9 {
-                    return Err(Error::Other("Invalid integer key length".to_string()));
+                    return Err(Error::Corrupted("Invalid integer key length".to_string()));
                 }
                 let i = i64::from_be_bytes(bytes[1..9].try_into().unwrap()); // Use big-endian
                 Ok(NativeKey::Integer(i))
             }
             0x02 => {
                 if bytes.len() != 9 {
-                    return Err(Error::Other("Invalid real key length".to_string()));
+                    return Err(Error::Corrupted("Invalid real key length".to_string()));
                 }
                 let r = f64::from_be_bytes(bytes[1..9].try_into().unwrap()); // Use big-endian
                 Ok(NativeKey::Real(r))
             }
             0x03 => {
                 if bytes.len() < 5 {
-                    return Err(Error::Other("Invalid text key length".to_string()));
+                    return Err(Error::Corrupted("Invalid text key length".to_string()));
                 }
                 let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
                 if bytes.len() != 5 + len {
-                    return Err(Error::Other("Text key length mismatch".to_string()));
+                    return Err(Error::Corrupted("Text key length mismatch".to_string()));
                 }
                 let text = String::from_utf8(bytes[5..].to_vec())
-                    .map_err(|_| Error::Other("Invalid UTF-8 in text key".to_string()))?;
+                    .map_err(|_| Error::Corrupted("Invalid UTF-8 in text key".to_string()))?;
                 Ok(NativeKey::Text(text))
             }
             0x04 => {
                 if bytes.len() < 5 {
-                    return Err(Error::Other("Invalid vector key length".to_string()));
+                    return Err(Error::Corrupted("Invalid vector key length".to_string()));
                 }
                 let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
                 let expected_len = 5 + len * 8; // 4 bytes for length + len * 8 bytes for f64 values
                 if bytes.len() != expected_len {
-                    return Err(Error::Other("Vector key length mismatch".to_string()));
+                    return Err(Error::Corrupted("Vector key length mismatch".to_string()));
                 }
                 let mut vector = Vec::with_capacity(len);
                 for i in 0..len {
@@ -148,7 +148,7 @@ impl NativeKey {
                 }
                 Ok(NativeKey::Vector(vector))
             }
-            _ => Err(Error::Other("Unknown key type".to_string())),
+            _ => Err(Error::Corrupted("Unknown key type".to_string())),
         }
     }
 }
@@ -196,23 +196,23 @@ impl PrimaryKey {
     /// Create from storage bytes
     pub fn from_storage_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 5 {
-            return Err(Error::Other("Invalid primary key bytes".to_string()));
+            return Err(Error::Corrupted("Invalid primary key bytes".to_string()));
         }
 
         // Parse table name length
         let table_name_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
 
         if bytes.len() < 5 + table_name_len {
-            return Err(Error::Other("Primary key bytes too short".to_string()));
+            return Err(Error::Corrupted("Primary key bytes too short".to_string()));
         }
 
         // Parse table name
         let table_name = String::from_utf8(bytes[4..4 + table_name_len].to_vec())
-            .map_err(|_| Error::Other("Invalid UTF-8 in table name".to_string()))?;
+            .map_err(|_| Error::Corrupted("Invalid UTF-8 in table name".to_string()))?;
 
         // Check separator
         if bytes[4 + table_name_len] != crate::catalog::STORAGE_SEPARATOR {
-            return Err(Error::Other("Invalid primary key separator".to_string()));
+            return Err(Error::Corrupted("Invalid primary key separator".to_string()));
         }
 
         // Parse native key
@@ -772,7 +772,7 @@ impl<'a> QueryProcessor<'a> {
         self.table_schemas
             .get(table_name)
             .cloned()
-            .ok_or_else(|| Error::Other(format!("Table '{table_name}' does not exist")))
+            .ok_or_else(|| Error::TableNotFound(table_name.to_string()))
     }
 
     /// Validate row data against table schema
@@ -786,7 +786,7 @@ impl<'a> QueryProcessor<'a> {
         // Check that all provided columns exist
         for column_name in row_data.keys() {
             if !schema.has_column(column_name) {
-                return Err(Error::Other(format!(
+                return Err(Error::ColumnNotFound(format!(
                     "Column '{column_name}' does not exist in table '{table_name}'"
                 )));
             }
@@ -795,7 +795,7 @@ impl<'a> QueryProcessor<'a> {
         // Check that all required columns are provided
         for col in &schema.columns {
             if schema.is_column_required(&col.name) && !row_data.contains_key(&col.name) {
-                return Err(Error::Other(format!(
+                return Err(Error::SqlError(format!(
                     "Required column '{}' is missing for table '{}'",
                     col.name, table_name
                 )));
@@ -815,14 +815,14 @@ impl<'a> QueryProcessor<'a> {
             .count();
 
         if pk_count > 1 {
-            return Err(Error::Other(format!(
+            return Err(Error::SqlError(format!(
                 "Table '{}' has composite primary key, but TegDB only supports single-column primary keys", 
                 create.table
             )));
         }
 
         if pk_count == 0 {
-            return Err(Error::Other(format!(
+            return Err(Error::SqlError(format!(
                 "Table '{}' must have exactly one primary key column",
                 create.table
             )));
@@ -866,7 +866,7 @@ impl<'a> QueryProcessor<'a> {
         let table_existed = self.table_schemas.contains_key(&drop.table);
 
         if !drop.if_exists && !table_existed {
-            return Err(Error::Other(format!(
+            return Err(Error::TableNotFound(format!(
                 "Table '{}' does not exist",
                 drop.table
             )));
@@ -902,7 +902,7 @@ impl<'a> QueryProcessor<'a> {
     pub fn execute_create_index(&mut self, create: crate::parser::CreateIndexStatement) -> Result<ResultSet<'_>> {
         // Check if table exists
         if !self.table_schemas.contains_key(&create.table_name) {
-            return Err(Error::Other(format!(
+            return Err(Error::TableNotFound(format!(
                 "Table '{}' does not exist",
                 create.table_name
             )));
@@ -911,7 +911,7 @@ impl<'a> QueryProcessor<'a> {
         // Check if column exists in the table
         let schema = self.get_table_schema(&create.table_name)?;
         if !schema.has_column(&create.column_name) {
-            return Err(Error::Other(format!(
+            return Err(Error::ColumnNotFound(format!(
                 "Column '{}' does not exist in table '{}'",
                 create.column_name, create.table_name
             )));
@@ -919,7 +919,7 @@ impl<'a> QueryProcessor<'a> {
 
         // Check if index already exists
         if schema.indexes.iter().any(|idx| idx.name == create.index_name) {
-            return Err(Error::Other(format!(
+            return Err(Error::SqlError(format!(
                 "Index '{}' already exists",
                 create.index_name
             )));

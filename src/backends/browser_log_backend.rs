@@ -154,7 +154,7 @@ impl LogBackend for BrowserLogBackend {
     fn set_len(&mut self, size: u64) -> Result<()> {
         if size == 0 {
             // Clear all data for this database
-        let log_key = format!("{}{}", self.db_name, LOG_SUFFIX);
+        let log_key = format!("{}{}", self.db_name, crate::log::BROWSER_LOG_SUFFIX);
             self.storage
                 .remove_item(&log_key)
                 .map_err(|_| Error::Other("Failed to clear storage".to_string()))?;

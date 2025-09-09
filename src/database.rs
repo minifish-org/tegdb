@@ -172,11 +172,11 @@ impl Database {
     /// - ❌ file://relative/path (relative path with protocol)
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path_str = path.as_ref();
-        let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            // On native platforms, only support file protocol
+            let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
+            // On native platforms: Only accepts absolute paths with the file:// protocol.
             if protocol != crate::protocol_utils::PROTOCOL_NAME_FILE {
                 return Err(crate::Error::Other(format!(
                     "Unsupported protocol: {protocol}. Only 'file://' protocol is supported on native platforms."
@@ -201,7 +201,8 @@ impl Database {
 
         #[cfg(target_arch = "wasm32")]
         {
-            // On WASM platforms, support browser protocols
+            let (protocol, _path_part) = crate::protocol_utils::parse_storage_identifier(path_str); // _path_part is unused but necessary for parsing
+            // On WASM platforms: Supports browser://, localStorage://, and indexeddb:// protocols.
             match protocol {
                 crate::protocol_utils::PROTOCOL_NAME_BROWSER
                 | crate::protocol_utils::PROTOCOL_NAME_LOCALSTORAGE
@@ -294,7 +295,7 @@ impl Database {
         schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
         let statement =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         // Only SELECT statements make sense for queries
         match &statement {
@@ -405,7 +406,7 @@ impl Database {
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let statement =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -419,7 +420,7 @@ impl Database {
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
         let statement =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -462,7 +463,7 @@ impl Database {
     /// This parses the SQL and creates a prepared statement that can be executed with parameters
     pub fn prepare(&self, sql: &str) -> Result<PreparedStatement> {
         let statement =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
         let query_schema = if let Statement::Select(ref select) = statement {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
             let columns: Vec<String> = select.columns.iter().enumerate().map(|(i, expr)| {
@@ -474,7 +475,7 @@ impl Database {
                 }
             }).collect::<Result<Vec<_>>>()?;
             let schema = schemas.get(&select.table).ok_or_else(|| {
-                crate::Error::Other(format!("Table '{}' not found", &select.table))
+                crate::Error::TableNotFound(select.table.clone())
             })?;
             Some(QuerySchema::new(&columns, schema))
         } else {
@@ -776,7 +777,7 @@ impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let statement =
-            parse_sql(sql).map_err(|e| crate::Error::Other(format!("SQL parse error: {e:?}")))?;
+            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         // Get schemas from shared catalog and convert to Rc
         let schemas = Database::get_schemas_rc(self.catalog.get_all_schemas());
