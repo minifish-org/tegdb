@@ -44,17 +44,6 @@ impl NativeKey {
         }
     }
 
-    /// Convert NativeKey back to SqlValue (zero-copy where possible)
-    pub fn to_sql_value(&self) -> SqlValue {
-        match self {
-            NativeKey::Integer(i) => SqlValue::Integer(*i),
-            NativeKey::Real(r) => SqlValue::Real(*r),
-            NativeKey::Text(t) => SqlValue::Text(t.clone()), // Only clone needed
-            NativeKey::Vector(v) => SqlValue::Vector(v.clone()), // Clone needed for vector
-            NativeKey::Null => SqlValue::Null,
-        }
-    }
-
     /// Serialize to bytes for storage (efficient binary format)
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
@@ -95,62 +84,6 @@ impl NativeKey {
             }
         }
     }
-
-    /// Deserialize from bytes
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.is_empty() {
-            return Err(Error::Corrupted("Empty key bytes".to_string()));
-        }
-
-        match bytes[0] {
-            0x00 => Ok(NativeKey::Null),
-            0x01 => {
-                if bytes.len() != 9 {
-                    return Err(Error::Corrupted("Invalid integer key length".to_string()));
-                }
-                let i = i64::from_be_bytes(bytes[1..9].try_into().unwrap()); // Use big-endian
-                Ok(NativeKey::Integer(i))
-            }
-            0x02 => {
-                if bytes.len() != 9 {
-                    return Err(Error::Corrupted("Invalid real key length".to_string()));
-                }
-                let r = f64::from_be_bytes(bytes[1..9].try_into().unwrap()); // Use big-endian
-                Ok(NativeKey::Real(r))
-            }
-            0x03 => {
-                if bytes.len() < 5 {
-                    return Err(Error::Corrupted("Invalid text key length".to_string()));
-                }
-                let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
-                if bytes.len() != 5 + len {
-                    return Err(Error::Corrupted("Text key length mismatch".to_string()));
-                }
-                let text = String::from_utf8(bytes[5..].to_vec())
-                    .map_err(|_| Error::Corrupted("Invalid UTF-8 in text key".to_string()))?;
-                Ok(NativeKey::Text(text))
-            }
-            0x04 => {
-                if bytes.len() < 5 {
-                    return Err(Error::Corrupted("Invalid vector key length".to_string()));
-                }
-                let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
-                let expected_len = 5 + len * 8; // 4 bytes for length + len * 8 bytes for f64 values
-                if bytes.len() != expected_len {
-                    return Err(Error::Corrupted("Vector key length mismatch".to_string()));
-                }
-                let mut vector = Vec::with_capacity(len);
-                for i in 0..len {
-                    let start = 5 + i * 8;
-                    let end = start + 8;
-                    let val = f64::from_be_bytes(bytes[start..end].try_into().unwrap());
-                    vector.push(val);
-                }
-                Ok(NativeKey::Vector(vector))
-            }
-            _ => Err(Error::Corrupted("Unknown key type".to_string())),
-        }
-    }
 }
 
 /// High-level primary key that combines table name with native key
@@ -166,22 +99,6 @@ impl PrimaryKey {
         Self { table_name, key }
     }
 
-    /// Create from table name and SqlValue
-    pub fn from_sql_value(table_name: String, value: &SqlValue) -> Result<Self> {
-        let native_key = NativeKey::from_sql_value(value)?;
-        Ok(Self::new(table_name, native_key))
-    }
-
-    /// Get the native key
-    pub fn key(&self) -> &NativeKey {
-        &self.key
-    }
-
-    /// Get the table name
-    pub fn table_name(&self) -> &str {
-        &self.table_name
-    }
-
     /// Serialize to storage bytes (efficient binary format)
     pub fn to_storage_bytes(&self) -> Vec<u8> {
         // Pre-allocate with exact capacity to avoid reallocations
@@ -191,35 +108,6 @@ impl PrimaryKey {
         bytes.push(crate::catalog::STORAGE_SEPARATOR); // Separator
         bytes.extend_from_slice(&self.key.to_bytes());
         bytes
-    }
-
-    /// Create from storage bytes
-    pub fn from_storage_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() < 5 {
-            return Err(Error::Corrupted("Invalid primary key bytes".to_string()));
-        }
-
-        // Parse table name length
-        let table_name_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
-
-        if bytes.len() < 5 + table_name_len {
-            return Err(Error::Corrupted("Primary key bytes too short".to_string()));
-        }
-
-        // Parse table name
-        let table_name = String::from_utf8(bytes[4..4 + table_name_len].to_vec())
-            .map_err(|_| Error::Corrupted("Invalid UTF-8 in table name".to_string()))?;
-
-        // Check separator
-        if bytes[4 + table_name_len] != crate::catalog::STORAGE_SEPARATOR {
-            return Err(Error::Corrupted("Invalid primary key separator".to_string()));
-        }
-
-        // Parse native key
-        let key_bytes = &bytes[5 + table_name_len..];
-        let key = NativeKey::from_bytes(key_bytes)?;
-
-        Ok(Self::new(table_name, key))
     }
 
     /// Create range start key (for range scans)
