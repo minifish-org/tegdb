@@ -6,8 +6,8 @@ fn main() -> Result<()> {
     // Test file backend
     test_file_log_backend()?;
 
-    // Test browser backend simulation
-    test_browser_log_backend_simulation()?;
+    // Verify unsupported protocol handling
+    test_unsupported_protocols()?;
 
     // Test edge cases
     test_edge_cases()?;
@@ -108,40 +108,18 @@ fn test_file_log_backend() -> Result<()> {
     Ok(())
 }
 
-fn test_browser_log_backend_simulation() -> Result<()> {
-    println!("\n2. Testing Browser Backend Simulation...");
+fn test_unsupported_protocols() -> Result<()> {
+    println!("\n2. Verifying unsupported protocol handling...");
 
-    // Test 1: Basic operations with browser-like identifiers
-    {
-        let mut db = Database::open("browser://test_app_data")?;
-
-        db.execute(
-            "CREATE TABLE sessions (id INTEGER PRIMARY KEY, token TEXT(32), expires INTEGER)",
-        )?;
-        db.execute("INSERT INTO sessions (id, token, expires) VALUES (1, 'abc123', 1640995200)")?;
-        db.execute("INSERT INTO sessions (id, token, expires) VALUES (2, 'def456', 1640995300)")?;
-
-        // Verify all data exists
-        let results = db.query("SELECT * FROM sessions")?;
-        let rows: Vec<_> = results.into_iter().collect::<Result<Vec<_>>>()?;
-        assert!(!rows.is_empty());
-        println!("   ✓ Browser-style identifier works");
+    for identifier in ["browser://test_app_data", "localstorage://user_preferences"] {
+        println!("   Attempting to open {identifier}");
+        match Database::open(identifier) {
+            Ok(_) => println!("   ⚠️  Unexpected success - protocol should be rejected"),
+            Err(e) => println!("   ✓ Received expected error: {e}"),
+        }
     }
 
-    // Test 2: localStorage style identifier
-    {
-        let mut db = Database::open("localstorage://user_preferences")?;
-
-        db.execute("CREATE TABLE settings (key TEXT(32) PRIMARY KEY, value TEXT(32))")?;
-        db.execute("INSERT INTO settings (key, value) VALUES ('theme', 'dark')")?;
-        db.execute("INSERT INTO settings (key, value) VALUES ('language', 'en')")?;
-
-        let results = db.query("SELECT value FROM settings WHERE key = 'theme'")?;
-        let _rows: Vec<_> = results.into_iter().collect::<Result<Vec<_>>>()?;
-        println!("   ✓ localStorage-style identifier works");
-    }
-
-    println!("   ✅ Browser backend simulation completed");
+    println!("   ✅ Unsupported protocols are rejected");
     Ok(())
 }
 

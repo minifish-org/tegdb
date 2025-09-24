@@ -4,8 +4,8 @@
 //! to interact with the database without dealing with low-level engine details.
 
 use crate::catalog::Catalog;
-use crate::parser::{parse_sql, SqlValue, Statement};
 use crate::parser::Expression;
+use crate::parser::{parse_sql, SqlValue, Statement};
 use crate::planner::QueryPlanner;
 use crate::query_processor::{QueryProcessor, QuerySchema, TableSchema};
 use crate::storage_engine::StorageEngine;
@@ -124,12 +124,11 @@ impl PreparedStatement {
                 Self::count_parameters_in_expression(left)
                     + Self::count_parameters_in_expression(right)
             }
-            Expression::FunctionCall { args, .. } => {
-                args.iter().map(|arg| Self::count_parameters_in_expression(arg)).sum()
-            }
-            Expression::AggregateFunction { arg, .. } => {
-                Self::count_parameters_in_expression(arg)
-            }
+            Expression::FunctionCall { args, .. } => args
+                .iter()
+                .map(|arg| Self::count_parameters_in_expression(arg))
+                .sum(),
+            Expression::AggregateFunction { arg, .. } => Self::count_parameters_in_expression(arg),
         }
     }
 
@@ -158,77 +157,36 @@ pub struct Database {
 }
 
 impl Database {
-    /// Create or open database
+    /// Create or open a database on the local filesystem.
     ///
-    /// On native platforms: Only accepts absolute paths with the file:// protocol.
-    /// On WASM platforms: Supports browser://, localStorage://, and indexeddb:// protocols.
+    /// Accepts only absolute paths with the `file://` protocol.
     ///
     /// Examples:
-    /// - ✅ file:///absolute/path/to/db (native only)
-    /// - ✅ browser://my-app-db (WASM only)
-    /// - ✅ localStorage://user-data (WASM only)
-    /// - ✅ indexeddb://app-cache (WASM only)
-    /// - ❌ relative/path (no protocol)
+    /// - ✅ file:///absolute/path/to/db
+    /// - ❌ relative/path (missing protocol)
     /// - ❌ file://relative/path (relative path with protocol)
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
         let path_str = path.as_ref();
+        let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
-            // On native platforms: Only accepts absolute paths with the file:// protocol.
-            if protocol != crate::protocol_utils::PROTOCOL_NAME_FILE {
-                return Err(crate::Error::Other(format!(
-                    "Unsupported protocol: {protocol}. Only 'file://' protocol is supported on native platforms."
-                )));
-            }
-
-            // Check if path is absolute
-            let path_buf = std::path::Path::new(path_part);
-            if !path_buf.is_absolute() {
-                return Err(crate::Error::Other(format!(
-                    "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
-                )));
-            }
-
-            let storage = StorageEngine::new(path_buf.to_path_buf())?;
-
-            // Load all table schemas into the catalog at database initialization
-            let catalog = Catalog::load_from_storage(&storage)?;
-
-            Ok(Self { storage, catalog })
+        if protocol != crate::protocol_utils::PROTOCOL_NAME_FILE {
+            return Err(crate::Error::Other(format!(
+                "Unsupported protocol: {protocol}. Only 'file://' is supported."
+            )));
         }
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            let (protocol, _path_part) = crate::protocol_utils::parse_storage_identifier(path_str); // _path_part is unused but necessary for parsing
-            // On WASM platforms: Supports browser://, localStorage://, and indexeddb:// protocols.
-            match protocol {
-                crate::protocol_utils::PROTOCOL_NAME_BROWSER
-                | crate::protocol_utils::PROTOCOL_NAME_LOCALSTORAGE
-                | crate::protocol_utils::PROTOCOL_NAME_INDEXEDDB => {
-                    // For browser backends, we use the full identifier string
-                    let storage = StorageEngine::new_with_identifier(path_str.to_string())?;
-
-                    // Load all table schemas into the catalog at database initialization
-                    let catalog = Catalog::load_from_storage(&storage)?;
-
-                    Ok(Self { storage, catalog })
-                }
-                crate::protocol_utils::PROTOCOL_NAME_FILE => {
-                    // File protocol is not supported on WASM
-                    return Err(crate::Error::Other(format!(
-                        "File protocol is not supported on WASM. Use 'browser://', 'localstorage://', or 'indexeddb://' protocols instead."
-                    )));
-                }
-                _ => {
-                    return Err(crate::Error::Other(format!(
-                        "Unsupported protocol: {}. On WASM, only 'browser://', 'localstorage://', and 'indexeddb://' protocols are supported.",
-                        protocol
-                    )));
-                }
-            }
+        let path_buf = std::path::Path::new(path_part);
+        if !path_buf.is_absolute() {
+            return Err(crate::Error::Other(format!(
+                "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
+            )));
         }
+
+        let storage = StorageEngine::new(path_buf.to_path_buf())?;
+
+        let catalog = Catalog::load_from_storage(&storage)?;
+
+        Ok(Self { storage, catalog })
     }
 
     /// Helper function to create TableSchema from CreateTableStatement
@@ -274,7 +232,6 @@ impl Database {
         }
     }
 
-
     /// Centralized query execution helper for mutable reference
     /// Executes SELECT statements and returns QueryResult
     fn execute_query_with_processor_ref(
@@ -294,8 +251,7 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        let statement =
-            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         // Only SELECT statements make sense for queries
         match &statement {
@@ -353,7 +309,11 @@ impl Database {
 
     /// 核心执行函数：接收一个执行计划，处理事务、执行和 schema 更新。
     /// 封装了 execute 和 execute_prepared 的公共逻辑。
-    fn _execute_plan(&mut self, plan: crate::planner::ExecutionPlan, statement: &Statement) -> Result<usize> {
+    fn _execute_plan(
+        &mut self,
+        plan: crate::planner::ExecutionPlan,
+        statement: &Statement,
+    ) -> Result<usize> {
         let transaction = self.storage.begin_transaction();
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
@@ -361,7 +321,7 @@ impl Database {
         // 执行计划
         let result = processor.execute_plan(plan)?;
         let final_result = Self::extract_rows_affected(&result)?;
-        
+
         // 释放对 result 的借用
         drop(result);
 
@@ -376,7 +336,11 @@ impl Database {
 
     /// 核心查询函数：接收一个执行计划，处理事务、执行并返回最终结果。
     /// 封装了 query 和 query_prepared 的公共逻辑。
-    fn _query_plan(&mut self, plan: crate::planner::ExecutionPlan, query_schema: Option<&QuerySchema>) -> Result<QueryResult> {
+    fn _query_plan(
+        &mut self,
+        plan: crate::planner::ExecutionPlan,
+        query_schema: Option<&QuerySchema>,
+    ) -> Result<QueryResult> {
         let transaction = self.storage.begin_transaction();
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
@@ -386,12 +350,11 @@ impl Database {
             Some(schema) => processor.execute_plan_with_query_schema(plan, schema)?,
             None => processor.execute_plan(plan)?,
         };
-        
+
         match result {
             crate::query_processor::ResultSet::Select { columns, rows } => {
                 // 将流式结果收集起来
-                let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> =
-                    rows.collect();
+                let collected_rows: Result<Vec<Vec<crate::parser::SqlValue>>> = rows.collect();
                 Ok(QueryResult {
                     columns,
                     rows: collected_rows?,
@@ -405,8 +368,7 @@ impl Database {
 
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement =
-            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -419,8 +381,7 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let statement =
-            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -462,21 +423,25 @@ impl Database {
     /// Prepare a SQL statement for execution
     /// This parses the SQL and creates a prepared statement that can be executed with parameters
     pub fn prepare(&self, sql: &str) -> Result<PreparedStatement> {
-        let statement =
-            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
         let query_schema = if let Statement::Select(ref select) = statement {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-            let columns: Vec<String> = select.columns.iter().enumerate().map(|(i, expr)| {
-                if let Expression::Column(ref name) = expr {
-                    Ok(name.clone())
-                } else {
-                    // For function calls and other expressions, use a placeholder name
-                    Ok(format!("expr_{}", i))
-                }
-            }).collect::<Result<Vec<_>>>()?;
-            let schema = schemas.get(&select.table).ok_or_else(|| {
-                crate::Error::TableNotFound(select.table.clone())
-            })?;
+            let columns: Vec<String> = select
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, expr)| {
+                    if let Expression::Column(ref name) = expr {
+                        Ok(name.clone())
+                    } else {
+                        // For function calls and other expressions, use a placeholder name
+                        Ok(format!("expr_{}", i))
+                    }
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let schema = schemas
+                .get(&select.table)
+                .ok_or_else(|| crate::Error::TableNotFound(select.table.clone()))?;
             Some(QuerySchema::new(&columns, schema))
         } else {
             None
@@ -512,7 +477,7 @@ impl Database {
                 params.len()
             )));
         }
-        
+
         // Use plan template if available and valid
         if let Some(ref plan_template) = stmt.plan_template {
             let instantiated_plan = instantiate_plan_with_params(plan_template, params);
@@ -524,7 +489,7 @@ impl Database {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
             let planner = QueryPlanner::new(schemas);
             let plan = planner.plan(bound_stmt.clone())?;
-            
+
             // 调用核心执行函数
             self._execute_plan(plan, &bound_stmt)
         }
@@ -544,7 +509,7 @@ impl Database {
                 params.len()
             )));
         }
-        
+
         // Use plan template if available and valid
         if let Some(ref plan_template) = stmt.plan_template {
             let instantiated_plan = instantiate_plan_with_params(plan_template, params);
@@ -556,7 +521,7 @@ impl Database {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
             let planner = QueryPlanner::new(schemas);
             let plan = planner.plan(bound_stmt)?;
-            
+
             // 调用核心查询函数
             self._query_plan(plan, stmt.query_schema.as_ref())
         }
@@ -601,7 +566,10 @@ impl Database {
                 }),
                 Expression::FunctionCall { name, args } => Ok(Expression::FunctionCall {
                     name: name.clone(),
-                    args: args.iter().map(|arg| bind_expr(arg, params)).collect::<Result<Vec<_>>>()?,
+                    args: args
+                        .iter()
+                        .map(|arg| bind_expr(arg, params))
+                        .collect::<Result<Vec<_>>>()?,
                 }),
                 Expression::AggregateFunction { name, arg } => Ok(Expression::AggregateFunction {
                     name: name.clone(),
@@ -776,8 +744,7 @@ pub struct DatabaseTransaction<'a> {
 impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement =
-            parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
 
         // Get schemas from shared catalog and convert to Rc
         let schemas = Database::get_schemas_rc(self.catalog.get_all_schemas());
@@ -1049,7 +1016,10 @@ fn instantiate_expr_with_params(
         },
         Expression::FunctionCall { name, args } => Expression::FunctionCall {
             name: name.clone(),
-            args: args.iter().map(|arg| instantiate_expr_with_params(arg, params)).collect(),
+            args: args
+                .iter()
+                .map(|arg| instantiate_expr_with_params(arg, params))
+                .collect(),
         },
         Expression::AggregateFunction { name, arg } => Expression::AggregateFunction {
             name: name.clone(),

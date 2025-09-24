@@ -10,7 +10,6 @@ mod test_helpers;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tegdb::{Database, Result};
-#[cfg(not(target_arch = "wasm32"))]
 use tempfile::NamedTempFile;
 
 // These are available with the dev feature
@@ -110,21 +109,9 @@ impl SqlExecutionMetrics {
 
 /// Create a temporary database for testing
 fn create_test_db() -> Result<Database> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        let db_path = format!("file://{}", temp_file.path().display());
-        Database::open(&db_path)
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        // In WASM, we can't use NamedTempFile directly.
-        // For now, we'll just return an error or a placeholder.
-        // This test is primarily for non-WASM environments.
-        Err(tegdb::Error::Other(
-            "WASM does not support NamedTempFile for testing".to_string(),
-        ))
-    }
+    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+    let db_path = format!("file://{}", temp_file.path().display());
+    Database::open(&db_path)
 }
 
 /// Setup a test table with sample data

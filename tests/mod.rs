@@ -35,11 +35,6 @@
 //! Tests focused on performance and scalability:
 //! - `high_level_api_performance_test.rs` - High-level API performance
 //!
-//! ## WASM Tests (`wasm/`)
-//! Tests specific to WebAssembly platform:
-//! - `wasm_tests.rs` - Basic WASM functionality
-//! - `wasm_integration_tests.rs` - WASM integration scenarios
-//!
 //! ## Arithmetic Tests (`arithmetic/`)
 //! Tests for arithmetic expression handling:
 //! - `arithmetic_expressions_test.rs` - Basic arithmetic operations
@@ -70,9 +65,6 @@
 //! # Performance tests only
 //! cargo test --features dev performance
 //!
-//! # WASM tests only
-//! cargo test --features dev wasm
-//!
 //! # Arithmetic tests only
 //! cargo test --features dev arithmetic
 //! ```
@@ -88,10 +80,9 @@
 //! 1. **Unit Tests**: Test individual components in isolation
 //! 2. **Integration Tests**: Test component interactions and end-to-end workflows
 //! 3. **Performance Tests**: Measure and validate performance characteristics
-//! 4. **WASM Tests**: Ensure WASM-specific functionality works correctly
-//! 5. **Arithmetic Tests**: Validate mathematical expression handling
+//! 4. **Arithmetic Tests**: Validate mathematical expression handling
+//! 5. **Vector Tests**: Validate vector search and similarity functionality
 //! 6. **Test Helpers**: Provide reusable utilities and documentation
-//! 7. **Vector Tests**: Validate vector search and similarity functionality
 //!
 //! ## Adding New Tests
 //!
@@ -100,9 +91,8 @@
 //! 1. **Unit Tests**: Place in `unit/` for testing individual functions or small components
 //! 2. **Integration Tests**: Place in `integration/` for testing component interactions
 //! 3. **Performance Tests**: Place in `performance/` for benchmarking and performance validation
-//! 4. **Vector Tests**: Place in `integration/` for vector search and similarity functionality
-//! 4. **WASM Tests**: Place in `wasm/` for WASM-specific functionality
-//! 5. **Arithmetic Tests**: Place in `arithmetic/` for mathematical expression handling
+//! 4. **Arithmetic Tests**: Place in `arithmetic/` for mathematical expression handling
+//! 5. **Vector Tests**: Place in `integration/` for vector search and similarity functionality
 //!
 //! ## Test Naming Conventions
 //!
@@ -118,13 +108,10 @@
 //! #[cfg(feature = "dev")]
 //! ```
 //!
-//! Use the test helpers for multi-backend testing:
-//! ```rust
-//! ```
+//! Use the test helpers for consistent file-backed testing.
 
 // Re-export test modules for easy access
 pub mod arithmetic;
 pub mod helpers;
 pub mod integration;
 pub mod performance;
-pub mod wasm;

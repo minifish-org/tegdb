@@ -1,17 +1,17 @@
 use tegdb::{Database, Result};
 
 fn main() -> Result<()> {
-    println!("=== TegDB Dual Storage Backend Demo ===\n");
+    println!("=== TegDB Storage Backend Demo ===\n");
 
     // Native file backend (default)
     println!("1. Testing file backend...");
     test_file_log_backend()?;
 
-    // Browser storage backend (simulated - would work in WASM)
-    println!("\n2. Testing browser storage backend simulation...");
-    test_browser_log_backend()?;
+    // Unsupported protocols now return an error
+    println!("\n2. Demonstrating unsupported protocol handling...");
+    test_unsupported_protocol();
 
-    println!("\n🎉 Dual storage backend test completed successfully!");
+    println!("\n🎉 Storage backend demo completed successfully!");
     Ok(())
 }
 
@@ -37,30 +37,10 @@ fn test_file_log_backend() -> Result<()> {
     Ok(())
 }
 
-fn test_browser_log_backend() -> Result<()> {
-    // Note: This demonstrates how browser storage would work
-    // In actual WASM, you'd use "browser://my-app-db" or "localstorage://my-app-db"
-
-    println!("   Simulating browser storage with localstorage:// prefix...");
-
-    // This will still use file backend on native, but demonstrates the interface
-    let mut db = Database::open("localstorage://demo_browser_log_backend")?;
-
-    println!("   Creating table and inserting data...");
-    db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT(32), price REAL)")?;
-    db.execute("INSERT INTO products (id, name, price) VALUES (1, 'Widget', 19.99)")?;
-    db.execute("INSERT INTO products (id, name, price) VALUES (2, 'Gadget', 29.99)")?;
-
-    println!("   Querying data...");
-    let results = db.query("SELECT name, price FROM products WHERE price < 25")?;
-    for row_result in results {
-        let row = row_result?;
-        if let [name, price] = &row[..] {
-            println!("     Browser: {name:?} - {price:?}");
-        }
+fn test_unsupported_protocol() {
+    println!("   Attempting to open localstorage://demo_browser_log_backend");
+    match Database::open("localstorage://demo_browser_log_backend") {
+        Ok(_) => println!("   ⚠️  Unexpected success - protocol should not be accepted"),
+        Err(e) => println!("   ✓ Received expected error: {e}"),
     }
-
-    println!("   ✓ Browser backend simulation completed");
-    println!("   💡 In WASM builds, this would use localStorage/IndexedDB");
-    Ok(())
 }

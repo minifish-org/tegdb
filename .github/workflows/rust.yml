@@ -45,41 +45,17 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable]
-        include:
-          # Add WASM testing for Ubuntu
-          - os: ubuntu-latest
-            rust: stable
-            test_wasm: true
-          - os: macos-latest
-            rust: stable
-            test_wasm: false
-          - os: windows-latest
-            rust: stable
-            test_wasm: false
-    
+
     steps:
     - uses: actions/checkout@v4.1.1
-    
+
     - name: Setup Rust ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1.0.6
       with:
         toolchain: ${{ matrix.rust }}
-        target: wasm32-unknown-unknown
         override: true
         profile: minimal
-    
-    - name: Install wasm-pack (for WASM testing)
-      if: matrix.test_wasm
-      run: |
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-    
-    - name: Install Node.js (for WASM testing)
-      if: matrix.test_wasm
-      run: |
-        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-    
+
     - name: Cache cargo registry
       uses: actions/cache@v4
       with:
@@ -90,28 +66,26 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-${{ matrix.rust }}-cargo-
-    
+
     - name: Build library
       run: cargo build --lib --verbose
-    
+
     - name: Build with all features
       run: cargo build --all-features --verbose
-    
+
     - name: Run comprehensive test suite
       run: ./run_all_tests.sh --ci --verbose
+      shell: bash
       env:
         CI_MODE: true
         VERBOSE: true
-        # Skip WASM tests on macOS (browser automation issues)
-        SKIP_WASM: ${{ matrix.test_wasm == false }}
-        SKIP_BROWSER: true  # Always skip browser tests in CI
-    
+
     - name: Run additional unit tests
       run: cargo test --lib --verbose
-    
+
     - name: Run doc tests
       run: cargo test --doc --verbose
-    
+
     - name: Upload test results (if any)
       uses: actions/upload-artifact@v4.3.1
       if: always()

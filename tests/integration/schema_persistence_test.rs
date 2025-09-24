@@ -4,7 +4,6 @@
 mod test_helpers;
 use test_helpers::run_with_both_backends;
 
-#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use tegdb::{Database, Result};
 
@@ -14,12 +13,9 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
         "test_schema_persistence_across_database_reopens",
         |db_path| {
             // Clean up any existing database - only for file backend
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                if db_path.starts_with("file://") {
-                    let path_str = db_path.strip_prefix("file://").unwrap();
-                    let _ = fs::remove_file(path_str);
-                }
+            if db_path.starts_with("file://") {
+                let path_str = db_path.strip_prefix("file://").unwrap();
+                let _ = fs::remove_file(path_str);
             }
 
             // First session: Create a table
@@ -96,12 +92,9 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
             }
 
             // Clean up - only for file backend
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                if db_path.starts_with("file://") {
-                    let path_str = db_path.strip_prefix("file://").unwrap();
-                    let _ = fs::remove_file(path_str);
-                }
+            if db_path.starts_with("file://") {
+                let path_str = db_path.strip_prefix("file://").unwrap();
+                let _ = fs::remove_file(path_str);
             }
 
             Ok(())
@@ -113,12 +106,9 @@ fn test_schema_persistence_across_database_reopens() -> Result<()> {
 fn test_schema_loading_on_executor_creation() -> Result<()> {
     run_with_both_backends("test_schema_loading_on_executor_creation", |db_path| {
         // Clean up any existing database - only for file backend
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if db_path.starts_with("file://") {
-                let path_str = db_path.strip_prefix("file://").unwrap();
-                let _ = fs::remove_file(path_str);
-            }
+        if db_path.starts_with("file://") {
+            let path_str = db_path.strip_prefix("file://").unwrap();
+            let _ = fs::remove_file(path_str);
         }
 
         // Create database and table
@@ -144,12 +134,9 @@ fn test_schema_loading_on_executor_creation() -> Result<()> {
         }
 
         // Clean up - only for file backend
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if db_path.starts_with("file://") {
-                let path_str = db_path.strip_prefix("file://").unwrap();
-                let _ = fs::remove_file(path_str);
-            }
+        if db_path.starts_with("file://") {
+            let path_str = db_path.strip_prefix("file://").unwrap();
+            let _ = fs::remove_file(path_str);
         }
 
         Ok(())

@@ -1,7 +1,7 @@
-//! Test to demonstrate running tests with both file and browser backends
+//! Test to demonstrate the shared file-backend helpers
 //!
 //! This module shows how to use the test helpers to run the same test logic
-//! with both the file backend (native) and browser backend (WASM).
+//! against a freshly created on-disk database for each invocation.
 //!
 //! ## How to use:
 //!
@@ -9,7 +9,7 @@
 //!    ```rust
 //!    ```
 //!
-//! 2. Wrap your test logic in a closure:
+//! 2. Wrap your test logic in a closure and call `run_with_both_backends`:
 //!    ```rust
 //!    #[test]
 //!    fn my_test() -> Result<()> {
@@ -21,7 +21,7 @@
 //!     }
 //!    ```
 //!
-//! 3. The test will automatically run with both backends when available.
+//! 3. The helper provisions a temporary file-backed database and cleans it up afterwards.
 //!
 //! ## Converting existing tests:
 //!

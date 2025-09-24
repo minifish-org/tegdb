@@ -1,21 +1,18 @@
 use std::io::{Read, Seek, SeekFrom, Write};
 
-#[cfg(not(target_arch = "wasm32"))]
 use fs2::FileExt;
 
 use crate::error::{Error, Result};
-use crate::log::{LogBackend, KeyMap, LogConfig, TX_COMMIT_MARKER};
+use crate::log::{KeyMap, LogBackend, LogConfig, TX_COMMIT_MARKER};
 use crate::protocol_utils::parse_storage_identifier;
 use std::rc::Rc;
 
 /// File-based storage backend for native platforms
-#[cfg(not(target_arch = "wasm32"))]
 pub struct FileLogBackend {
     path: std::path::PathBuf,
     file: std::fs::File,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl LogBackend for FileLogBackend {
     fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
         // Parse protocol and extract file path
@@ -122,7 +119,9 @@ impl LogBackend for FileLogBackend {
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
-        if key.len() > crate::log::DEFAULT_MAX_KEY_SIZE || value.len() > crate::log::DEFAULT_MAX_VALUE_SIZE {
+        if key.len() > crate::log::DEFAULT_MAX_KEY_SIZE
+            || value.len() > crate::log::DEFAULT_MAX_VALUE_SIZE
+        {
             return Err(Error::Other(format!(
                 "Key or value length exceeds limits: key_len={}, value_len={}",
                 key.len(),
@@ -169,14 +168,11 @@ impl LogBackend for FileLogBackend {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Drop for FileLogBackend {
     fn drop(&mut self) {
         // Ignore errors during drop, but try to unlock
-        let _ = fs2::FileExt::unlock(&self.file);
+        let _ = FileExt::unlock(&self.file);
     }
 }
 
-// Export only when not targeting WASM
-#[cfg(not(target_arch = "wasm32"))]
-pub use FileLogBackend as DefaultLogBackend;
+pub type DefaultLogBackend = FileLogBackend;

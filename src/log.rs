@@ -16,9 +16,6 @@ pub const DEFAULT_MAX_VALUE_SIZE: usize = 256 * 1024; // 256KB
 /// Byte width of the length fields in the log format
 pub const LENGTH_FIELD_BYTES: usize = 4;
 
-/// Browser storage key suffix for the log array in localStorage/IndexedDB
-pub const BROWSER_LOG_SUFFIX: &str = ":log";
-
 /// Config options for the log
 #[derive(Debug, Clone)]
 pub struct LogConfig {
@@ -28,7 +25,7 @@ pub struct LogConfig {
     pub max_value_size: usize,
 }
 
-/// Trait for different log storage backends (file, browser, etc.)
+/// Trait for different log storage backends (file-based).
 pub trait LogBackend {
     /// Initialize storage with the given identifier and configuration
     fn new(identifier: String, config: &LogConfig) -> Result<Self>

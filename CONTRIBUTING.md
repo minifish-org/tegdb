@@ -55,17 +55,14 @@ TegDB provides convenient scripts for maintaining code quality:
 ### Running Tests
 
 ```bash
-# Run all tests (native, WASM, browser)
+# Run the full native test suite
 ./run_all_tests.sh
-
-# Run only native tests
-./run_all_tests.sh --skip-wasm --skip-browser
-
-# Run in CI mode (skips browser tests)
-./run_all_tests.sh --ci
 
 # Run with verbose output
 ./run_all_tests.sh --verbose
+
+# CI-friendly run (preserves test output)
+./run_all_tests.sh --ci
 ```
 
 ### Project Structure

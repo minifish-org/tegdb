@@ -49,18 +49,13 @@ impl StorageEngine {
         Self::with_config(path, EngineConfig::default())
     }
 
-    /// Creates a new database engine with a string identifier (for browser backends)
-    pub fn new_with_identifier(identifier: String) -> Result<Self> {
-        Self::with_config_and_identifier(identifier, EngineConfig::default())
-    }
-
     /// Creates a new database engine with custom configuration
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
         let path_str = path.to_string_lossy().to_string();
         Self::with_config_and_identifier(path_str, config)
     }
 
-    /// Creates a new database engine with custom configuration and string identifier
+    /// Internal helper that wires a string identifier to the log backend
     pub fn with_config_and_identifier(identifier: String, config: EngineConfig) -> Result<Self> {
         let log_config = LogConfig {
             max_key_size: config.max_key_size,
