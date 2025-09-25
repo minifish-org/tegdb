@@ -221,6 +221,9 @@ impl Database {
                     table_name: create_index.table_name.clone(),
                     column_name: create_index.column_name.clone(),
                     unique: create_index.unique,
+                    index_type: create_index
+                        .index_type
+                        .unwrap_or(crate::parser::IndexType::BTree),
                 };
                 let _ = catalog.add_index(index);
             }
@@ -609,6 +612,12 @@ impl Database {
         use crate::parser::Statement;
         match statement {
             Statement::Select(s) => {
+                let columns = s
+                    .columns
+                    .iter()
+                    .map(|expr| bind_expr(expr, params))
+                    .collect::<Result<Vec<_>>>()?;
+
                 let where_clause = if let Some(wc) = &s.where_clause {
                     Some(crate::parser::WhereClause {
                         condition: bind_condition(&wc.condition, params)?,
@@ -616,11 +625,28 @@ impl Database {
                 } else {
                     None
                 };
+
+                let order_by = if let Some(order) = &s.order_by {
+                    let items = order
+                        .items
+                        .iter()
+                        .map(|item| {
+                            Ok(crate::parser::OrderByItem {
+                                expression: bind_expr(&item.expression, params)?,
+                                direction: item.direction,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    Some(crate::parser::OrderByClause { items })
+                } else {
+                    None
+                };
+
                 Ok(Statement::Select(crate::parser::SelectStatement {
-                    columns: s.columns.clone(), // Already Vec<Expression>
+                    columns,
                     table: s.table.clone(),
                     where_clause,
-                    order_by: None,
+                    order_by,
                     limit: s.limit,
                 }))
             }

@@ -26,7 +26,7 @@ impl Default for EngineConfig {
         Self {
             max_key_size: crate::log::DEFAULT_MAX_KEY_SIZE,
             max_value_size: crate::log::DEFAULT_MAX_VALUE_SIZE,
-            sync_on_write: false, // Changed: only sync on explicit commits, not every write
+            sync_on_write: false, // Default: fsync on commit only, not every individual write
             auto_compact: true,
         }
     }
@@ -116,6 +116,7 @@ impl StorageEngine {
 
         // write to log, then store shared buffer
         self.log.write_entry(key, &value)?;
+        self.sync_if_requested()?;
         // store as shared buffer for cheap cloning on get
         let shared = Rc::from(value.into_boxed_slice());
         self.key_map.insert(key.to_vec(), shared);
@@ -130,6 +131,7 @@ impl StorageEngine {
         }
 
         self.log.write_entry(key, &[])?;
+        self.sync_if_requested()?;
         self.key_map.remove(key);
 
         Ok(())
@@ -148,6 +150,15 @@ impl StorageEngine {
     /// Explicitly flushes data to disk
     pub fn flush(&mut self) -> Result<()> {
         self.log.sync_all()
+    }
+
+    /// Conditionally sync pending log writes if configured to do so
+    fn sync_if_requested(&mut self) -> Result<()> {
+        if self.config.sync_on_write {
+            self.log.sync_all()
+        } else {
+            Ok(())
+        }
     }
 
     /// Manually triggers compaction to reclaim space
@@ -320,6 +331,8 @@ impl Transaction<'_> {
         if has_writes {
             // Write transaction commit marker directly to log (not to keymap) and always sync on commit
             self.engine.log.write_entry(TX_COMMIT_MARKER, &[])?;
+            // Ensure the commit marker (and prior writes) reach durable storage
+            self.engine.flush()?;
 
             // Clear the undo log
             if let Some(ref mut log) = self.undo_log {

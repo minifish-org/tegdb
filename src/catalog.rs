@@ -3,6 +3,7 @@
 //! This module provides the schema catalog that manages table metadata,
 //! similar to the system catalog in traditional RDBMS systems.
 
+use crate::parser::IndexType;
 use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::sql_utils;
 use crate::storage_engine::StorageEngine;
@@ -40,6 +41,7 @@ pub struct IndexInfo {
     pub table_name: String,
     pub column_name: String,
     pub unique: bool,
+    pub index_type: IndexType,
 }
 
 /// Schema catalog manager for TegDB
@@ -268,6 +270,8 @@ impl Catalog {
             }
             .as_bytes(),
         );
+        index_data.push(FIELD_SEPARATOR);
+        index_data.extend_from_slice(format!("{:?}", index.index_type).as_bytes());
         index_data
     }
 
@@ -275,15 +279,27 @@ impl Catalog {
     pub fn deserialize_index_from_bytes(index_name: &str, data: &[u8]) -> Option<IndexInfo> {
         let data_str = String::from_utf8_lossy(data);
         let parts: Vec<&str> = data_str.split(FIELD_SEPARATOR as char).collect();
-        if parts.len() == 3 {
+        if parts.len() >= 3 {
             let table_name = parts[0].to_string();
             let column_name = parts[1].to_string();
             let unique = parts[2] == UNIQUE_STR;
+            let index_type = if let Some(type_str) = parts.get(3) {
+                match type_str.to_uppercase().as_str() {
+                    "BTREE" => IndexType::BTree,
+                    "HNSW" => IndexType::HNSW,
+                    "IVF" => IndexType::IVF,
+                    "LSH" => IndexType::LSH,
+                    _ => IndexType::BTree,
+                }
+            } else {
+                IndexType::BTree
+            };
             Some(IndexInfo {
                 name: index_name.to_string(),
                 table_name,
                 column_name,
                 unique,
+                index_type,
             })
         } else {
             None
@@ -406,6 +422,19 @@ pub fn index_prefix_range(
     .as_bytes()
     .to_vec();
     (start, end)
+}
+
+/// Build the byte range encompassing every entry for an index regardless of column value
+pub fn index_full_range(table: &str, index: &str) -> (Vec<u8>, Vec<u8>) {
+    let prefix = format!(
+        "{}{}:{}{}",
+        INDEX_KEY_PREFIX, table, index, STORAGE_SEPARATOR as char
+    );
+    let end = format!(
+        "{}{}:{}{}",
+        INDEX_KEY_PREFIX, table, index, TABLE_END_SENTINEL as char
+    );
+    (prefix.into_bytes(), end.into_bytes())
 }
 
 /// Decode an index entry key

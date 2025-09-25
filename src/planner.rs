@@ -149,6 +149,9 @@ impl QueryPlanner {
 
         // Check each index to see if it can be used
         for index in &schema.indexes {
+            if index.index_type != crate::parser::IndexType::BTree {
+                continue;
+            }
             if let Some(value) = Self::extract_indexable_value(condition, &index.column_name) {
                 return Some((index.name.clone(), index.column_name.clone(), value));
             }

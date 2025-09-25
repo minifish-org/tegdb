@@ -7,7 +7,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_while1},
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
-    combinator::{map, opt, recognize},
+    combinator::{map, map_res, opt, recognize},
     multi::{many0, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded},
     IResult, Parser,
@@ -156,7 +156,7 @@ pub struct CreateIndexStatement {
     pub index_type: Option<IndexType>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IndexType {
     BTree, // Default for regular indexes
     HNSW,  // Hierarchical Navigable Small World for vector similarity
@@ -802,6 +802,20 @@ fn parse_create_index(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
     let (input, unique) = opt(tag_no_case("UNIQUE")).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
+    let (input, index_type_opt) = opt(preceded(
+        delimited(multispace0, tag_no_case("USING"), multispace1),
+        map_res(parse_identifier_optimized, |ty: &str| {
+            match ty.to_uppercase().as_str() {
+                "BTREE" => Ok(IndexType::BTree),
+                "HNSW" => Ok(IndexType::HNSW),
+                "IVF" => Ok(IndexType::IVF),
+                "LSH" => Ok(IndexType::LSH),
+                _ => Err("Unsupported index type"),
+            }
+        }),
+    ))
+    .parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
 
     Ok((
         input,
@@ -810,7 +824,7 @@ fn parse_create_index(input: &str) -> IResult<&str, Statement> {
             table_name: table_name.to_string(),
             column_name: column_name.to_string(),
             unique: unique.is_some(),
-            index_type: None, // Default to BTree for now
+            index_type: index_type_opt,
         }),
     ))
 }
@@ -1097,18 +1111,18 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
         map(tag_no_case("INT"), |_| DataType::Integer),
         map(tag_no_case("REAL"), |_| DataType::Real),
         map(tag_no_case("FLOAT"), |_| DataType::Real),
-        // Text with optional length: TEXT(10) or TEXT
+        // Text with required length: TEXT(10)
         map(
             pair(
                 alt((tag_no_case("TEXT"), tag_no_case("VARCHAR"))),
-                opt(parse_length_specification),
+                parse_length_specification,
             ),
-            |(_, length)| DataType::Text(length),
+            |(_, length)| DataType::Text(Some(length)),
         ),
-        // Vector with optional dimension: VECTOR(384) or VECTOR
+        // Vector with required dimension: VECTOR(384)
         map(
-            pair(tag_no_case("VECTOR"), opt(parse_length_specification)),
-            |(_, dimension)| DataType::Vector(dimension),
+            pair(tag_no_case("VECTOR"), parse_length_specification),
+            |(_, dimension)| DataType::Vector(Some(dimension)),
         ),
     ))
     .parse(input)
