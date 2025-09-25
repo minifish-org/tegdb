@@ -251,7 +251,7 @@ impl StorageFormat {
             TYPE_CODE_VECTOR => {
                 // TypeCode::Vector
                 let vector_size = size / BYTES_PER_F64;
-                if size % BYTES_PER_F64 != 0 {
+                if !size.is_multiple_of(BYTES_PER_F64) {
                     return Err(crate::Error::Other("Invalid vector size".to_string()));
                 }
                 // Handle zero-dimension vectors
