@@ -86,16 +86,6 @@ jobs:
     - name: Run doc tests
       run: cargo test --doc --verbose
 
-    - name: Upload test results (if any)
-      uses: actions/upload-artifact@v4.3.1
-      if: always()
-      with:
-        name: test-results-${{ matrix.os }}-${{ matrix.rust }}
-        path: |
-          target/
-          *.log
-        retention-days: 7
-
   # Examples and demos
   examples:
     name: Examples & Demos
