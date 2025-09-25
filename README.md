@@ -72,6 +72,9 @@ TegDB provides convenient scripts for maintaining code quality:
 # Individual scripts (used internally by fix_all.sh)
 ./fix_format.sh  # Fix code formatting
 ./fix_lint.sh    # Fix clippy linting issues
+
+# Run the same checks that CI enforces before pushing
+./ci_precheck.sh
 ```
 
 ### Running Tests

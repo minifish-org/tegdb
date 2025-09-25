@@ -5,7 +5,12 @@
 //!
 //! Run with: cargo run --example planner_demo
 
+use std::path::PathBuf;
 use tegdb::{Database, Result};
+
+fn planner_demo_db_path() -> PathBuf {
+    std::env::temp_dir().join("planner_demo.db")
+}
 
 fn main() -> Result<()> {
     println!("=== TegDB Query Planner Architecture Concept Demo ===\n");
@@ -23,13 +28,28 @@ fn main() -> Result<()> {
     demonstrate_execution_comparison()?;
 
     println!("\n=== Demo completed successfully! ===");
+
+    let db_path = planner_demo_db_path();
+    if db_path.exists() {
+        let _ = std::fs::remove_file(&db_path);
+    }
+
     Ok(())
 }
 
 fn setup_test_database() -> Result<()> {
     println!("1. Setting up test database with sample data...");
 
-    let mut db = Database::open("file://planner_demo.db")?;
+    let db_path = planner_demo_db_path();
+    if db_path.exists() {
+        let _ = std::fs::remove_file(&db_path);
+    }
+    let db_url = format!(
+        "file://{}",
+        db_path.to_str().expect("valid planner demo path")
+    );
+
+    let mut db = Database::open(&db_url)?;
 
     // Clean up existing tables
     let _ = db.execute("DROP TABLE IF EXISTS users");
@@ -169,7 +189,12 @@ fn demonstrate_optimization_strategies() -> Result<()> {
 fn demonstrate_execution_comparison() -> Result<()> {
     println!("4. Comparing execution approaches...");
 
-    let mut db = Database::open("file://planner_demo.db")?;
+    let db_path = planner_demo_db_path();
+    let db_url = format!(
+        "file://{}",
+        db_path.to_str().expect("valid planner demo path")
+    );
+    let mut db = Database::open(&db_url)?;
 
     // Test different query patterns
     let test_queries = vec![
