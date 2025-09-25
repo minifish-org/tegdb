@@ -141,7 +141,7 @@ fn sqlite_sql_benchmark(c: &mut Criterion) {
 
     let conn = Connection::open(&path).unwrap();
 
-    // Configure SQLite for durability (similar to TegDB's sync_on_write: true)
+    // Configure SQLite for durability (fsync on every write)
     conn.pragma_update(None, "synchronous", "FULL").unwrap(); // Ensure full fsync on every write
     conn.pragma_update(None, "journal_mode", "WAL").unwrap(); // Use WAL mode for better performance
 

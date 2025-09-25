@@ -239,7 +239,6 @@ use tegdb::EngineConfig;
 let config = EngineConfig {
     max_key_size: 1024,        // 1KB max key size
     max_value_size: 256 * 1024, // 256KB max value size  
-    sync_on_write: false,       // Performance over durability
     auto_compact: true,         // Auto-compact on open
 };
 

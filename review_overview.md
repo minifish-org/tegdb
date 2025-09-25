@@ -13,16 +13,18 @@
 - Vector similarity functions (cosine, Euclidean, dot, normalization) are first-class expressions, enabling semantic scoring in plain SQL (`src/parser.rs:400-468`).
 
 ## Recent Improvements
-- Write durability now matches configuration: point writes honor `sync_on_write`, and commits fsync the WAL marker (`src/storage_engine.rs:117-161`, `src/storage_engine.rs:323-339`).
-- Parameter binding preserves ORDER BY and other expressions in prepared SELECTs (`src.database.rs:584-639`).
+- Parameter binding preserves ORDER BY and other expressions in prepared SELECTs (`src/database.rs:584-639`).
 - Aggregate execution materializes rows once, supports multiple aggregates, and handles mixed numeric types without lossy casts (`src.query_processor.rs:1211-1440`).
 - Secondary indexes persist engine type metadata, enforce `UNIQUE` for BTree indexes, and stay consistent through UPDATE/DELETE/DROP flows (`src.catalog.rs:258-305`, `src.query_processor.rs:854-915`, `src.query_processor.rs:2135-2174`).
 - CREATE INDEX accepts `USING <type>` and DDL enforces fixed-width TEXT/VECTOR definitions to match storage constraints (`src.parser.rs:789-828`, `src.parser.rs:1109-1126`).
 
 ## Remaining Gaps & Risks
+- Durability remains best-effort: commits rely on lazy fsync and the latest writes can be lost after power failures (`src/storage_engine.rs:81-161`, `src/storage_engine.rs:311-339`).
 - SQL surface remains narrow: no JOIN, GROUP BY, subqueries, or expression ordering beyond simple columns (`src.parser.rs:124-218`, `src.planner.rs:217-257`).
 
 ## Next Opportunities
-1. Expand SQL semantics: add GROUP BY, HAVING, JOINs, and richer expression support to unlock more workloads.
-2. Integrate vector-specific index backends (HNSW/IVF/LSH) into the planner/executor so similarity queries avoid BTree scans (`src.vector_index.rs:1-134`).
-3. Broaden schema/storage options: support variable-length text/vector encodings or add overflow pages to support flexible payloads (`src.storage_format.rs:43-112`).
+1. Expand core SQL semantics (GROUP BY, HAVING, JOINs, subqueries) so TegDB can graduate from toy workloads to serious embedded OLTP use.
+2. Turn the vector story into a differentiator: wire HNSW/IVF/LSH into the planner/executor and expose vector-specific query syntax to compete as a lightweight similarity search engine (`src.vector_index.rs:1-134`).
+3. Lean into the embedded high-performance RDBMS niche by focusing on predictable single-node latency, snapshot-based durability, and tight language bindings.
+4. Explore OLAP-lite extensions (columnar storage, simple aggregates over partitions) only if analytics-on-edge becomes a priority; otherwise keep the surface OLTP-focused to avoid dilution.
+5. Broaden schema/storage options (variable-length text/vector encodings or overflow pages) while preserving the single-threaded simplicity that differentiates TegDB (`src.storage_format.rs:43-112`).
