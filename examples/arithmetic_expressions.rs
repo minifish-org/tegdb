@@ -11,11 +11,13 @@ use tegdb::{Database, SqlValue};
 fn main() -> tegdb::Result<()> {
     println!("=== TegDB Arithmetic Expressions Example ===\n");
 
-    // Clean up any existing database
-    let _ = std::fs::remove_file("arithmetic_example.db");
+    let db_path = std::env::temp_dir().join("arithmetic_example.db");
+    if db_path.exists() {
+        let _ = std::fs::remove_file(&db_path);
+    }
 
-    // Create database
-    let mut db = Database::open("file://arithmetic_example.db")?;
+    let db_url = format!("file://{}", db_path.to_str().expect("valid UTF-8 path"));
+    let mut db = Database::open(&db_url)?;
 
     // Create a products table
     println!("1. Creating products table...");
@@ -80,8 +82,9 @@ fn main() -> tegdb::Result<()> {
     println!("   Operator precedence: * and / before + and -");
     println!("   Parentheses support: (expression)");
 
-    // Clean up
-    let _ = std::fs::remove_file("arithmetic_example.db");
+    if db_path.exists() {
+        let _ = std::fs::remove_file(&db_path);
+    }
 
     Ok(())
 }
