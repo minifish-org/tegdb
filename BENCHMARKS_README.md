@@ -53,7 +53,7 @@ The benchmark suite consists of two main benchmark files:
 ### Quick Start
 ```bash
 # Run all vector search benchmarks
-./run_vector_benchmarks.sh
+cargo bench --bench vector_search_benchmark --features dev
 
 # Or run individual benchmarks
 cargo bench --bench vector_search_benchmark
