@@ -5,7 +5,7 @@ Core crate code lives in `src/`, with `lib.rs` exposing the public API, `databas
 
 ## Build, Test, and Development Commands
 - `cargo build --all-features` builds the crate with optional vector support enabled.
-- `./fix_all.sh` runs formatting and clippy passes; use `./fix_format.sh` or `./fix_lint.sh` individually during iteration.
+- `cargo fmt --all` and `cargo clippy --all-targets --all-features -- -D warnings` keep formatting and lints clean; run `./ci_precheck.sh` before pushing to mirror CI.
 - `./run_all_tests.sh [--ci|--verbose]` runs the native suite; use `--ci` to keep test output in logs.
 - `cargo bench --bench vector_search_benchmark --features dev` exercises performance benchmarks before publishing tuning changes.
 

@@ -41,15 +41,17 @@ cargo bench --features dev
 
 ### Code Quality
 
-TegDB provides convenient scripts for maintaining code quality:
+Use the following commands to keep the repository consistent:
 
 ```bash
-# Fix both formatting and linting issues
-./fix_all.sh
+# Format source code
+cargo fmt --all
 
-# Individual scripts (used internally by fix_all.sh)
-./fix_format.sh  # Fix code formatting
-./fix_lint.sh    # Fix clippy linting issues
+# Run Clippy with the same settings as CI
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Run the full CI-equivalent precheck suite
+./ci_precheck.sh
 ```
 
 ### Running Tests
@@ -115,9 +117,9 @@ examples/            # Usage examples
 
 Follow standard Rust conventions:
 
-- Use `./fix_all.sh` to fix both formatting and linting issues
-- Use `./fix_format.sh` or `cargo fmt` to format code
-- Use `./fix_lint.sh` or run `cargo clippy` and address warnings
+- Run `cargo fmt --all` to keep formatting consistent
+- Run `cargo clippy --all-targets --all-features -- -D warnings` and resolve findings
+- Use `./ci_precheck.sh` before pushing to mirror the GitHub Actions pipeline
 - Follow Rust naming conventions (snake_case for functions/variables, PascalCase for types)
 - Add documentation comments (`///`) for public APIs
 

@@ -61,19 +61,18 @@ TegDB implements a clean layered architecture with four distinct layers:
 
 ## Development
 
-### Code Quality Scripts
+### Code Quality
 
-TegDB provides convenient scripts for maintaining code quality:
+Use the following commands to keep the tree clean:
 
 ```bash
-# Fix both formatting and linting issues
-./fix_all.sh
+# Format source code
+cargo fmt --all
 
-# Individual scripts (used internally by fix_all.sh)
-./fix_format.sh  # Fix code formatting
-./fix_lint.sh    # Fix clippy linting issues
+# Run Clippy with the same settings as CI
+cargo clippy --all-targets --all-features -- -D warnings
 
-# Run the same checks that CI enforces before pushing
+# Run the full CI-equivalent precheck suite
 ./ci_precheck.sh
 ```
 
