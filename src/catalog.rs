@@ -22,7 +22,7 @@ pub const INDEX_KEY_END: &str = "I~";
 pub const UNKNOWN_TABLE_NAME: &str = "unknown";
 
 // Common separators and tokens for encoding/decoding
-pub const STORAGE_SEPARATOR: u8 = b':' ;
+pub const STORAGE_SEPARATOR: u8 = b':';
 pub const FIELD_SEPARATOR: u8 = b'|';
 pub const CONSTRAINT_SEP: u8 = b',';
 pub const UNIQUE_STR: &str = "UNIQUE";
@@ -63,13 +63,13 @@ impl Catalog {
     pub fn load_from_storage(storage: &StorageEngine) -> Result<Self> {
         let mut catalog = Self::new();
         Self::load_schemas_from_storage(storage, &mut catalog.schemas)?;
-        
+
         // Load indexes and add them to the appropriate tables
         let indexes = Self::load_indexes_from_storage(storage)?;
         for index in indexes {
             let _ = catalog.add_index(index);
         }
-        
+
         Ok(catalog)
     }
 
@@ -105,8 +105,7 @@ impl Catalog {
             Ok(())
         } else {
             Err(crate::Error::Other(format!(
-                "Table '{}' not found",
-                table_name
+                "Table '{table_name}' not found"
             )))
         }
     }
@@ -117,14 +116,18 @@ impl Catalog {
         for table_name in table_names {
             if let Some(schema_rc) = self.schemas.get(&table_name) {
                 let mut schema = schema_rc.as_ref().clone();
-                if let Some(index_pos) = schema.indexes.iter().position(|idx| idx.name == index_name) {
+                if let Some(index_pos) =
+                    schema.indexes.iter().position(|idx| idx.name == index_name)
+                {
                     schema.indexes.remove(index_pos);
                     self.schemas.insert(table_name, Rc::new(schema));
                     return Ok(());
                 }
             }
         }
-        Err(crate::Error::Other(format!("Index '{}' not found", index_name)))
+        Err(crate::Error::Other(format!(
+            "Index '{index_name}' not found"
+        )))
     }
 
     /// Get an index by name
@@ -257,7 +260,14 @@ impl Catalog {
         index_data.push(FIELD_SEPARATOR);
         index_data.extend_from_slice(index.column_name.as_bytes());
         index_data.push(FIELD_SEPARATOR);
-        index_data.extend_from_slice(if index.unique { UNIQUE_STR } else { NON_UNIQUE_STR }.as_bytes());
+        index_data.extend_from_slice(
+            if index.unique {
+                UNIQUE_STR
+            } else {
+                NON_UNIQUE_STR
+            }
+            .as_bytes(),
+        );
         index_data
     }
 
@@ -347,15 +357,24 @@ pub fn sql_value_to_index_string(val: &crate::parser::SqlValue) -> String {
         crate::parser::SqlValue::Integer(i) => i.to_string(),
         crate::parser::SqlValue::Real(f) => f.to_string(),
         crate::parser::SqlValue::Text(s) => s.clone(),
-        crate::parser::SqlValue::Vector(v) => v.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","),
+        crate::parser::SqlValue::Vector(v) => v
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
         crate::parser::SqlValue::Null => "NULL".to_string(),
-        crate::parser::SqlValue::Parameter(i) => format!("?{}", i),
+        crate::parser::SqlValue::Parameter(i) => format!("?{i}"),
     }
 }
 
 /// Encode an index entry key
 /// Format: I:{table}:{index}:{column_value}:{pk}
-pub fn encode_index_key(table: &str, index: &str, column_value: &crate::parser::SqlValue, pk: &crate::parser::SqlValue) -> Vec<u8> {
+pub fn encode_index_key(
+    table: &str,
+    index: &str,
+    column_value: &crate::parser::SqlValue,
+    pk: &crate::parser::SqlValue,
+) -> Vec<u8> {
     let mut key = Vec::new();
     key.extend_from_slice(INDEX_KEY_PREFIX.as_bytes());
     key.extend_from_slice(table.as_bytes());
@@ -377,20 +396,12 @@ pub fn index_prefix_range(
     let column_value_str = sql_value_to_index_string(column_value);
     let prefix = format!(
         "{}{}:{}:{}{}",
-        INDEX_KEY_PREFIX,
-        table,
-        index,
-        column_value_str,
-        STORAGE_SEPARATOR as char
+        INDEX_KEY_PREFIX, table, index, column_value_str, STORAGE_SEPARATOR as char
     );
     let start = prefix.as_bytes().to_vec();
     let end = format!(
         "{}{}:{}:{}{}",
-        INDEX_KEY_PREFIX,
-        table,
-        index,
-        column_value_str,
-        TABLE_END_SENTINEL as char
+        INDEX_KEY_PREFIX, table, index, column_value_str, TABLE_END_SENTINEL as char
     )
     .as_bytes()
     .to_vec();
@@ -407,7 +418,12 @@ pub fn decode_index_key(key: &[u8]) -> Option<(String, String, String, String)> 
     let s = &s[INDEX_KEY_PREFIX.len()..];
     let parts: Vec<&str> = s.splitn(4, STORAGE_SEPARATOR as char).collect();
     if parts.len() == 4 {
-        Some((parts[0].to_string(), parts[1].to_string(), parts[2].to_string(), parts[3].to_string()))
+        Some((
+            parts[0].to_string(),
+            parts[1].to_string(),
+            parts[2].to_string(),
+            parts[3].to_string(),
+        ))
     } else {
         None
     }

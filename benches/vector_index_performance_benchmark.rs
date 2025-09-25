@@ -1,8 +1,6 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box;
 use tegdb::vector_index::{HNSWIndex, IVFIndex, LSHIndex};
-
-
 
 /// Generate random normalized vector
 fn random_normalized_vector(dimension: usize) -> Vec<f64> {
@@ -31,7 +29,7 @@ fn hnsw_index_benchmark(c: &mut Criterion) {
     // Test different dataset sizes
     for dataset_size in [100, 1000, 5000] {
         let vectors = generate_test_vectors(dataset_size, 128);
-        
+
         group.bench_with_input(
             BenchmarkId::new("HNSW Build", dataset_size),
             &dataset_size,
@@ -74,7 +72,7 @@ fn ivf_index_benchmark(c: &mut Criterion) {
     // Test different dataset sizes
     for dataset_size in [100, 1000, 5000] {
         let vectors = generate_test_vectors(dataset_size, 128);
-        
+
         group.bench_with_input(
             BenchmarkId::new("IVF Build", dataset_size),
             &dataset_size,
@@ -113,7 +111,7 @@ fn lsh_index_benchmark(c: &mut Criterion) {
     // Test different dataset sizes
     for dataset_size in [100, 1000, 5000] {
         let vectors = generate_test_vectors(dataset_size, 128);
-        
+
         group.bench_with_input(
             BenchmarkId::new("LSH Build", dataset_size),
             &dataset_size,
@@ -152,7 +150,7 @@ fn lsh_index_benchmark(c: &mut Criterion) {
 
 fn index_comparison_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Index Type Comparison");
-    
+
     let dataset_size = 1000;
     let vectors = generate_test_vectors(dataset_size, 128);
     let query_vector = random_normalized_vector(128);
@@ -198,9 +196,9 @@ fn index_comparison_benchmark(c: &mut Criterion) {
 
 fn vector_dimension_scaling_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Vector Dimension Scaling");
-    
+
     let dataset_size = 1000;
-    
+
     // Test different vector dimensions
     for dimension in [64, 128, 256, 512] {
         let vectors = generate_test_vectors(dataset_size, dimension);
@@ -235,4 +233,4 @@ criterion_group!(
     vector_dimension_scaling_benchmark
 );
 
-criterion_main!(benches); 
+criterion_main!(benches);

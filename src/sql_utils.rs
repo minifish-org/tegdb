@@ -50,32 +50,25 @@ pub fn compare_values(left: &SqlValue, operator: &ComparisonOperator, right: &Sq
             match (left, right) {
                 (SqlValue::Text(text), SqlValue::Text(pattern)) => {
                     // Simple LIKE pattern matching with % wildcards
-            
-                    
-                    if pattern == "%" {
 
+                    if pattern == "%" {
                         return true; // % matches everything
                     }
-                    
-                    if pattern.starts_with('%') && pattern.ends_with('%') {
+
+                    if let Some(inner_pattern) =
+                        pattern.strip_prefix('%').and_then(|s| s.strip_suffix('%'))
+                    {
                         // %pattern% - contains pattern
-                        let inner_pattern = &pattern[1..pattern.len()-1];
-                        let result = text.contains(inner_pattern);
-                        result
-                    } else if pattern.starts_with('%') {
+                        text.contains(inner_pattern)
+                    } else if let Some(inner_pattern) = pattern.strip_prefix('%') {
                         // %pattern - ends with pattern
-                        let inner_pattern = &pattern[1..];
-
                         text.ends_with(inner_pattern)
-                    } else if pattern.ends_with('%') {
+                    } else if let Some(inner_pattern) = pattern.strip_suffix('%') {
                         // pattern% - starts with pattern
-                        let inner_pattern = &pattern[..pattern.len()-1];
-
                         text.starts_with(inner_pattern)
                     } else {
                         // exact match
-                        let result = text == pattern;
-                        result
+                        text == pattern
                     }
                 }
                 _ => false,
@@ -95,11 +88,9 @@ pub fn evaluate_condition(condition: &Condition, row_data: &HashMap<String, SqlV
             // Evaluate the left expression
             let row_value = match left.evaluate(row_data) {
                 Ok(val) => val,
-                Err(_e) => SqlValue::Null // If evaluation fails, use null
+                Err(_e) => SqlValue::Null, // If evaluation fails, use null
             };
-            let result = compare_values(&row_value, operator, right);
-
-            result
+            compare_values(&row_value, operator, right)
         }
         Condition::Between { column, low, high } => {
             let row_value = row_data.get(column).unwrap_or(&SqlValue::Null);
@@ -174,7 +165,7 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
                     }
                 }
                 "Vector" => DataType::Vector(None), // Default to variable dimension
-                _ => continue,                           // Skip unknown types
+                _ => continue,                      // Skip unknown types
             };
 
             let constraints = if constraints_str.is_empty() {
@@ -183,9 +174,15 @@ pub fn parse_schema_data(table_name: &str, schema_data: &str) -> Option<TableSch
                 constraints_str
                     .split(',')
                     .filter_map(|c| match c {
-                        x if x == crate::catalog::CONSTRAINT_PRIMARY_KEY_STR => Some(ColumnConstraint::PrimaryKey),
-                        x if x == crate::catalog::CONSTRAINT_NOT_NULL_STR => Some(ColumnConstraint::NotNull),
-                        x if x == crate::catalog::CONSTRAINT_UNIQUE_STR => Some(ColumnConstraint::Unique),
+                        x if x == crate::catalog::CONSTRAINT_PRIMARY_KEY_STR => {
+                            Some(ColumnConstraint::PrimaryKey)
+                        }
+                        x if x == crate::catalog::CONSTRAINT_NOT_NULL_STR => {
+                            Some(ColumnConstraint::NotNull)
+                        }
+                        x if x == crate::catalog::CONSTRAINT_UNIQUE_STR => {
+                            Some(ColumnConstraint::Unique)
+                        }
                         _ => None,
                     })
                     .collect()
@@ -296,7 +293,7 @@ fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo
                 }
             }
             "Vector" => DataType::Vector(None), // Default to variable dimension
-            _ => DataType::Text(None),               // Default fallback
+            _ => DataType::Text(None),          // Default fallback
         };
 
         let constraints = if let Some(constraints_bytes) = parts.next() {

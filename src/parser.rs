@@ -15,12 +15,7 @@ use nom::{
 use std::collections::HashMap;
 
 fn parse_identifier_optimized(input: &str) -> IResult<&str, &str> {
-    recognize(
-        pair(
-            alpha1,
-            many0(alt((alphanumeric1, tag("_")))),
-        )
-    ).parse(input)
+    recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))).parse(input)
 }
 
 fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<Expression>> {
@@ -44,10 +39,13 @@ fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('(').parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     // Only treat these as aggregate functions
-    let is_aggregate = matches!(func_name.to_uppercase().as_str(), "COUNT" | "SUM" | "AVG" | "MAX" | "MIN");
-    
+    let is_aggregate = matches!(
+        func_name.to_uppercase().as_str(),
+        "COUNT" | "SUM" | "AVG" | "MAX" | "MIN"
+    );
+
     if !is_aggregate {
         // Not an aggregate function, let the regular function parser handle it
         return Err(nom::Err::Error(nom::error::Error::new(
@@ -55,28 +53,34 @@ fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
             nom::error::ErrorKind::Tag,
         )));
     }
-    
+
     // Handle COUNT(*) specially
     if func_name.to_uppercase() == "COUNT" {
         if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<&str>>("*").parse(input) {
             let (input, _) = multispace0.parse(input)?;
             let (input, _) = char(')').parse(input)?;
-            return Ok((input, Expression::AggregateFunction {
-                name: func_name.to_string(),
-                arg: Box::new(Expression::Column("*".to_string())),
-            }));
+            return Ok((
+                input,
+                Expression::AggregateFunction {
+                    name: func_name.to_string(),
+                    arg: Box::new(Expression::Column("*".to_string())),
+                },
+            ));
         }
     }
-    
+
     // Parse the argument as an expression
     let (input, arg) = parse_expression.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char(')').parse(input)?;
-    
-    Ok((input, Expression::AggregateFunction {
-        name: func_name.to_string(),
-        arg: Box::new(arg),
-    }))
+
+    Ok((
+        input,
+        Expression::AggregateFunction {
+            name: func_name.to_string(),
+            arg: Box::new(arg),
+        },
+    ))
 }
 
 fn parse_u64_safe(s: &str) -> Result<u64, String> {
@@ -154,10 +158,10 @@ pub struct CreateIndexStatement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IndexType {
-    BTree,  // Default for regular indexes
-    HNSW,   // Hierarchical Navigable Small World for vector similarity
-    IVF,    // Inverted File Index for vector clustering
-    LSH,    // Locality Sensitive Hashing for vector search
+    BTree, // Default for regular indexes
+    HNSW,  // Hierarchical Navigable Small World for vector similarity
+    IVF,   // Inverted File Index for vector clustering
+    LSH,   // Locality Sensitive Hashing for vector search
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -395,28 +399,34 @@ impl Expression {
                 match name.to_uppercase().as_str() {
                     "COSINE_SIMILARITY" => {
                         if args.len() != 2 {
-                            return Err("COSINE_SIMILARITY requires exactly 2 arguments".to_string());
+                            return Err(
+                                "COSINE_SIMILARITY requires exactly 2 arguments".to_string()
+                            );
                         }
                         let vec1 = args[0].evaluate(context)?;
                         let vec2 = args[1].evaluate(context)?;
-                        
+
                         match (vec1, vec2) {
                             (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
                                 if v1.len() != v2.len() {
                                     return Err("Vectors must have the same dimension for cosine similarity".to_string());
                                 }
-                                
+
                                 // Calculate dot product
-                                let dot_product: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
-                                
+                                let dot_product: f64 =
+                                    v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+
                                 // Calculate magnitudes
                                 let mag1: f64 = v1.iter().map(|x| x * x).sum::<f64>().sqrt();
                                 let mag2: f64 = v2.iter().map(|x| x * x).sum::<f64>().sqrt();
-                                
+
                                 if mag1 == 0.0 || mag2 == 0.0 {
-                                    return Err("Cannot calculate cosine similarity with zero vectors".to_string());
+                                    return Err(
+                                        "Cannot calculate cosine similarity with zero vectors"
+                                            .to_string(),
+                                    );
                                 }
-                                
+
                                 let similarity = dot_product / (mag1 * mag2);
                                 Ok(SqlValue::Real(similarity))
                             }
@@ -425,23 +435,26 @@ impl Expression {
                     }
                     "EUCLIDEAN_DISTANCE" => {
                         if args.len() != 2 {
-                            return Err("EUCLIDEAN_DISTANCE requires exactly 2 arguments".to_string());
+                            return Err(
+                                "EUCLIDEAN_DISTANCE requires exactly 2 arguments".to_string()
+                            );
                         }
                         let vec1 = args[0].evaluate(context)?;
                         let vec2 = args[1].evaluate(context)?;
-                        
+
                         match (vec1, vec2) {
                             (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
                                 if v1.len() != v2.len() {
                                     return Err("Vectors must have the same dimension for euclidean distance".to_string());
                                 }
-                                
-                                let distance: f64 = v1.iter()
+
+                                let distance: f64 = v1
+                                    .iter()
                                     .zip(v2.iter())
                                     .map(|(a, b)| (a - b).powi(2))
                                     .sum::<f64>()
                                     .sqrt();
-                                
+
                                 Ok(SqlValue::Real(distance))
                             }
                             _ => Err("EUCLIDEAN_DISTANCE requires vector arguments".to_string()),
@@ -453,14 +466,18 @@ impl Expression {
                         }
                         let vec1 = args[0].evaluate(context)?;
                         let vec2 = args[1].evaluate(context)?;
-                        
+
                         match (vec1, vec2) {
                             (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
                                 if v1.len() != v2.len() {
-                                    return Err("Vectors must have the same dimension for dot product".to_string());
+                                    return Err(
+                                        "Vectors must have the same dimension for dot product"
+                                            .to_string(),
+                                    );
                                 }
-                                
-                                let dot_product: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+
+                                let dot_product: f64 =
+                                    v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
                                 Ok(SqlValue::Real(dot_product))
                             }
                             _ => Err("DOT_PRODUCT requires vector arguments".to_string()),
@@ -471,16 +488,17 @@ impl Expression {
                             return Err("L2_NORMALIZE requires exactly 1 argument".to_string());
                         }
                         let vec = args[0].evaluate(context)?;
-                        
+
                         match vec {
                             SqlValue::Vector(v) => {
                                 let magnitude: f64 = v.iter().map(|x| x * x).sum::<f64>().sqrt();
-                                
+
                                 if magnitude == 0.0 {
                                     return Err("Cannot normalize zero vector".to_string());
                                 }
-                                
-                                let normalized: Vec<f64> = v.iter().map(|x| x / magnitude).collect();
+
+                                let normalized: Vec<f64> =
+                                    v.iter().map(|x| x / magnitude).collect();
                                 Ok(SqlValue::Vector(normalized))
                             }
                             _ => Err("L2_NORMALIZE requires vector argument".to_string()),
@@ -491,7 +509,7 @@ impl Expression {
                             return Err("ABS requires exactly 1 argument".to_string());
                         }
                         let value = args[0].evaluate(context)?;
-                        
+
                         match value {
                             SqlValue::Integer(i) => Ok(SqlValue::Integer(i.abs())),
                             SqlValue::Real(f) => Ok(SqlValue::Real(f.abs())),
@@ -526,11 +544,7 @@ pub fn parse_sql(input: &str) -> Result<Statement, String> {
 
     // Allow trailing whitespace and optional semicolon(s)
     let remaining = remaining.trim_start();
-    let remaining = if remaining.starts_with(';') {
-        &remaining[1..]
-    } else {
-        remaining
-    };
+    let remaining = remaining.strip_prefix(';').unwrap_or(remaining);
     if !remaining.trim().is_empty() {
         return Err(format!("Unexpected input after statement: '{remaining}'"));
     }
@@ -599,7 +613,10 @@ fn parse_create_table(input: &str) -> IResult<&str, Statement> {
 
     Ok((
         input,
-        Statement::CreateTable(CreateTableStatement { table: table.to_string(), columns }),
+        Statement::CreateTable(CreateTableStatement {
+            table: table.to_string(),
+            columns,
+        }),
     ))
 }
 
@@ -613,13 +630,16 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char('(').parse(input)?;
     let (input, columns_expr) = parse_column_list_optimized.parse(input)?;
-    let columns: Vec<String> = columns_expr.into_iter().map(|expr| {
-        if let Expression::Column(name) = expr {
-            name
-        } else {
-            panic!("Only column names are allowed in INSERT column list")
-        }
-    }).collect();
+    let columns: Vec<String> = columns_expr
+        .into_iter()
+        .map(|expr| {
+            if let Expression::Column(name) = expr {
+                name
+            } else {
+                panic!("Only column names are allowed in INSERT column list")
+            }
+        })
+        .collect();
     let (input, _) = char(')').parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = tag_no_case("VALUES").parse(input)?;
@@ -995,7 +1015,13 @@ fn parse_order_by_item(input: &str) -> IResult<&str, OrderByItem> {
     let (input, direction) = opt(parse_order_direction).parse(input)?;
     let direction = direction.unwrap_or(OrderDirection::Asc);
 
-    Ok((input, OrderByItem { expression, direction }))
+    Ok((
+        input,
+        OrderByItem {
+            expression,
+            direction,
+        },
+    ))
 }
 
 // Parse ORDER BY direction (ASC or DESC)
@@ -1037,7 +1063,13 @@ fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
     let (input, _) = multispace0.parse(input)?;
     let (input, value) = parse_expression.parse(input)?;
 
-    Ok((input, Assignment { column: column.to_string(), value }))
+    Ok((
+        input,
+        Assignment {
+            column: column.to_string(),
+            value,
+        },
+    ))
 }
 
 // Parse column definition
@@ -1075,10 +1107,7 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
         ),
         // Vector with optional dimension: VECTOR(384) or VECTOR
         map(
-            pair(
-                tag_no_case("VECTOR"),
-                opt(parse_length_specification),
-            ),
+            pair(tag_no_case("VECTOR"), opt(parse_length_specification)),
             |(_, dimension)| DataType::Vector(dimension),
         ),
     ))
@@ -1158,11 +1187,8 @@ fn parse_real(input: &str) -> IResult<&str, f64> {
 fn parse_vector_literal(input: &str) -> IResult<&str, Vec<f64>> {
     let (input, _) = char('[').parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, values) = separated_list0(
-        delimited(multispace0, char(','), multispace0),
-        parse_real,
-    )
-    .parse(input)?;
+    let (input, values) =
+        separated_list0(delimited(multispace0, char(','), multispace0), parse_real).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = char(']').parse(input)?;
     Ok((input, values))
@@ -1233,7 +1259,10 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
                     char(')'),
                 ),
             ),
-            |(name, args)| Expression::FunctionCall { name: name.to_string(), args },
+            |(name, args)| Expression::FunctionCall {
+                name: name.to_string(),
+                args,
+            },
         ),
         // Parenthesized expressions
         delimited(
@@ -1242,7 +1271,9 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
             char(')'),
         ),
         // Column references
-        map(parse_identifier_optimized, |name| Expression::Column(name.to_string())),
+        map(parse_identifier_optimized, |name| {
+            Expression::Column(name.to_string())
+        }),
         // Literal values
         map(parse_sql_value, Expression::Value),
     ))

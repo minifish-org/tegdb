@@ -5,9 +5,9 @@
 //! optimizations without complex cost estimation.
 
 use crate::parser::{
-    ComparisonOperator, Condition,
-    CreateTableStatement, DeleteStatement, DropTableStatement, InsertStatement,
-    OrderByClause, OrderByItem, SelectStatement, SqlValue, Statement, UpdateStatement,
+    ComparisonOperator, Condition, CreateTableStatement, DeleteStatement, DropTableStatement,
+    InsertStatement, OrderByClause, OrderByItem, SelectStatement, SqlValue, Statement,
+    UpdateStatement,
 };
 use crate::query_processor::{ColumnInfo, TableSchema};
 use crate::Result;
@@ -146,10 +146,10 @@ impl QueryPlanner {
     ) -> Option<(String, String, crate::parser::SqlValue)> {
         // Get table schema
         let schema = self.table_schemas.get(table_name)?;
-        
+
         // Check each index to see if it can be used
         for index in &schema.indexes {
-            if let Some(value) = self.extract_indexable_value(condition, &index.column_name) {
+            if let Some(value) = Self::extract_indexable_value(condition, &index.column_name) {
                 return Some((index.name.clone(), index.column_name.clone(), value));
             }
         }
@@ -158,7 +158,6 @@ impl QueryPlanner {
 
     /// Extract a value that can be used for index lookup from a condition
     fn extract_indexable_value(
-        &self,
         condition: &crate::parser::Condition,
         column_name: &str,
     ) -> Option<crate::parser::SqlValue> {
@@ -169,7 +168,9 @@ impl QueryPlanner {
                 right,
             } => {
                 if let crate::parser::Expression::Column(col_name) = left {
-                    if col_name == column_name && *operator == crate::parser::ComparisonOperator::Equal {
+                    if col_name == column_name
+                        && *operator == crate::parser::ComparisonOperator::Equal
+                    {
                         Some(right.clone())
                     } else {
                         None
@@ -179,13 +180,13 @@ impl QueryPlanner {
                 }
             }
             crate::parser::Condition::And(left, right) => {
-                self.extract_indexable_value(left, column_name)
-                    .or_else(|| self.extract_indexable_value(right, column_name))
+                Self::extract_indexable_value(left, column_name)
+                    .or_else(|| Self::extract_indexable_value(right, column_name))
             }
             crate::parser::Condition::Or(left, right) => {
                 // For OR conditions, we need both sides to use the same index
-                let left_val = self.extract_indexable_value(left, column_name)?;
-                let right_val = self.extract_indexable_value(right, column_name)?;
+                let left_val = Self::extract_indexable_value(left, column_name)?;
+                let right_val = Self::extract_indexable_value(right, column_name)?;
                 if left_val == right_val {
                     Some(left_val)
                 } else {
@@ -227,13 +228,19 @@ impl QueryPlanner {
 
         // Try index scan if we have a suitable index
         if let Some(where_clause) = &select.where_clause {
-            if let Some((index_name, _column_name, value)) = self.find_suitable_index(&select.table, &where_clause.condition) {
-        
-                let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-                
+            if let Some((index_name, _column_name, value)) =
+                self.find_suitable_index(&select.table, &where_clause.condition)
+            {
+                let expr_columns =
+                    self.normalize_selected_columns(&select.table, &select.columns)?;
+
                 // Extract additional filter conditions (non-indexed conditions)
-                let additional_filter = self.extract_non_index_conditions(&select.table, &where_clause.condition, &index_name)?;
-                
+                let additional_filter = self.extract_non_index_conditions(
+                    &select.table,
+                    &where_clause.condition,
+                    &index_name,
+                )?;
+
                 let plan = ExecutionPlan::IndexScan {
                     table: select.table,
                     index: index_name,
@@ -242,8 +249,6 @@ impl QueryPlanner {
                     additional_filter,
                 };
                 return self.wrap_with_sort(plan, &select.order_by);
-            } else {
-        
             }
         }
 
@@ -293,16 +298,13 @@ impl QueryPlanner {
     fn find_pk_equality(cond: &Condition, pk_col: &str, found: &mut Option<SqlValue>) {
         match cond {
             Condition::Comparison {
-                left,
+                left: crate::parser::Expression::Column(col_name),
                 operator,
                 right,
-            } => {
-                if let crate::parser::Expression::Column(col_name) = left {
-                    if col_name == pk_col && matches!(operator, ComparisonOperator::Equal) {
-                        *found = Some(right.clone());
-                    }
-                }
+            } if col_name == pk_col && matches!(operator, ComparisonOperator::Equal) => {
+                *found = Some(right.clone());
             }
+            Condition::Comparison { .. } => {}
             Condition::And(left, right) => {
                 Self::find_pk_equality(left, pk_col, found);
                 Self::find_pk_equality(right, pk_col, found);
@@ -385,7 +387,10 @@ impl QueryPlanner {
             .collect();
 
         // Always expand ["*"] to all columns for scan plan
-        let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(&update.table, &[crate::parser::Expression::Column("*".to_string())])?;
+        let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(
+            &update.table,
+            &[crate::parser::Expression::Column("*".to_string())],
+        )?;
 
         // Create scan plan for the rows to update
         let scan_plan = if let Some(ref where_clause) = update.where_clause {
@@ -463,7 +468,10 @@ impl QueryPlanner {
     /// Plan DELETE statement
     fn plan_delete(&self, delete: DeleteStatement) -> Result<ExecutionPlan> {
         // Always expand ["*"] to all columns for scan plan
-        let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(&delete.table, &[crate::parser::Expression::Column("*".to_string())])?;
+        let expr_columns: Vec<crate::parser::Expression> = self.normalize_selected_columns(
+            &delete.table,
+            &[crate::parser::Expression::Column("*".to_string())],
+        )?;
 
         // Create scan plan for the rows to delete
         let scan_plan = if let Some(ref where_clause) = delete.where_clause {
@@ -571,7 +579,10 @@ impl QueryPlanner {
     }
 
     /// Plan CREATE INDEX statement
-    fn plan_create_index(&self, create: crate::parser::CreateIndexStatement) -> Result<ExecutionPlan> {
+    fn plan_create_index(
+        &self,
+        create: crate::parser::CreateIndexStatement,
+    ) -> Result<ExecutionPlan> {
         let table_name = create.table_name.clone();
         let column_name = create.column_name.clone();
         let unique = create.unique;
@@ -683,7 +694,7 @@ impl QueryPlanner {
                 right,
             } => {
                 if let crate::parser::Expression::Column(col_name) = left {
-                    if pk_columns.contains(&col_name) {
+                    if pk_columns.contains(col_name) {
                         pk_conditions
                             .entry(col_name.clone())
                             .or_default()
@@ -773,7 +784,9 @@ impl QueryPlanner {
     ) -> Result<Option<Condition>> {
         let pk_columns = self.get_primary_key_columns(table_name)?;
         let excluded: std::collections::HashSet<String> = pk_columns.into_iter().collect();
-        Ok(Self::extract_conditions_excluding_columns(&excluded, condition))
+        Ok(Self::extract_conditions_excluding_columns(
+            &excluded, condition,
+        ))
     }
 
     /// Extract non-indexed conditions for additional filtering
@@ -783,18 +796,21 @@ impl QueryPlanner {
         condition: &Condition,
         index_name: &str,
     ) -> Result<Option<Condition>> {
-        let schema = self.table_schemas.get(table_name).ok_or_else(|| {
-            crate::Error::Other(format!("Table '{}' not found", table_name))
-        })?;
+        let schema = self
+            .table_schemas
+            .get(table_name)
+            .ok_or_else(|| crate::Error::Other(format!("Table '{table_name}' not found")))?;
         let indexed_column = schema
             .indexes
             .iter()
             .find(|idx| idx.name == index_name)
             .map(|idx| idx.column_name.clone())
-            .ok_or_else(|| crate::Error::Other(format!("Index '{}' not found", index_name)))?;
+            .ok_or_else(|| crate::Error::Other(format!("Index '{index_name}' not found")))?;
         let mut excluded = std::collections::HashSet::new();
         excluded.insert(indexed_column);
-        Ok(Self::extract_conditions_excluding_columns(&excluded, condition))
+        Ok(Self::extract_conditions_excluding_columns(
+            &excluded, condition,
+        ))
     }
 
     /// Normalize selected columns: if ["*"] is given, expand to all columns from the schema
@@ -808,7 +824,11 @@ impl QueryPlanner {
                 if star == "*" {
                     // Expand * to all columns from the schema
                     if let Some(schema) = self.table_schemas.get(table_name) {
-                        return Ok(schema.columns.iter().map(|c| crate::parser::Expression::Column(c.name.clone())).collect());
+                        return Ok(schema
+                            .columns
+                            .iter()
+                            .map(|c| crate::parser::Expression::Column(c.name.clone()))
+                            .collect());
                     } else {
                         return Err(crate::Error::Other(format!(
                             "Table '{table_name}' not found for column expansion"
@@ -817,16 +837,16 @@ impl QueryPlanner {
                 }
             }
         }
-        
+
         // Analyze function calls to extract referenced columns
         let mut all_columns = Vec::new();
         let mut referenced_columns = std::collections::HashSet::new();
-        
+
         for expr in columns {
             all_columns.push(expr.clone());
-            self.extract_columns_from_expression(expr, &mut referenced_columns);
+            Self::extract_columns_from_expression(expr, &mut referenced_columns);
         }
-        
+
         // Add any referenced columns that aren't already in the selection
         for column_name in referenced_columns {
             let column_expr = crate::parser::Expression::Column(column_name);
@@ -834,29 +854,32 @@ impl QueryPlanner {
                 all_columns.push(column_expr);
             }
         }
-        
+
         Ok(all_columns)
     }
-    
-    fn extract_columns_from_expression(&self, expr: &crate::parser::Expression, columns: &mut std::collections::HashSet<String>) {
+
+    fn extract_columns_from_expression(
+        expr: &crate::parser::Expression,
+        columns: &mut std::collections::HashSet<String>,
+    ) {
         match expr {
             crate::parser::Expression::Column(name) => {
                 columns.insert(name.clone());
             }
             crate::parser::Expression::FunctionCall { args, .. } => {
                 for arg in args {
-                    self.extract_columns_from_expression(arg, columns);
+                    Self::extract_columns_from_expression(arg, columns);
                 }
             }
             crate::parser::Expression::BinaryOp { left, right, .. } => {
-                self.extract_columns_from_expression(left, columns);
-                self.extract_columns_from_expression(right, columns);
+                Self::extract_columns_from_expression(left, columns);
+                Self::extract_columns_from_expression(right, columns);
             }
             crate::parser::Expression::Value(_) => {
                 // No columns to extract from literal values
             }
             crate::parser::Expression::AggregateFunction { arg, .. } => {
-                self.extract_columns_from_expression(arg, columns);
+                Self::extract_columns_from_expression(arg, columns);
             }
         }
     }
@@ -895,27 +918,46 @@ impl QueryPlanner {
     }
 
     /// Wrap a plan with a Sort plan if ORDER BY is present
-    fn wrap_with_sort(&self, plan: ExecutionPlan, order_by: &Option<OrderByClause>) -> Result<ExecutionPlan> {
+    fn wrap_with_sort(
+        &self,
+        plan: ExecutionPlan,
+        order_by: &Option<OrderByClause>,
+    ) -> Result<ExecutionPlan> {
         if let Some(order_by_clause) = order_by {
             let table_name = plan.primary_table().unwrap_or("");
             let schema = self.table_schemas.get(table_name).unwrap().clone();
             // Use the selected columns from the plan if possible
             let selected_columns = match &plan {
-                ExecutionPlan::PrimaryKeyLookup { selected_columns, .. } => selected_columns.clone(),
-                ExecutionPlan::TableRangeScan { selected_columns, .. } => selected_columns.clone(),
-                ExecutionPlan::TableScan { selected_columns, .. } => selected_columns.clone(),
-                ExecutionPlan::IndexScan { selected_columns, .. } => selected_columns.clone(),
-                _ => schema.columns.iter().map(|c| crate::parser::Expression::Column(c.name.clone())).collect(),
+                ExecutionPlan::PrimaryKeyLookup {
+                    selected_columns, ..
+                } => selected_columns.clone(),
+                ExecutionPlan::TableRangeScan {
+                    selected_columns, ..
+                } => selected_columns.clone(),
+                ExecutionPlan::TableScan {
+                    selected_columns, ..
+                } => selected_columns.clone(),
+                ExecutionPlan::IndexScan {
+                    selected_columns, ..
+                } => selected_columns.clone(),
+                _ => schema
+                    .columns
+                    .iter()
+                    .map(|c| crate::parser::Expression::Column(c.name.clone()))
+                    .collect(),
             };
-            let query_schema = crate::query_processor::QuerySchema::new_with_expressions(&selected_columns, &schema);
-            
+            let query_schema = crate::query_processor::QuerySchema::new_with_expressions(
+                &selected_columns,
+                &schema,
+            );
+
             // Extract LIMIT from the input plan
             let limit = match &plan {
                 ExecutionPlan::TableScan { limit, .. } => *limit,
                 ExecutionPlan::TableRangeScan { limit, .. } => *limit,
                 _ => None,
             };
-            
+
             Ok(ExecutionPlan::Sort {
                 input_plan: Box::new(plan),
                 order_by_items: order_by_clause.items.clone(),
@@ -975,35 +1017,53 @@ impl ExecutionPlan {
             } => {
                 let range_desc = match (&pk_range.start_bound, &pk_range.end_bound) {
                     (Some(start), Some(end)) => {
-                        format!("range: {:?} to {:?}", start.value, end.value)
+                        let start_value = &start.value;
+                        let end_value = &end.value;
+                        format!("range: {start_value:?} to {end_value:?}")
                     }
-                    (Some(start), None) => format!("range: >= {:?}", start.value),
-                    (None, Some(end)) => format!("range: <= {:?}", end.value),
+                    (Some(start), None) => {
+                        let value = &start.value;
+                        format!("range: >= {value:?}")
+                    }
+                    (None, Some(end)) => {
+                        let value = &end.value;
+                        format!("range: <= {value:?}")
+                    }
                     (None, None) => "range: all".to_string(),
                 };
                 format!("Table Range Scan on {table} ({range_desc})")
             }
-            ExecutionPlan::TableScan { table, selected_columns, filter, limit } => {
-                let columns_str = selected_columns.iter().map(|expr| {
-                    match expr {
+            ExecutionPlan::TableScan {
+                table,
+                selected_columns,
+                filter,
+                limit,
+            } => {
+                let columns_str = selected_columns
+                    .iter()
+                    .map(|expr| match expr {
                         crate::parser::Expression::Column(name) => name.clone(),
-                        _ => format!("{:?}", expr),
-                    }
-                }).collect::<Vec<_>>().join(", ");
+                        _ => format!("{expr:?}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("TableScan({table}, columns=[{columns_str}], filter={filter:?}, limit={limit:?})")
             }
             ExecutionPlan::Insert { table, rows, .. } => {
-                format!("Insert into {} ({} rows)", table, rows.len())
+                let row_count = rows.len();
+                format!("Insert into {table} ({row_count} rows)")
             }
             ExecutionPlan::Update {
                 table, scan_plan, ..
             } => {
-                format!("Update {} via {}", table, scan_plan.describe())
+                let plan_desc = scan_plan.describe();
+                format!("Update {table} via {plan_desc}")
             }
             ExecutionPlan::Delete {
                 table, scan_plan, ..
             } => {
-                format!("Delete from {} via {}", table, scan_plan.describe())
+                let plan_desc = scan_plan.describe();
+                format!("Delete from {table} via {plan_desc}")
             }
             ExecutionPlan::CreateTable { table, .. } => {
                 format!("Create Table {table}")
@@ -1011,33 +1071,61 @@ impl ExecutionPlan {
             ExecutionPlan::DropTable { table, .. } => {
                 format!("Drop Table {table}")
             }
-            ExecutionPlan::CreateIndex { index_name, table_name, column_name, unique } => {
+            ExecutionPlan::CreateIndex {
+                index_name,
+                table_name,
+                column_name,
+                unique,
+            } => {
                 format!("Create Index {index_name} on {table_name} (column: {column_name}, unique: {unique})")
             }
-            ExecutionPlan::DropIndex { index_name, if_exists } => {
+            ExecutionPlan::DropIndex {
+                index_name,
+                if_exists,
+            } => {
                 format!("Drop Index {index_name} (if_exists: {if_exists})")
             }
             ExecutionPlan::Begin => "Begin Transaction".to_string(),
             ExecutionPlan::Commit => "Commit Transaction".to_string(),
             ExecutionPlan::Rollback => "Rollback Transaction".to_string(),
-            ExecutionPlan::IndexScan { table, index, column_value, selected_columns, additional_filter: _ } => {
-                let columns_str = selected_columns.iter().map(|expr| {
-                    match expr {
+            ExecutionPlan::IndexScan {
+                table,
+                index,
+                column_value,
+                selected_columns,
+                additional_filter: _,
+            } => {
+                let columns_str = selected_columns
+                    .iter()
+                    .map(|expr| match expr {
                         crate::parser::Expression::Column(name) => name.clone(),
-                        _ => format!("{:?}", expr),
-                    }
-                }).collect::<Vec<_>>().join(", ");
-                format!("Index Scan on {table} (index: {index}, column: {column_value:?}, selected: {})", columns_str)
+                        _ => format!("{expr:?}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "Index Scan on {table} (index: {index}, column: {column_value:?}, selected: {columns_str})"
+                )
             }
-            ExecutionPlan::Sort { input_plan, order_by_items, .. } => {
-                let order_desc = order_by_items.iter().map(|item| {
-                    let expr_str = match &item.expression {
-                        crate::parser::Expression::Column(name) => name.clone(),
-                        _ => format!("{:?}", item.expression),
-                    };
-                    format!("{} {:?}", expr_str, item.direction)
-                }).collect::<Vec<_>>().join(", ");
-                format!("Sort on {} (order: {})", input_plan.describe(), order_desc)
+            ExecutionPlan::Sort {
+                input_plan,
+                order_by_items,
+                ..
+            } => {
+                let order_desc = order_by_items
+                    .iter()
+                    .map(|item| {
+                        let expr_str = match &item.expression {
+                            crate::parser::Expression::Column(name) => name.clone(),
+                            _ => format!("{expr:?}", expr = item.expression),
+                        };
+                        let direction = item.direction;
+                        format!("{expr_str} {direction:?}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let input_desc = input_plan.describe();
+                format!("Sort on {input_desc} (order: {order_desc})")
             }
         }
     }
@@ -1097,7 +1185,10 @@ mod tests {
         let planner = QueryPlanner::new(schemas);
 
         let select = SelectStatement {
-            columns: vec![crate::parser::Expression::Column("name".to_string()), crate::parser::Expression::Column("email".to_string())],
+            columns: vec![
+                crate::parser::Expression::Column("name".to_string()),
+                crate::parser::Expression::Column("email".to_string()),
+            ],
             table: "users".to_string(),
             where_clause: Some(WhereClause {
                 condition: Condition::Comparison {

@@ -1,8 +1,8 @@
 use crate::parser::SqlValue;
 use crate::query_processor::TableSchema;
 use crate::sql_utils::evaluate_condition;
-use std::collections::HashMap;
 use crate::Result;
+use std::collections::HashMap;
 
 /// Ultra-optimized storage format for TegDB with embedded metadata
 ///
@@ -59,11 +59,9 @@ impl StorageFormat {
         let mut buffer = vec![0u8; record_size]; // Pre-allocate exact size
 
         for column in &schema.columns {
-            let value = row_data.get(&column.name).ok_or_else(|| {
-                crate::Error::Other(format!(
-                    "Missing required value for column '{}'",
-                    column.name
-                ))
+            let column_name = &column.name;
+            let value = row_data.get(column_name).ok_or_else(|| {
+                crate::Error::Other(format!("Missing required value for column '{column_name}'"))
             })?;
 
             Self::serialize_value_at_offset(
@@ -89,13 +87,11 @@ impl StorageFormat {
         match (value, type_code) {
             (SqlValue::Integer(i), TYPE_CODE_INTEGER) => {
                 // TypeCode::Integer
-                buffer[offset..offset + BYTES_PER_I64]
-                    .copy_from_slice(&i.to_le_bytes());
+                buffer[offset..offset + BYTES_PER_I64].copy_from_slice(&i.to_le_bytes());
             }
             (SqlValue::Real(r), TYPE_CODE_REAL) => {
                 // TypeCode::Real
-                buffer[offset..offset + BYTES_PER_F64]
-                    .copy_from_slice(&r.to_le_bytes());
+                buffer[offset..offset + BYTES_PER_F64].copy_from_slice(&r.to_le_bytes());
             }
             (SqlValue::Text(s), TYPE_CODE_TEXT_FIXED) => {
                 // TypeCode::TextFixed
@@ -111,9 +107,10 @@ impl StorageFormat {
                 // TypeCode::Vector
                 let expected_len = size / BYTES_PER_F64;
                 if v.len() != expected_len {
-                    return Err(crate::Error::Other(
-                        format!("Vector length {} does not match schema dimension {}", v.len(), expected_len)
-                    ));
+                    let input_len = v.len();
+                    return Err(crate::Error::Other(format!(
+                        "Vector length {input_len} does not match schema dimension {expected_len}"
+                    )));
                 }
                 // Handle zero-dimension vectors (no data to copy)
                 if expected_len == 0 {
@@ -198,16 +195,22 @@ impl StorageFormat {
         if size == 0 {
             match type_code {
                 TYPE_CODE_VECTOR => return Ok(SqlValue::Vector(vec![])), // Zero-dimension vector
-                _ => return Err(crate::Error::Other("Zero size not supported for this type".to_string())),
+                _ => {
+                    return Err(crate::Error::Other(
+                        "Zero size not supported for this type".to_string(),
+                    ))
+                }
             }
         }
-        
+
         // Add robust bounds checking
         if offset >= data.len() {
             return Err(crate::Error::Other("Offset out of bounds".to_string()));
         }
         if offset + size > data.len() {
-            return Err(crate::Error::Other("Range end index out of range".to_string()));
+            return Err(crate::Error::Other(
+                "Range end index out of range".to_string(),
+            ));
         }
         if data.is_empty() {
             return Err(crate::Error::Other("Data buffer is empty".to_string()));
@@ -221,8 +224,7 @@ impl StorageFormat {
                 }
                 let bytes = &data[offset..offset + BYTES_PER_I64];
                 let value = i64::from_le_bytes([
-                    bytes[0], bytes[1], bytes[2], bytes[3],
-                    bytes[4], bytes[5], bytes[6], bytes[7],
+                    bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
                 ]);
                 Ok(SqlValue::Integer(value))
             }
@@ -233,8 +235,7 @@ impl StorageFormat {
                 }
                 let bytes = &data[offset..offset + BYTES_PER_F64];
                 let value = f64::from_le_bytes([
-                    bytes[0], bytes[1], bytes[2], bytes[3],
-                    bytes[4], bytes[5], bytes[6], bytes[7],
+                    bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
                 ]);
                 Ok(SqlValue::Real(value))
             }
@@ -261,18 +262,22 @@ impl StorageFormat {
                 for i in 0..vector_size {
                     let val_offset = offset + i * BYTES_PER_F64;
                     if val_offset + BYTES_PER_F64 > data.len() {
-                        return Err(crate::Error::Other("Vector element out of bounds".to_string()));
+                        return Err(crate::Error::Other(
+                            "Vector element out of bounds".to_string(),
+                        ));
                     }
                     let bytes = &data[val_offset..val_offset + BYTES_PER_F64];
                     let value = f64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3],
-                        bytes[4], bytes[5], bytes[6], bytes[7],
+                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                        bytes[7],
                     ]);
                     vector.push(value);
                 }
                 Ok(SqlValue::Vector(vector))
             }
-            _ => Err(crate::Error::Other(format!("Unknown type code: {}", type_code))),
+            _ => Err(crate::Error::Other(format!(
+                "Unknown type code: {type_code}"
+            ))),
         }
     }
 
@@ -358,7 +363,9 @@ impl StorageFormat {
             } => {
                 // For simple column references, try to get the value directly
                 if let crate::parser::Expression::Column(column_name) = left {
-                    if let Ok(left_val) = self.get_column_value_with_metadata(data, schema, column_name) {
+                    if let Ok(left_val) =
+                        self.get_column_value_with_metadata(data, schema, column_name)
+                    {
                         match (left_val, right) {
                             (SqlValue::Integer(l), SqlValue::Integer(r)) => match operator {
                                 crate::parser::ComparisonOperator::Equal => Ok(l == *r),
@@ -366,7 +373,9 @@ impl StorageFormat {
                                 crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
                                 crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
                                 crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
-                                crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                                crate::parser::ComparisonOperator::GreaterThanOrEqual => {
+                                    Ok(l >= *r)
+                                }
                                 _ => Ok(false),
                             },
                             (SqlValue::Real(l), SqlValue::Real(r)) => match operator {
@@ -379,7 +388,9 @@ impl StorageFormat {
                                 crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
                                 crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
                                 crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
-                                crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
+                                crate::parser::ComparisonOperator::GreaterThanOrEqual => {
+                                    Ok(l >= *r)
+                                }
                                 _ => Ok(false),
                             },
                             (SqlValue::Text(l), SqlValue::Text(r)) => match operator {
@@ -388,8 +399,16 @@ impl StorageFormat {
                                 crate::parser::ComparisonOperator::LessThan => Ok(l < *r),
                                 crate::parser::ComparisonOperator::LessThanOrEqual => Ok(l <= *r),
                                 crate::parser::ComparisonOperator::GreaterThan => Ok(l > *r),
-                                crate::parser::ComparisonOperator::GreaterThanOrEqual => Ok(l >= *r),
-                                crate::parser::ComparisonOperator::Like => Ok(crate::sql_utils::compare_values(&SqlValue::Text(l.clone()), &crate::parser::ComparisonOperator::Like, &SqlValue::Text(r.clone()))),
+                                crate::parser::ComparisonOperator::GreaterThanOrEqual => {
+                                    Ok(l >= *r)
+                                }
+                                crate::parser::ComparisonOperator::Like => {
+                                    Ok(crate::sql_utils::compare_values(
+                                        &SqlValue::Text(l.clone()),
+                                        &crate::parser::ComparisonOperator::Like,
+                                        &SqlValue::Text(r.clone()),
+                                    ))
+                                }
                             },
                             _ => Ok(false),
                         }
@@ -453,7 +472,8 @@ impl StorageFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{DataType, ColumnConstraint};
+    use crate::parser::{ColumnConstraint, DataType};
+    use std::f64::consts::PI;
 
     fn create_test_schema() -> TableSchema {
         TableSchema {
@@ -492,15 +512,15 @@ mod tests {
     fn test_serialize_deserialize_round_trip() {
         let storage = StorageFormat::new();
         let schema = create_test_schema();
-        
+
         let mut row_data = HashMap::new();
         row_data.insert("id".to_string(), SqlValue::Integer(1));
         row_data.insert("name".to_string(), SqlValue::Text("test".to_string()));
-        row_data.insert("score".to_string(), SqlValue::Real(3.14));
-        
+        row_data.insert("score".to_string(), SqlValue::Real(PI));
+
         let serialized = storage.serialize_row(&row_data, &schema).unwrap();
         let deserialized = storage.deserialize_row_full(&serialized, &schema).unwrap();
-        
+
         assert_eq!(row_data, deserialized);
     }
 
@@ -508,21 +528,27 @@ mod tests {
     fn test_partial_column_deserialization() {
         let storage = StorageFormat::new();
         let schema = create_test_schema();
-        
+
         let mut row_data = HashMap::new();
         row_data.insert("id".to_string(), SqlValue::Integer(1));
         row_data.insert("name".to_string(), SqlValue::Text("test".to_string()));
-        row_data.insert("score".to_string(), SqlValue::Real(3.14));
-        
+        row_data.insert("score".to_string(), SqlValue::Real(PI));
+
         let serialized = storage.serialize_row(&row_data, &schema).unwrap();
-        
-        let id_value = storage.get_column_value(&serialized, &schema, "id").unwrap();
+
+        let id_value = storage
+            .get_column_value(&serialized, &schema, "id")
+            .unwrap();
         assert_eq!(id_value, SqlValue::Integer(1));
-        
-        let name_value = storage.get_column_value(&serialized, &schema, "name").unwrap();
+
+        let name_value = storage
+            .get_column_value(&serialized, &schema, "name")
+            .unwrap();
         assert_eq!(name_value, SqlValue::Text("test".to_string()));
-        
-        let score_value = storage.get_column_value(&serialized, &schema, "score").unwrap();
-        assert_eq!(score_value, SqlValue::Real(3.14));
+
+        let score_value = storage
+            .get_column_value(&serialized, &schema, "score")
+            .unwrap();
+        assert_eq!(score_value, SqlValue::Real(PI));
     }
 }

@@ -1,9 +1,9 @@
 #[cfg(feature = "dev")]
 mod vector_storage_format_tests {
-    use tegdb::parser::{SqlValue, DataType, ColumnConstraint};
+    use std::collections::HashMap;
+    use tegdb::parser::{ColumnConstraint, DataType, SqlValue};
     use tegdb::query_processor::{ColumnInfo, TableSchema};
     use tegdb::storage_format::StorageFormat;
-    use std::collections::HashMap;
 
     fn make_vector_schema(dim: usize) -> TableSchema {
         TableSchema {
@@ -39,12 +39,18 @@ mod vector_storage_format_tests {
 
         let mut row = HashMap::new();
         row.insert("id".to_string(), SqlValue::Integer(42));
-        row.insert("embedding".to_string(), SqlValue::Vector(vec![0.1, 0.2, 0.3, 0.4, 0.5]));
+        row.insert(
+            "embedding".to_string(),
+            SqlValue::Vector(vec![0.1, 0.2, 0.3, 0.4, 0.5]),
+        );
 
         let bytes = storage.serialize_row(&row, &schema).unwrap();
         let deserialized = storage.deserialize_row_full(&bytes, &schema).unwrap();
         assert_eq!(deserialized["id"], SqlValue::Integer(42));
-        assert_eq!(deserialized["embedding"], SqlValue::Vector(vec![0.1, 0.2, 0.3, 0.4, 0.5]));
+        assert_eq!(
+            deserialized["embedding"],
+            SqlValue::Vector(vec![0.1, 0.2, 0.3, 0.4, 0.5])
+        );
     }
 
     #[test]
@@ -57,7 +63,10 @@ mod vector_storage_format_tests {
         let mut row = HashMap::new();
         row.insert("id".to_string(), SqlValue::Integer(1));
         // Insert a vector with the wrong dimension (should be 4, but is 3)
-        row.insert("embedding".to_string(), SqlValue::Vector(vec![1.0, 2.0, 3.0]));
+        row.insert(
+            "embedding".to_string(),
+            SqlValue::Vector(vec![1.0, 2.0, 3.0]),
+        );
 
         let result = storage.serialize_row(&row, &schema);
         assert!(result.is_err(), "Should fail due to wrong vector dimension");
@@ -78,4 +87,4 @@ mod vector_storage_format_tests {
         let deserialized = storage.deserialize_row_full(&bytes, &schema).unwrap();
         assert_eq!(deserialized["embedding"], SqlValue::Vector(vec![]));
     }
-} 
+}

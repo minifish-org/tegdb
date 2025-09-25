@@ -1,3 +1,5 @@
+#![allow(clippy::duplicate_mod)]
+
 //! Test helpers for running TegDB tests on native backends
 
 use tegdb::Result;

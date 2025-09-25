@@ -7,6 +7,8 @@ use crate::log::{KeyMap, LogBackend, LogConfig, TX_COMMIT_MARKER};
 use crate::protocol_utils::parse_storage_identifier;
 use std::rc::Rc;
 
+type ChangeRecord = (Vec<u8>, Option<Rc<[u8]>>);
+
 /// File-based storage backend for native platforms
 pub struct FileLogBackend {
     path: std::path::PathBuf,
@@ -49,7 +51,7 @@ impl LogBackend for FileLogBackend {
 
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
         let mut key_map = KeyMap::new();
-        let mut uncommitted_changes: Vec<(Vec<u8>, Option<Rc<[u8]>>)> = Vec::new();
+        let mut uncommitted_changes: Vec<ChangeRecord> = Vec::new();
         let file_len = self.file.metadata()?.len();
         let mut reader = std::io::BufReader::new(&mut self.file);
         let mut pos = reader.seek(SeekFrom::Start(0))?;

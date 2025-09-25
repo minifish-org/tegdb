@@ -236,9 +236,18 @@ fn format_sql_value(value: Option<&SqlValue>) -> String {
         Some(SqlValue::Integer(i)) => i.to_string(),
         Some(SqlValue::Real(r)) => format!("{r:.1}"),
         Some(SqlValue::Text(t)) => t.clone(),
-        Some(SqlValue::Vector(v)) => format!("[{}]", v.iter().map(|x| format!("{:.2}", x)).collect::<Vec<_>>().join(", ")),
+        Some(SqlValue::Vector(v)) => format!(
+            "[{}]",
+            v.iter()
+                .map(|x| format!("{x:.2}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         Some(SqlValue::Null) => "NULL".to_string(),
-        Some(SqlValue::Parameter(idx)) => format!("?{}", idx + 1),
+        Some(SqlValue::Parameter(idx)) => {
+            let display_index = idx + 1;
+            format!("?{display_index}")
+        }
         None => "NULL".to_string(),
     }
 }

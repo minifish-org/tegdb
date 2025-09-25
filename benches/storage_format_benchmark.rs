@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
+use std::f64::consts::PI;
 use std::hint::black_box;
 use tegdb::{ColumnInfo, DataType, SqlValue, StorageFormat, TableSchema};
 
@@ -378,7 +379,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             row_data.insert("name".to_string(), SqlValue::Text(short_text.to_string()));
             row_data.insert("email".to_string(), SqlValue::Text("a@b.com".to_string()));
             row_data.insert("age".to_string(), SqlValue::Integer(42));
-            row_data.insert("score".to_string(), SqlValue::Real(3.14));
+            row_data.insert("score".to_string(), SqlValue::Real(PI));
             row_data.insert(
                 "description".to_string(),
                 SqlValue::Text("desc".to_string()),
@@ -399,7 +400,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
             row_data.insert("name".to_string(), SqlValue::Text("short".to_string()));
             row_data.insert("email".to_string(), SqlValue::Text("a@b.com".to_string()));
             row_data.insert("age".to_string(), SqlValue::Integer(42));
-            row_data.insert("score".to_string(), SqlValue::Real(3.14));
+            row_data.insert("score".to_string(), SqlValue::Real(PI));
             row_data.insert(
                 "description".to_string(),
                 SqlValue::Text("desc".to_string()),

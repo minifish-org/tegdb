@@ -8,7 +8,8 @@ use std::path::PathBuf;
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = env::temp_dir();
-    path.push(format!("tegdb_bench_{}_{}", prefix, std::process::id()));
+    let pid = std::process::id();
+    path.push(format!("tegdb_bench_{prefix}_{pid}"));
     path
 }
 
@@ -20,8 +21,9 @@ fn bottleneck_analysis(c: &mut Criterion) {
         fs::remove_file(&path).expect("Failed to remove existing test file");
     }
 
-    let mut db = tegdb::Database::open(format!("file://{}", path.display()))
-        .expect("Failed to create database");
+    let display_path = path.display();
+    let mut db =
+        tegdb::Database::open(format!("file://{display_path}")).expect("Failed to create database");
 
     // Create test table with primary key
     db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER, name TEXT(32))")
@@ -30,11 +32,9 @@ fn bottleneck_analysis(c: &mut Criterion) {
     // Insert test data for realistic benchmarks
     println!("Setting up test data...");
     for i in 1..=1000 {
+        let value = i * 2;
         db.execute(&format!(
-            "INSERT INTO test (id, value, name) VALUES ({}, {}, 'item_{}')",
-            i,
-            i * 2,
-            i
+            "INSERT INTO test (id, value, name) VALUES ({i}, {value}, 'item_{i}')"
         ))
         .unwrap();
     }
@@ -78,7 +78,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     group.finish();
 
     // === 2. EXECUTION PLAN BINDING BREAKDOWN ===
-    let group = c.benchmark_group("Execution Plan Binding Breakdown");
+    let mut group = c.benchmark_group("Execution Plan Binding Breakdown");
 
     // Test binding parameters to execution plan
     group.bench_function("bind_parameters_to_plan", |b| {

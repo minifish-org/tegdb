@@ -5,7 +5,7 @@ use tempfile::tempdir;
 
 fn temp_db_path(prefix: &str) -> PathBuf {
     let temp_dir = tempdir().unwrap();
-    temp_dir.path().join(format!("{}.db", prefix))
+    temp_dir.path().join(format!("{prefix}.db"))
 }
 
 fn query_prepared_breakdown(c: &mut Criterion) {
@@ -13,16 +13,23 @@ fn query_prepared_breakdown(c: &mut Criterion) {
     let mut db = tegdb::Database::open(db_path.to_str().unwrap()).unwrap();
 
     // Setup test data
-    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER, name TEXT(32))").unwrap();
-    
+    db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value INTEGER, name TEXT(32))")
+        .unwrap();
+
     // Insert test data
     for i in 1..=100 {
-        db.execute(&format!("INSERT INTO test (id, value, name) VALUES ({}, {}, 'test{}')", i, i * 10, i)).unwrap();
+        let value = i * 10;
+        db.execute(&format!(
+            "INSERT INTO test (id, value, name) VALUES ({i}, {value}, 'test{i}')"
+        ))
+        .unwrap();
     }
 
     // Prepare statements
     let pk_lookup_stmt = db.prepare("SELECT * FROM test WHERE id = ?1").unwrap();
-    let range_stmt = db.prepare("SELECT * FROM test WHERE id BETWEEN ?1 AND ?2").unwrap();
+    let range_stmt = db
+        .prepare("SELECT * FROM test WHERE id BETWEEN ?1 AND ?2")
+        .unwrap();
 
     let mut group = c.benchmark_group("Query Prepared Breakdown");
 

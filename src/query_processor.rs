@@ -5,8 +5,8 @@
 
 use crate::catalog::IndexInfo;
 use crate::parser::{
-    ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, SqlValue,
-    Expression, OrderDirection,
+    ColumnConstraint, Condition, CreateTableStatement, DataType, DropTableStatement, Expression,
+    OrderDirection, SqlValue,
 };
 
 use crate::storage_engine::Transaction;
@@ -285,11 +285,14 @@ impl QuerySchema {
         }
     }
 
-    pub fn new_with_expressions(selected_columns: &[crate::parser::Expression], schema: &TableSchema) -> Self {
+    pub fn new_with_expressions(
+        selected_columns: &[crate::parser::Expression],
+        schema: &TableSchema,
+    ) -> Self {
         let mut column_names = Vec::new();
         let mut column_indices = Vec::new();
         let mut expressions = Vec::new();
-        
+
         for (i, expr) in selected_columns.iter().enumerate() {
             match expr {
                 crate::parser::Expression::Column(name) => {
@@ -304,13 +307,13 @@ impl QuerySchema {
                 }
                 _ => {
                     // This is an expression (function call, etc.)
-                    column_names.push(format!("expr_{}", i));
+                    column_names.push(format!("expr_{i}"));
                     column_indices.push(0); // Placeholder for expressions
                     expressions.push(expr.clone());
                 }
             }
         }
-        
+
         Self {
             column_names,
             column_indices,
@@ -318,12 +321,6 @@ impl QuerySchema {
         }
     }
 }
-
-
-
-
-
-
 
 /// Streaming iterator for SELECT query results
 /// This provides a streaming interface that yields rows on-demand
@@ -380,18 +377,25 @@ impl<'a> SelectRowIterator<'a> {
         self.collect()
     }
 
-    fn evaluate_expression(&self, expression: &Expression, row_data: &HashMap<String, SqlValue>, _row_bytes: &[u8]) -> Result<SqlValue> {
+    fn evaluate_expression(
+        expression: &Expression,
+        row_data: &HashMap<String, SqlValue>,
+        _row_bytes: &[u8],
+    ) -> Result<SqlValue> {
         match expression {
             Expression::Value(value) => Ok(value.clone()),
-            Expression::Column(column_name) => {
-                row_data.get(column_name)
-                    .cloned()
-                    .ok_or_else(|| crate::Error::Other(format!("Column '{}' not found", column_name)))
-            }
-            Expression::BinaryOp { left, operator, right } => {
-                let left_val = self.evaluate_expression(left, row_data, _row_bytes)?;
-                let right_val = self.evaluate_expression(right, row_data, _row_bytes)?;
-                
+            Expression::Column(column_name) => row_data
+                .get(column_name)
+                .cloned()
+                .ok_or_else(|| crate::Error::Other(format!("Column '{column_name}' not found"))),
+            Expression::BinaryOp {
+                left,
+                operator,
+                right,
+            } => {
+                let left_val = Self::evaluate_expression(left, row_data, _row_bytes)?;
+                let right_val = Self::evaluate_expression(right, row_data, _row_bytes)?;
+
                 match (left_val, right_val) {
                     (SqlValue::Integer(a), SqlValue::Integer(b)) => {
                         let result = match operator {
@@ -400,7 +404,9 @@ impl<'a> SelectRowIterator<'a> {
                             crate::parser::ArithmeticOperator::Multiply => a * b,
                             crate::parser::ArithmeticOperator::Divide => {
                                 if b == 0 {
-                                    return Err(crate::Error::Other("Division by zero".to_string()));
+                                    return Err(crate::Error::Other(
+                                        "Division by zero".to_string(),
+                                    ));
                                 }
                                 a / b
                             }
@@ -420,7 +426,9 @@ impl<'a> SelectRowIterator<'a> {
                             crate::parser::ArithmeticOperator::Multiply => a * b,
                             crate::parser::ArithmeticOperator::Divide => {
                                 if b == 0.0 {
-                                    return Err(crate::Error::Other("Division by zero".to_string()));
+                                    return Err(crate::Error::Other(
+                                        "Division by zero".to_string(),
+                                    ));
                                 }
                                 a / b
                             }
@@ -433,41 +441,47 @@ impl<'a> SelectRowIterator<'a> {
                         };
                         Ok(SqlValue::Real(result))
                     }
-                    _ => Err(crate::Error::Other("Unsupported operation for these types".to_string())),
+                    _ => Err(crate::Error::Other(
+                        "Unsupported operation for these types".to_string(),
+                    )),
                 }
             }
             Expression::FunctionCall { name, args } => {
                 // Evaluate all arguments first
-                let evaluated_args: Result<Vec<Expression>> = args.iter()
+                let evaluated_args: Result<Vec<Expression>> = args
+                    .iter()
                     .map(|arg| {
-                        let value = self.evaluate_expression(arg, row_data, _row_bytes)?;
+                        let value = Self::evaluate_expression(arg, row_data, _row_bytes)?;
                         Ok(Expression::Value(value))
                     })
                     .collect();
-                
+
                 let evaluated_args = evaluated_args?;
-                
+
                 // Create a new function call with evaluated arguments
                 let func_call = Expression::FunctionCall {
                     name: name.clone(),
                     args: evaluated_args,
                 };
-                
+
                 // Evaluate the function call using the Expression::evaluate method
-                func_call.evaluate(row_data)
-                    .map_err(|e| crate::Error::Other(format!("Function evaluation error: {}", e)))
+                func_call
+                    .evaluate(row_data)
+                    .map_err(|e| crate::Error::Other(format!("Function evaluation error: {e}")))
             }
             Expression::AggregateFunction { name, arg } => {
                 // For now, we'll evaluate the argument but not perform aggregation
                 // This will be handled by the query processor during execution
-                let _arg_value = self.evaluate_expression(arg, row_data, _row_bytes)?;
+                let _arg_value = Self::evaluate_expression(arg, row_data, _row_bytes)?;
                 match name.to_uppercase().as_str() {
                     "COUNT" => Ok(SqlValue::Integer(1)), // Placeholder
                     "SUM" => Ok(SqlValue::Integer(0)),   // Placeholder
                     "AVG" => Ok(SqlValue::Real(0.0)),    // Placeholder
                     "MAX" => Ok(SqlValue::Integer(0)),   // Placeholder
                     "MIN" => Ok(SqlValue::Integer(0)),   // Placeholder
-                    _ => Err(crate::Error::Other(format!("Aggregate function '{}' not implemented", name))),
+                    _ => Err(crate::Error::Other(format!(
+                        "Aggregate function '{name}' not implemented"
+                    ))),
                 }
             }
         }
@@ -487,7 +501,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                 return None;
             }
         }
-        
+
         // Handle sorted results mode
         if let Some(ref mut sorted_iter) = self.sorted_results {
             if let Some(row) = sorted_iter.next() {
@@ -497,7 +511,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                 return None;
             }
         }
-        
+
         // Check limit
         if let Some(limit) = self.limit {
             if self.count >= limit {
@@ -537,23 +551,28 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                 match row_values_result {
                     Ok(row_values) => {
                         // If we have expressions, evaluate them
-                        let final_values = if let Some(ref expressions) = self.query_schema.expressions {
+                        let final_values = if let Some(ref expressions) =
+                            self.query_schema.expressions
+                        {
                             // Expression case: evaluate each expression
                             let mut final_values = Vec::new();
-                            
+
                             // Create row data for expression evaluation
                             let mut row_data = HashMap::new();
-                            for (i, &col_idx) in self.query_schema.column_indices.iter().enumerate() {
-                                if let Some(col_name) = self.schema.columns.get(col_idx).map(|c| &c.name) {
+                            for (i, &col_idx) in self.query_schema.column_indices.iter().enumerate()
+                            {
+                                if let Some(col_name) =
+                                    self.schema.columns.get(col_idx).map(|c| &c.name)
+                                {
                                     if i < row_values.len() {
                                         row_data.insert(col_name.clone(), row_values[i].clone());
                                     }
                                 }
                             }
-                            
+
                             // Evaluate each expression
                             for expr in expressions {
-                                match self.evaluate_expression(expr, &row_data, &value) {
+                                match Self::evaluate_expression(expr, &row_data, &value) {
                                     Ok(value) => final_values.push(value),
                                     Err(e) => return Some(Err(e)),
                                 }
@@ -563,7 +582,7 @@ impl<'a> Iterator for SelectRowIterator<'a> {
                             // Standard case: column names match row values
                             row_values
                         };
-                        
+
                         self.count += 1;
                         return Some(Ok(final_values));
                     }
@@ -682,11 +701,22 @@ impl<'a> QueryProcessor<'a> {
 
         // Check that all required columns are provided
         for col in &schema.columns {
-            if schema.is_column_required(&col.name) && !row_data.contains_key(&col.name) {
-                return Err(Error::SqlError(format!(
-                    "Required column '{}' is missing for table '{}'",
-                    col.name, table_name
-                )));
+            if schema.is_column_required(&col.name) {
+                match row_data.get(&col.name) {
+                    None => {
+                        let col_name = &col.name;
+                        return Err(Error::SqlError(format!(
+                            "Required column '{col_name}' is missing for table '{table_name}'"
+                        )));
+                    }
+                    Some(SqlValue::Null) => {
+                        let col_name = &col.name;
+                        return Err(Error::SqlError(format!(
+                            "Column '{col_name}' in table '{table_name}' does not allow NULL values"
+                        )));
+                    }
+                    Some(_) => {}
+                }
             }
         }
 
@@ -703,16 +733,16 @@ impl<'a> QueryProcessor<'a> {
             .count();
 
         if pk_count > 1 {
+            let table_name = &create.table;
             return Err(Error::SqlError(format!(
-                "Table '{}' has composite primary key, but TegDB only supports single-column primary keys", 
-                create.table
+                "Table '{table_name}' has composite primary key, but TegDB only supports single-column primary keys"
             )));
         }
 
         if pk_count == 0 {
+            let table_name = &create.table;
             return Err(Error::SqlError(format!(
-                "Table '{}' must have exactly one primary key column",
-                create.table
+                "Table '{table_name}' must have exactly one primary key column"
             )));
         }
 
@@ -754,9 +784,9 @@ impl<'a> QueryProcessor<'a> {
         let table_existed = self.table_schemas.contains_key(&drop.table);
 
         if !drop.if_exists && !table_existed {
+            let table_name = &drop.table;
             return Err(Error::TableNotFound(format!(
-                "Table '{}' does not exist",
-                drop.table
+                "Table '{table_name}' does not exist"
             )));
         }
 
@@ -787,29 +817,37 @@ impl<'a> QueryProcessor<'a> {
     }
 
     /// Execute CREATE INDEX statement
-    pub fn execute_create_index(&mut self, create: crate::parser::CreateIndexStatement) -> Result<ResultSet<'_>> {
+    pub fn execute_create_index(
+        &mut self,
+        create: crate::parser::CreateIndexStatement,
+    ) -> Result<ResultSet<'_>> {
         // Check if table exists
         if !self.table_schemas.contains_key(&create.table_name) {
+            let table_name = &create.table_name;
             return Err(Error::TableNotFound(format!(
-                "Table '{}' does not exist",
-                create.table_name
+                "Table '{table_name}' does not exist"
             )));
         }
 
         // Check if column exists in the table
         let schema = self.get_table_schema(&create.table_name)?;
         if !schema.has_column(&create.column_name) {
+            let column_name = &create.column_name;
+            let table_name = &create.table_name;
             return Err(Error::ColumnNotFound(format!(
-                "Column '{}' does not exist in table '{}'",
-                create.column_name, create.table_name
+                "Column '{column_name}' does not exist in table '{table_name}'"
             )));
         }
 
         // Check if index already exists
-        if schema.indexes.iter().any(|idx| idx.name == create.index_name) {
+        if schema
+            .indexes
+            .iter()
+            .any(|idx| idx.name == create.index_name)
+        {
+            let index_name = &create.index_name;
             return Err(Error::SqlError(format!(
-                "Index '{}' already exists",
-                create.index_name
+                "Index '{index_name}' already exists"
             )));
         }
 
@@ -829,7 +867,8 @@ impl<'a> QueryProcessor<'a> {
         // Add to in-memory schema
         let mut schema = schema.as_ref().clone();
         schema.indexes.push(index.clone());
-        self.table_schemas.insert(create.table_name.clone(), Rc::new(schema));
+        self.table_schemas
+            .insert(create.table_name.clone(), Rc::new(schema));
 
         // Populate the index with existing data
         self.populate_index_with_existing_data(&create.table_name, &index)?;
@@ -838,14 +877,17 @@ impl<'a> QueryProcessor<'a> {
     }
 
     /// Execute DROP INDEX statement
-    pub fn execute_drop_index(&mut self, drop: crate::parser::DropIndexStatement) -> Result<ResultSet<'_>> {
+    pub fn execute_drop_index(
+        &mut self,
+        drop: crate::parser::DropIndexStatement,
+    ) -> Result<ResultSet<'_>> {
         // Find the index in any table
         let mut found = false;
         for (table_name, schema_rc) in &self.table_schemas {
             let schema = schema_rc.as_ref();
             if schema.indexes.iter().any(|idx| idx.name == drop.index_name) {
                 found = true;
-                
+
                 // Remove index metadata from storage
                 let index_key = crate::catalog::Catalog::get_index_storage_key(&drop.index_name);
                 self.transaction.delete(index_key.as_bytes())?;
@@ -853,16 +895,15 @@ impl<'a> QueryProcessor<'a> {
                 // Remove from in-memory schema
                 let mut new_schema = schema.clone();
                 new_schema.indexes.retain(|idx| idx.name != drop.index_name);
-                self.table_schemas.insert(table_name.clone(), Rc::new(new_schema));
+                self.table_schemas
+                    .insert(table_name.clone(), Rc::new(new_schema));
                 break;
             }
         }
 
         if !found && !drop.if_exists {
-            return Err(Error::Other(format!(
-                "Index '{}' does not exist",
-                drop.index_name
-            )));
+            let index_name = &drop.index_name;
+            return Err(Error::Other(format!("Index '{index_name}' does not exist")));
         }
 
         Ok(ResultSet::DropIndex)
@@ -911,26 +952,27 @@ impl<'a> QueryProcessor<'a> {
             ExecutionPlan::PrimaryKeyLookup { .. }
             | ExecutionPlan::TableRangeScan { .. }
             | ExecutionPlan::TableScan { .. } => self.execute_select_plan_streaming(plan),
-            ExecutionPlan::IndexScan { table, index, column_value, selected_columns, additional_filter } => {
+            ExecutionPlan::IndexScan {
+                table,
+                index,
+                column_value,
+                selected_columns,
+                additional_filter,
+            } => {
                 let schema = self.get_table_schema(&table)?;
                 let query_schema = QuerySchema::new_with_expressions(&selected_columns, &schema);
-                
+
                 // Build the index prefix to scan for all entries with this column value
-                let (index_start, index_end_bytes) = crate::catalog::index_prefix_range(
-                    &table,
-                    &index,
-                    &column_value,
-                );
-                
-                
-                
+                let (index_start, index_end_bytes) =
+                    crate::catalog::index_prefix_range(&table, &index, &column_value);
+
                 // Scan index entries to get primary keys
                 let mut primary_keys = Vec::new();
-        
+
                 for (key, _value) in self.transaction.scan(index_start..index_end_bytes)? {
-
-                    if let Some((_table, _index, _col_val, pk_str)) = crate::catalog::decode_index_key(&key) {
-
+                    if let Some((_table, _index, _col_val, pk_str)) =
+                        crate::catalog::decode_index_key(&key)
+                    {
                         // Parse the primary key string back to SqlValue
                         let pk_value = if let Ok(pk_int) = pk_str.parse::<i64>() {
                             crate::parser::SqlValue::Integer(pk_int)
@@ -939,22 +981,20 @@ impl<'a> QueryProcessor<'a> {
                         };
                         let pk_key = self.build_primary_key_from_value(&table, &pk_value);
                         primary_keys.push(pk_key.to_storage_bytes());
-                    } else {
-
                     }
                 }
-        
-                
+
                 // Create an iterator that fetches the actual rows using the primary keys
                 let scan_iter = if primary_keys.is_empty() {
                     Box::new(std::iter::empty())
                         as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
                 } else {
                     let row_iter = primary_keys.into_iter().filter_map(|pk_bytes| {
-                        self.transaction.get(&pk_bytes).map(|value| (pk_bytes, value))
+                        self.transaction
+                            .get(&pk_bytes)
+                            .map(|value| (pk_bytes, value))
                     });
-                    Box::new(row_iter)
-                        as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
+                    Box::new(row_iter) as Box<dyn Iterator<Item = (Vec<u8>, std::rc::Rc<[u8]>)>>
                 };
 
                 let row_iter = SelectRowIterator::new(
@@ -970,7 +1010,13 @@ impl<'a> QueryProcessor<'a> {
                     rows: Box::new(row_iter),
                 })
             }
-            ExecutionPlan::Sort { input_plan, order_by_items, schema, query_schema, limit } => {
+            ExecutionPlan::Sort {
+                input_plan,
+                order_by_items,
+                schema,
+                query_schema,
+                limit,
+            } => {
                 // For ORDER BY, we need to get the full row data to sort by columns not in SELECT
                 // We need to extract the full rows from the input plan, not just the selected columns
                 let full_rows = match &*input_plan {
@@ -979,7 +1025,7 @@ impl<'a> QueryProcessor<'a> {
                         let end_key = PrimaryKey::table_end_marker(table);
                         let scan_iter = self.transaction.scan(start_key..end_key)?;
                         let table_schema = self.get_table_schema(table)?;
-                        
+
                         let mut rows = Vec::new();
                         for (_, value) in scan_iter {
                             // Apply filter if present
@@ -995,14 +1041,15 @@ impl<'a> QueryProcessor<'a> {
                             } else {
                                 true // No filter, so it matches
                             };
-                            
+
                             if matches {
                                 // Get the full row data
-                                let row_values = self.storage_format.get_columns_by_indices_with_metadata(
-                                    &value,
-                                    &table_schema,
-                                    &(0..table_schema.columns.len()).collect::<Vec<_>>(),
-                                )?;
+                                let row_values =
+                                    self.storage_format.get_columns_by_indices_with_metadata(
+                                        &value,
+                                        &table_schema,
+                                        &(0..table_schema.columns.len()).collect::<Vec<_>>(),
+                                    )?;
                                 rows.push(row_values);
                             }
                         }
@@ -1013,79 +1060,93 @@ impl<'a> QueryProcessor<'a> {
                         self.execute_plan_materialized(*input_plan.clone())?
                     }
                 };
-                        
-                        // Create a mapping from full row to selected columns
-                        let mut row_mapping: Vec<(Vec<SqlValue>, Vec<SqlValue>)> = Vec::new();
-                        for full_row in full_rows {
-                            // Extract selected columns from full row
-                            let mut selected_values = Vec::new();
-                            for col_name in &query_schema.column_names {
-                                if let Some(col_idx) = schema.columns.iter().position(|c| c.name == *col_name) {
-                                    if col_idx < full_row.len() {
-                                        selected_values.push(full_row[col_idx].clone());
-                                    }
-                                }
+
+                // Create a mapping from full row to selected columns
+                let mut row_mapping: Vec<(Vec<SqlValue>, Vec<SqlValue>)> = Vec::new();
+                for full_row in full_rows {
+                    // Extract selected columns from full row
+                    let mut selected_values = Vec::new();
+                    for col_name in &query_schema.column_names {
+                        if let Some(col_idx) =
+                            schema.columns.iter().position(|c| c.name == *col_name)
+                        {
+                            if col_idx < full_row.len() {
+                                selected_values.push(full_row[col_idx].clone());
                             }
-                            row_mapping.push((full_row, selected_values));
                         }
-                        
-                        // Sort the full rows based on order_by_items
-                        row_mapping.sort_by(|(a_full, _), (b_full, _)| {
-                            for item in &order_by_items {
-                                if let Expression::Column(column_name) = &item.expression {
-                                    if let Some(col_idx) = schema.columns.iter().position(|c| c.name == *column_name) {
-                                        if col_idx < a_full.len() && col_idx < b_full.len() {
-                                            let cmp = match (&a_full[col_idx], &b_full[col_idx]) {
-                                                (SqlValue::Integer(a), SqlValue::Integer(b)) => a.cmp(b),
-                                                (SqlValue::Real(a), SqlValue::Real(b)) => a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
-                                                (SqlValue::Text(a), SqlValue::Text(b)) => a.cmp(b),
-                                                (SqlValue::Vector(a), SqlValue::Vector(b)) => {
-                                                    a.iter().zip(b.iter())
-                                                        .map(|(x, y)| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal))
-                                                        .find(|&ord| ord != std::cmp::Ordering::Equal)
-                                                        .unwrap_or_else(|| a.len().cmp(&b.len()))
-                                                }
-                                                (SqlValue::Null, SqlValue::Null) => std::cmp::Ordering::Equal,
-                                                (SqlValue::Null, _) => std::cmp::Ordering::Less,
-                                                (_, SqlValue::Null) => std::cmp::Ordering::Greater,
-                                                _ => std::cmp::Ordering::Equal,
-                                            };
-                                            
-                                            if cmp != std::cmp::Ordering::Equal {
-                                                return match item.direction {
-                                                    OrderDirection::Asc => cmp,
-                                                    OrderDirection::Desc => cmp.reverse(),
-                                                };
-                                            }
+                    }
+                    row_mapping.push((full_row, selected_values));
+                }
+
+                // Sort the full rows based on order_by_items
+                row_mapping.sort_by(|(a_full, _), (b_full, _)| {
+                    for item in &order_by_items {
+                        if let Expression::Column(column_name) = &item.expression {
+                            if let Some(col_idx) =
+                                schema.columns.iter().position(|c| c.name == *column_name)
+                            {
+                                if col_idx < a_full.len() && col_idx < b_full.len() {
+                                    let cmp = match (&a_full[col_idx], &b_full[col_idx]) {
+                                        (SqlValue::Integer(a), SqlValue::Integer(b)) => a.cmp(b),
+                                        (SqlValue::Real(a), SqlValue::Real(b)) => {
+                                            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
                                         }
+                                        (SqlValue::Text(a), SqlValue::Text(b)) => a.cmp(b),
+                                        (SqlValue::Vector(a), SqlValue::Vector(b)) => a
+                                            .iter()
+                                            .zip(b.iter())
+                                            .map(|(x, y)| {
+                                                x.partial_cmp(y)
+                                                    .unwrap_or(std::cmp::Ordering::Equal)
+                                            })
+                                            .find(|&ord| ord != std::cmp::Ordering::Equal)
+                                            .unwrap_or_else(|| a.len().cmp(&b.len())),
+                                        (SqlValue::Null, SqlValue::Null) => {
+                                            std::cmp::Ordering::Equal
+                                        }
+                                        (SqlValue::Null, _) => std::cmp::Ordering::Less,
+                                        (_, SqlValue::Null) => std::cmp::Ordering::Greater,
+                                        _ => std::cmp::Ordering::Equal,
+                                    };
+
+                                    if cmp != std::cmp::Ordering::Equal {
+                                        return match item.direction {
+                                            OrderDirection::Asc => cmp,
+                                            OrderDirection::Desc => cmp.reverse(),
+                                        };
                                     }
                                 }
                             }
-                            std::cmp::Ordering::Equal
-                        });
-                        
-                        // Extract the sorted selected columns
-                        let mut sorted_rows: Vec<Vec<SqlValue>> = row_mapping.into_iter().map(|(_, selected)| selected).collect();
-                        
-                        // Apply LIMIT if specified
-                        if let Some(limit) = limit {
-                            sorted_rows.truncate(limit as usize);
                         }
-                        
-                        // Create a SelectRowIterator with sorted results
-                        let mut sorted_iter = SelectRowIterator::new(
-                            Box::new(std::iter::empty::<(Vec<u8>, std::rc::Rc<[u8]>)>()),
-                            schema,
-                            query_schema.clone(),
-                            None,
-                            None,
-                        );
-                        sorted_iter.sorted_results = Some(sorted_rows.into_iter());
-                        
-                        Ok(ResultSet::Select {
-                            columns: query_schema.column_names.clone(),
-                            rows: Box::new(sorted_iter),
-                        })
+                    }
+                    std::cmp::Ordering::Equal
+                });
+
+                // Extract the sorted selected columns
+                let mut sorted_rows: Vec<Vec<SqlValue>> = row_mapping
+                    .into_iter()
+                    .map(|(_, selected)| selected)
+                    .collect();
+
+                // Apply LIMIT if specified
+                if let Some(limit) = limit {
+                    sorted_rows.truncate(limit as usize);
+                }
+
+                // Create a SelectRowIterator with sorted results
+                let mut sorted_iter = SelectRowIterator::new(
+                    Box::new(std::iter::empty::<(Vec<u8>, std::rc::Rc<[u8]>)>()),
+                    schema,
+                    query_schema.clone(),
+                    None,
+                    None,
+                );
+                sorted_iter.sorted_results = Some(sorted_rows.into_iter());
+
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(sorted_iter),
+                })
             }
             // Non-SELECT operations remain the same
             ExecutionPlan::Insert {
@@ -1107,7 +1168,12 @@ impl<'a> QueryProcessor<'a> {
             ExecutionPlan::DropTable { table, if_exists } => {
                 self.execute_drop_table_plan(&table, if_exists)
             }
-            ExecutionPlan::CreateIndex { index_name, table_name, column_name, unique } => {
+            ExecutionPlan::CreateIndex {
+                index_name,
+                table_name,
+                column_name,
+                unique,
+            } => {
                 let create_stmt = crate::parser::CreateIndexStatement {
                     index_name,
                     table_name,
@@ -1117,7 +1183,10 @@ impl<'a> QueryProcessor<'a> {
                 };
                 self.execute_create_index(create_stmt)
             }
-            ExecutionPlan::DropIndex { index_name, if_exists } => {
+            ExecutionPlan::DropIndex {
+                index_name,
+                if_exists,
+            } => {
                 let drop_stmt = crate::parser::DropIndexStatement {
                     index_name,
                     if_exists,
@@ -1133,7 +1202,9 @@ impl<'a> QueryProcessor<'a> {
     /// Check if the selected columns contain aggregate functions
     fn has_aggregate_functions(&self, selected_columns: &[crate::parser::Expression]) -> bool {
         use crate::parser::Expression;
-        selected_columns.iter().any(|expr| matches!(expr, Expression::AggregateFunction { .. }))
+        selected_columns
+            .iter()
+            .any(|expr| matches!(expr, Expression::AggregateFunction { .. }))
     }
 
     /// Execute aggregate query by processing all rows and computing aggregates
@@ -1142,19 +1213,19 @@ impl<'a> QueryProcessor<'a> {
         plan: crate::planner::ExecutionPlan,
         query_schema: QuerySchema,
     ) -> Result<ResultSet<'_>> {
-        use crate::planner::ExecutionPlan;
         use crate::parser::Expression;
+        use crate::planner::ExecutionPlan;
 
         // Collect all matching rows first
         let mut matching_rows = Vec::new();
-        
+
         match plan {
             ExecutionPlan::TableScan { table, filter, .. } => {
                 let start_key = PrimaryKey::table_prefix(&table);
                 let end_key = PrimaryKey::table_end_marker(&table);
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
                 let schema = self.get_table_schema(&table)?;
-                
+
                 for (_, value) in scan_iter {
                     // Apply filter if present
                     let matches = if let Some(ref filter_condition) = filter {
@@ -1165,28 +1236,31 @@ impl<'a> QueryProcessor<'a> {
                         ) {
                             Ok(matches) => matches,
                             Err(_) => {
-                                return Err(Error::Other("Failed to evaluate condition".to_string()));
+                                return Err(Error::Other(
+                                    "Failed to evaluate condition".to_string(),
+                                ));
                             }
                         }
                     } else {
                         true // No filter, so it matches
                     };
-                    
+
                     if matches {
                         // For aggregate functions, we need to get the specific column data
                         // that the aggregate function is operating on
                         if let Some(ref expressions) = query_schema.expressions {
-                            if let Some(Expression::AggregateFunction { arg, .. }) = expressions.first() {
+                            if let Some(Expression::AggregateFunction { arg, .. }) =
+                                expressions.first()
+                            {
                                 // Extract the column name from the aggregate function argument
                                 if let Expression::Column(col_name) = &**arg {
                                     // Get the column index
                                     if let Some(col_idx) = schema.get_column_index(col_name) {
                                         // Get just that column's value
-                                        let col_value = self.storage_format.get_column_by_index_with_metadata(
-                                            &value,
-                                            &schema,
-                                            col_idx,
-                                        )?;
+                                        let col_value =
+                                            self.storage_format.get_column_by_index_with_metadata(
+                                                &value, &schema, col_idx,
+                                            )?;
                                         matching_rows.push(vec![col_value]);
                                     } else {
                                         // Column not found, use null
@@ -1194,29 +1268,32 @@ impl<'a> QueryProcessor<'a> {
                                     }
                                 } else {
                                     // Non-column argument, get all columns for now
-                                    let row_values = self.storage_format.get_columns_by_indices_with_metadata(
-                                        &value,
-                                        &schema,
-                                        &query_schema.column_indices,
-                                    )?;
+                                    let row_values =
+                                        self.storage_format.get_columns_by_indices_with_metadata(
+                                            &value,
+                                            &schema,
+                                            &query_schema.column_indices,
+                                        )?;
                                     matching_rows.push(row_values);
                                 }
                             } else {
                                 // No aggregate functions, get all columns
-                                let row_values = self.storage_format.get_columns_by_indices_with_metadata(
-                                    &value,
-                                    &schema,
-                                    &query_schema.column_indices,
-                                )?;
+                                let row_values =
+                                    self.storage_format.get_columns_by_indices_with_metadata(
+                                        &value,
+                                        &schema,
+                                        &query_schema.column_indices,
+                                    )?;
                                 matching_rows.push(row_values);
                             }
                         } else {
                             // No expressions, get all columns
-                            let row_values = self.storage_format.get_columns_by_indices_with_metadata(
-                                &value,
-                                &schema,
-                                &query_schema.column_indices,
-                            )?;
+                            let row_values =
+                                self.storage_format.get_columns_by_indices_with_metadata(
+                                    &value,
+                                    &schema,
+                                    &query_schema.column_indices,
+                                )?;
                             matching_rows.push(row_values);
                         }
                     }
@@ -1227,10 +1304,10 @@ impl<'a> QueryProcessor<'a> {
                 matching_rows = vec![];
             }
         }
-        
+
         // Compute aggregate results
         let mut aggregate_results = Vec::new();
-        
+
         if let Some(ref expressions) = query_schema.expressions {
             for expr in expressions {
                 match expr {
@@ -1249,10 +1326,10 @@ impl<'a> QueryProcessor<'a> {
             // Fallback for simple COUNT(*) case
             aggregate_results.push(crate::parser::SqlValue::Integer(matching_rows.len() as i64));
         }
-        
+
         // Create a SelectRowIterator with aggregate result
         let empty_iter = Box::new(std::iter::empty::<(Vec<u8>, std::rc::Rc<[u8]>)>());
-        
+
         let mut aggregate_iter = SelectRowIterator::new(
             empty_iter,
             std::rc::Rc::new(TableSchema {
@@ -1265,7 +1342,7 @@ impl<'a> QueryProcessor<'a> {
             None,
         );
         aggregate_iter.aggregate_result = Some(aggregate_results);
-        
+
         Ok(ResultSet::Select {
             columns: query_schema.column_names.clone(),
             rows: Box::new(aggregate_iter),
@@ -1280,20 +1357,20 @@ impl<'a> QueryProcessor<'a> {
         rows: &[Vec<crate::parser::SqlValue>],
     ) -> Result<crate::parser::SqlValue> {
         use crate::parser::Expression;
-        
+
         // Extract values from the argument expression for each row
         let mut values = Vec::new();
         for row in rows {
             // Create a context with actual column names from the query schema
             let mut context = std::collections::HashMap::new();
-            
+
             // For now, assume the first column is the one we want for aggregate functions
             // This is a simplified approach - in a full implementation, we'd need to map
             // the aggregate function argument to the correct column index
             if !row.is_empty() {
                 context.insert("value".to_string(), row[0].clone());
             }
-            
+
             // Evaluate the argument expression
             match arg {
                 Expression::Column(col_name) => {
@@ -1318,11 +1395,14 @@ impl<'a> QueryProcessor<'a> {
                 }
             }
         }
-        
+
         // Compute the aggregate based on function name
         match func_name.to_uppercase().as_str() {
             "COUNT" => {
-                let count = values.iter().filter(|v| !matches!(v, crate::parser::SqlValue::Null)).count();
+                let count = values
+                    .iter()
+                    .filter(|v| !matches!(v, crate::parser::SqlValue::Null))
+                    .count();
                 Ok(crate::parser::SqlValue::Integer(count as i64))
             }
             "SUM" => {
@@ -1383,7 +1463,9 @@ impl<'a> QueryProcessor<'a> {
                         _ => {} // Ignore non-numeric values
                     }
                 }
-                Ok(max_val.map(crate::parser::SqlValue::Integer).unwrap_or(crate::parser::SqlValue::Null))
+                Ok(max_val
+                    .map(crate::parser::SqlValue::Integer)
+                    .unwrap_or(crate::parser::SqlValue::Null))
             }
             "MIN" => {
                 let mut min_val = None;
@@ -1410,9 +1492,13 @@ impl<'a> QueryProcessor<'a> {
                         _ => {} // Ignore non-numeric values
                     }
                 }
-                Ok(min_val.map(crate::parser::SqlValue::Integer).unwrap_or(crate::parser::SqlValue::Null))
+                Ok(min_val
+                    .map(crate::parser::SqlValue::Integer)
+                    .unwrap_or(crate::parser::SqlValue::Null))
             }
-            _ => Err(crate::Error::Other(format!("Unsupported aggregate function: {}", func_name))),
+            _ => Err(crate::Error::Other(format!(
+                "Unsupported aggregate function: {func_name}"
+            ))),
         }
     }
 
@@ -1522,8 +1608,13 @@ impl<'a> QueryProcessor<'a> {
                 let end_key = PrimaryKey::table_end_marker(&table);
                 // Create streaming iterator for table scan
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
-                let row_iter =
-                    SelectRowIterator::new(scan_iter, schema.clone(), query_schema.clone(), filter, limit);
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    schema.clone(),
+                    query_schema.clone(),
+                    filter,
+                    limit,
+                );
 
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
@@ -1609,7 +1700,9 @@ impl<'a> QueryProcessor<'a> {
                         column_names.push(name.clone());
                     }
                     _ => {
-                        return Err(Error::Other("Update operations only support column references".to_string()));
+                        return Err(Error::Other(
+                            "Update operations only support column references".to_string(),
+                        ));
                     }
                 }
             }
@@ -1627,12 +1720,8 @@ impl<'a> QueryProcessor<'a> {
                     }
                 }
                 let pk_column = schema.get_primary_key_column().unwrap();
-                let key = self.build_primary_key_from_value(
-                    table,
-                    row_data
-                        .get(pk_column)
-                        .unwrap(),
-                );
+                let key =
+                    self.build_primary_key_from_value(table, row_data.get(pk_column).unwrap());
                 keys.push(key);
             }
             keys
@@ -1655,12 +1744,8 @@ impl<'a> QueryProcessor<'a> {
                     // Validate updated row
                     // Check if primary key was changed and if new key conflicts with existing data
                     let pk_column = schema.get_primary_key_column().unwrap();
-                    let new_key = self.build_primary_key_from_value(
-                        table,
-                        row_data
-                            .get(pk_column)
-                            .unwrap(),
-                    );
+                    let new_key =
+                        self.build_primary_key_from_value(table, row_data.get(pk_column).unwrap());
                     let new_key_bytes = new_key.to_storage_bytes();
                     let key_bytes = key.to_storage_bytes();
                     if new_key_bytes != key_bytes && self.transaction.get(&new_key_bytes).is_some()
@@ -1672,7 +1757,7 @@ impl<'a> QueryProcessor<'a> {
 
                     // Validate other constraints (NOT NULL, etc.) but skip primary key validation
                     // since we already handled it above
-                    let _ = self.validate_row_data(table, &row_data);
+                    self.validate_row_data(table, &row_data)?;
 
                     // Serialize and store the updated row
                     let serialized = self.storage_format.serialize_row(&row_data, &schema)?;
@@ -1934,9 +2019,7 @@ impl<'a> QueryProcessor<'a> {
         Ok((start_key, end_key))
     }
 
-    /// Compare two SqlValues for sorting
-
-
+    /// Execute a query plan using a previously computed `QuerySchema`.
     pub fn execute_plan_with_query_schema(
         &mut self,
         plan: crate::planner::ExecutionPlan,
@@ -2031,7 +2114,8 @@ impl<'a> QueryProcessor<'a> {
             if let Some(column_value) = row_data.get(&index.column_name) {
                 let pk_column = schema.get_primary_key_column().unwrap();
                 let pk_value = row_data.get(pk_column).unwrap();
-                let index_key = crate::catalog::encode_index_key(table, &index.name, column_value, pk_value);
+                let index_key =
+                    crate::catalog::encode_index_key(table, &index.name, column_value, pk_value);
                 self.transaction.set(&index_key, b"1".to_vec())?;
             }
         }
@@ -2045,30 +2129,37 @@ impl<'a> QueryProcessor<'a> {
         index: &crate::catalog::IndexInfo,
     ) -> Result<()> {
         let schema = self.get_table_schema(table_name)?;
-        
+
         // Scan all existing rows in the table
         let start_key = PrimaryKey::table_prefix(table_name);
         let end_key = PrimaryKey::table_end_marker(table_name);
         let scan_iter = self.transaction.scan(start_key..end_key)?;
-        
+
         // Collect all rows first to avoid borrow checker issues
         let mut rows_to_index = Vec::new();
         for (_, value_rc) in scan_iter {
             // Deserialize the row data
-            let row_data = self.storage_format.deserialize_row_full(&value_rc, &schema)?;
+            let row_data = self
+                .storage_format
+                .deserialize_row_full(&value_rc, &schema)?;
             rows_to_index.push(row_data);
         }
-        
+
         // Now create index entries for all rows
         for row_data in rows_to_index {
             if let Some(column_value) = row_data.get(&index.column_name) {
                 let pk_column = schema.get_primary_key_column().unwrap();
                 let pk_value = row_data.get(pk_column).unwrap();
-                let index_key = crate::catalog::encode_index_key(table_name, &index.name, column_value, pk_value);
+                let index_key = crate::catalog::encode_index_key(
+                    table_name,
+                    &index.name,
+                    column_value,
+                    pk_value,
+                );
                 self.transaction.set(&index_key, b"1".to_vec())?;
             }
         }
-        
+
         Ok(())
     }
 }

@@ -67,6 +67,11 @@ fn test_update_validation() -> Result<()> {
         assert!(result.is_err(), "Should fail for NOT NULL violation");
         println!("NOT NULL update validation: {result:?}");
 
+        // Test unknown column in assignment
+        let result = db.execute("UPDATE users SET unknown_column = 'oops' WHERE id = 1");
+        assert!(result.is_err(), "Should fail for unknown column in UPDATE");
+        println!("Unknown column update validation: {result:?}");
+
         // Test PRIMARY KEY constraint violation (updating to existing PK)
         let result = db.execute("UPDATE users SET id = 2 WHERE id = 1");
         assert!(result.is_err(), "Should fail for PRIMARY KEY violation");

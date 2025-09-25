@@ -124,10 +124,9 @@ impl PreparedStatement {
                 Self::count_parameters_in_expression(left)
                     + Self::count_parameters_in_expression(right)
             }
-            Expression::FunctionCall { args, .. } => args
-                .iter()
-                .map(|arg| Self::count_parameters_in_expression(arg))
-                .sum(),
+            Expression::FunctionCall { args, .. } => {
+                args.iter().map(Self::count_parameters_in_expression).sum()
+            }
             Expression::AggregateFunction { arg, .. } => Self::count_parameters_in_expression(arg),
         }
     }
@@ -435,7 +434,7 @@ impl Database {
                         Ok(name.clone())
                     } else {
                         // For function calls and other expressions, use a placeholder name
-                        Ok(format!("expr_{}", i))
+                        Ok(format!("expr_{i}"))
                     }
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -471,10 +470,10 @@ impl Database {
         params: &[SqlValue],
     ) -> Result<usize> {
         if params.len() != stmt.parameter_count() {
+            let expected = stmt.parameter_count();
+            let received = params.len();
             return Err(crate::Error::Other(format!(
-                "Expected {} parameters, got {}",
-                stmt.parameter_count(),
-                params.len()
+                "Expected {expected} parameters, got {received}"
             )));
         }
 
@@ -503,10 +502,10 @@ impl Database {
         params: &[SqlValue],
     ) -> Result<QueryResult> {
         if params.len() != stmt.parameter_count() {
+            let expected = stmt.parameter_count();
+            let received = params.len();
             return Err(crate::Error::Other(format!(
-                "Expected {} parameters, got {}",
-                stmt.parameter_count(),
-                params.len()
+                "Expected {expected} parameters, got {received}"
             )));
         }
 
@@ -536,10 +535,10 @@ impl Database {
             match value {
                 SqlValue::Parameter(index) => {
                     if *index >= params.len() {
+                        let position = index + 1;
+                        let available = params.len();
                         return Err(crate::Error::Other(format!(
-                            "Parameter index {} out of bounds (only {} parameters provided)",
-                            index + 1,
-                            params.len()
+                            "Parameter index {position} out of bounds (only {available} parameters provided)"
                         )));
                     }
                     Ok(params[*index].clone())
@@ -857,7 +856,7 @@ fn expr_has_param(expr: &crate::parser::Expression) -> bool {
         Expression::Value(_) => false,
         Expression::Column(_) => false,
         Expression::BinaryOp { left, right, .. } => expr_has_param(left) || expr_has_param(right),
-        Expression::FunctionCall { args, .. } => args.iter().any(|arg| expr_has_param(arg)),
+        Expression::FunctionCall { args, .. } => args.iter().any(expr_has_param),
         Expression::AggregateFunction { arg, .. } => expr_has_param(arg),
     }
 }
