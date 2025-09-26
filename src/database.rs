@@ -253,7 +253,7 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         // Only SELECT statements make sense for queries
         match &statement {
@@ -370,7 +370,7 @@ impl Database {
 
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -383,7 +383,7 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -425,7 +425,7 @@ impl Database {
     /// Prepare a SQL statement for execution
     /// This parses the SQL and creates a prepared statement that can be executed with parameters
     pub fn prepare(&self, sql: &str) -> Result<PreparedStatement> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
         let query_schema = if let Statement::Select(ref select) = statement {
             let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
             let columns: Vec<String> = select
@@ -769,7 +769,7 @@ pub struct DatabaseTransaction<'a> {
 impl DatabaseTransaction<'_> {
     /// Execute SQL statement within transaction
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(format!("{e:?}")))?;
+        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         // Get schemas from shared catalog and convert to Rc
         let schemas = Database::get_schemas_rc(self.catalog.get_all_schemas());

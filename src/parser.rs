@@ -14,6 +14,195 @@ use nom::{
 };
 use std::collections::HashMap;
 
+/// Enhanced error information for better debugging
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
+    pub context: String,
+    pub expected: Vec<String>,
+    pub found: Option<String>,
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Parse error at line {}, column {}:", self.line, self.column)?;
+        writeln!(f, "  {}", self.context)?;
+        writeln!(f, "  {}", " ".repeat(self.column - 1) + "^")?;
+        writeln!(f, "Error: {}", self.message)?;
+        
+        if !self.expected.is_empty() {
+            writeln!(f, "Expected one of: {}", self.expected.join(", "))?;
+        }
+        
+        if let Some(found) = &self.found {
+            writeln!(f, "Found: '{}'", found)?;
+        }
+        
+        Ok(())
+    }
+}
+
+/// Calculate line and column from input position
+fn calculate_position(input: &str, position: usize) -> (usize, usize) {
+    let before_error = &input[..position];
+    let line = before_error.matches('\n').count() + 1;
+    let column = before_error.rfind('\n').map_or(position + 1, |last_newline| {
+        position - last_newline
+    });
+    (line, column)
+}
+
+/// Extract context around the error position
+fn extract_context(input: &str, position: usize, context_size: usize) -> String {
+    let start = position.saturating_sub(context_size);
+    let end = (position + context_size).min(input.len());
+    let context = &input[start..end];
+    
+    // Replace newlines with spaces for single-line display
+    context.replace('\n', " ").replace('\r', " ")
+}
+
+/// Convert nom error to our enhanced error format
+fn convert_nom_error(input: &str, error: nom::Err<nom::error::Error<&str>>) -> ParseError {
+    match error {
+        nom::Err::Error(e) | nom::Err::Failure(e) => {
+            let (line, column) = calculate_position(input, input.len() - e.input.len());
+            let context = extract_context(input, input.len() - e.input.len(), 20);
+            
+            // Provide more specific error messages based on error kind
+            let (message, expected) = match e.code {
+                nom::error::ErrorKind::Tag => {
+                    ("Unexpected token".to_string(), vec!["keyword".to_string(), "identifier".to_string()])
+                }
+                nom::error::ErrorKind::Alpha => {
+                    ("Expected alphabetic character".to_string(), vec!["letter".to_string()])
+                }
+                nom::error::ErrorKind::Digit => {
+                    ("Expected digit".to_string(), vec!["number".to_string()])
+                }
+                nom::error::ErrorKind::AlphaNumeric => {
+                    ("Expected alphanumeric character".to_string(), vec!["letter or digit".to_string()])
+                }
+                nom::error::ErrorKind::Char => {
+                    ("Expected specific character".to_string(), vec!["character".to_string()])
+                }
+                nom::error::ErrorKind::Eof => {
+                    ("Unexpected end of input".to_string(), vec!["more input".to_string()])
+                }
+                _ => {
+                    (format!("Parse error: {:?}", e.code), vec!["valid SQL syntax".to_string()])
+                }
+            };
+            
+            ParseError {
+                message,
+                line,
+                column,
+                context,
+                expected,
+                found: e.input.chars().next().map(|c| c.to_string()),
+            }
+        }
+        nom::Err::Incomplete(_) => {
+            let (line, column) = calculate_position(input, input.len());
+            let context = extract_context(input, input.len(), 20);
+            
+            ParseError {
+                message: "Incomplete input - more data expected".to_string(),
+                line,
+                column,
+                context,
+                expected: vec!["more input".to_string()],
+                found: None,
+            }
+        }
+    }
+}
+
+/// Debug utility to help identify parser issues
+pub fn debug_parse_sql(input: &str) -> Result<Statement, ParseError> {
+    // First try normal parsing
+    match parse_sql(input) {
+        Ok(statement) => Ok(statement),
+        Err(error) => {
+            // Provide additional debugging information
+            eprintln!("=== PARSER DEBUG INFO ===");
+            eprintln!("Input length: {}", input.len());
+            eprintln!("Input: {:?}", input);
+            eprintln!("Error: {}", error);
+            eprintln!("========================");
+            Err(error)
+        }
+    }
+}
+
+/// Parse SQL with detailed error reporting and suggestions
+pub fn parse_sql_with_suggestions(input: &str) -> Result<Statement, ParseError> {
+    match parse_sql(input) {
+        Ok(statement) => Ok(statement),
+        Err(mut error) => {
+            // Add suggestions based on common mistakes
+            let suggestions = generate_suggestions(input, &error);
+            if !suggestions.is_empty() {
+                error.message.push_str(&format!("\n\nSuggestions:\n{}", suggestions.join("\n")));
+            }
+            Err(error)
+        }
+    }
+}
+
+/// Generate helpful suggestions for common parser errors
+fn generate_suggestions(input: &str, error: &ParseError) -> Vec<String> {
+    let mut suggestions = Vec::new();
+    
+    // Check for common SQL syntax issues
+    if error.message.contains("Unexpected token") {
+        if input.to_uppercase().contains("SELCT") {
+            suggestions.push("- Did you mean 'SELECT' instead of 'SELCT'?".to_string());
+        }
+        if input.to_uppercase().contains("FRM") {
+            suggestions.push("- Did you mean 'FROM' instead of 'FRM'?".to_string());
+        }
+        if input.to_uppercase().contains("WERE") {
+            suggestions.push("- Did you mean 'WHERE' instead of 'WERE'?".to_string());
+        }
+        if input.to_uppercase().contains("INSRT") {
+            suggestions.push("- Did you mean 'INSERT' instead of 'INSRT'?".to_string());
+        }
+    }
+    
+    // Check for missing keywords
+    if error.message.contains("Expected") && error.expected.contains(&"keyword".to_string()) {
+        let context = &error.context;
+        if context.to_uppercase().contains("SELECT") && !context.to_uppercase().contains("FROM") {
+            suggestions.push("- Missing 'FROM' clause after SELECT".to_string());
+        }
+        if context.to_uppercase().contains("INSERT") && !context.to_uppercase().contains("INTO") {
+            suggestions.push("- Missing 'INTO' clause after INSERT".to_string());
+        }
+        if context.to_uppercase().contains("UPDATE") && !context.to_uppercase().contains("SET") {
+            suggestions.push("- Missing 'SET' clause after UPDATE".to_string());
+        }
+    }
+    
+    // Check for missing punctuation
+    if error.message.contains("Expected specific character") {
+        if error.context.contains("(") && !error.context.contains(")") {
+            suggestions.push("- Missing closing parenthesis ')'".to_string());
+        }
+        if error.context.contains("'") && error.context.matches("'").count() % 2 == 1 {
+            suggestions.push("- Missing closing single quote".to_string());
+        }
+        if error.context.contains("\"") && error.context.matches("\"").count() % 2 == 1 {
+            suggestions.push("- Missing closing double quote".to_string());
+        }
+    }
+    
+    suggestions
+}
+
 fn parse_identifier_optimized(input: &str) -> IResult<&str, &str> {
     recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))).parse(input)
 }
@@ -537,16 +726,26 @@ impl Expression {
 }
 
 /// Parse SQL and assign unique parameter indices
-pub fn parse_sql(input: &str) -> Result<Statement, String> {
+pub fn parse_sql(input: &str) -> Result<Statement, ParseError> {
     let (remaining, statement) = parse_statement
         .parse(input)
-        .map_err(|e| format!("Parse error: {e:?}"))?;
+        .map_err(|e| convert_nom_error(input, e))?;
 
     // Allow trailing whitespace and optional semicolon(s)
     let remaining = remaining.trim_start();
     let remaining = remaining.strip_prefix(';').unwrap_or(remaining);
     if !remaining.trim().is_empty() {
-        return Err(format!("Unexpected input after statement: '{remaining}'"));
+        let (line, column) = calculate_position(input, input.len() - remaining.len());
+        let context = extract_context(input, input.len() - remaining.len(), 20);
+        
+        return Err(ParseError {
+            message: "Unexpected input after statement".to_string(),
+            line,
+            column,
+            context,
+            expected: vec!["end of statement".to_string(), "semicolon".to_string()],
+            found: Some(remaining.chars().take(10).collect()),
+        });
     }
 
     Ok(statement)

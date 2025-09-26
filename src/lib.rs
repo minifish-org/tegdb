@@ -80,7 +80,7 @@ pub use error::{Error, Result};
 pub use catalog::Catalog;
 #[cfg(feature = "dev")]
 pub use parser::{
-    parse_sql, Assignment, ColumnConstraint, ColumnDefinition, ComparisonOperator, Condition,
+    parse_sql, parse_sql_with_suggestions, debug_parse_sql, ParseError, Assignment, ColumnConstraint, ColumnDefinition, ComparisonOperator, Condition,
     CreateTableStatement, DataType, DeleteStatement, DropTableStatement, Expression,
     InsertStatement, SelectStatement, Statement, UpdateStatement, WhereClause,
 };
