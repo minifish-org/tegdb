@@ -19,6 +19,11 @@ fs2 = "0.4.3"  # File locking for native backend
 nom = "8.0.0"   # SQL parser
 fastrand = "2.0.1"  # Fast random number generation for vector indexing
 
+# CLI dependencies
+clap = { version = "4.0", features = ["derive"] }  # Argument parsing
+rustyline = "14.0"  # REPL functionality
+crossterm = "0.27"  # Terminal I/O
+
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
@@ -163,6 +168,11 @@ required-features = ["dev"]
 [[bin]]
 name = "test_aggregate_execution"
 path = "test_aggregate_execution.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "tg"
+path = "src/bin/tg.rs"
 required-features = ["dev"]
 
 
