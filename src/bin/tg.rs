@@ -18,11 +18,19 @@ fn format_sql_value(value: &SqlValue) -> String {
     }
 }
 
-fn format_query_result(result: &QueryResult) -> String {
+fn format_query_result(result: &QueryResult, format: OutputFormat) -> String {
     if result.rows().is_empty() {
         return "No rows returned".to_string();
     }
     
+    match format {
+        OutputFormat::Table => format_table_output(result),
+        OutputFormat::Csv => format_csv_output(result),
+        OutputFormat::Json => format_json_output(result),
+    }
+}
+
+fn format_table_output(result: &QueryResult) -> String {
     // Calculate column widths
     let mut col_widths = Vec::new();
     for (i, col) in result.columns().iter().enumerate() {
@@ -76,6 +84,84 @@ fn format_query_result(result: &QueryResult) -> String {
     output
 }
 
+fn format_csv_output(result: &QueryResult) -> String {
+    let mut output = String::new();
+    
+    // Header
+    for (i, col) in result.columns().iter().enumerate() {
+        if i > 0 {
+            output.push(',');
+        }
+        output.push_str(&escape_csv_field(col));
+    }
+    output.push('\n');
+    
+    // Rows
+    for row in result.rows() {
+        for (i, cell) in row.iter().enumerate() {
+            if i > 0 {
+                output.push(',');
+            }
+            output.push_str(&escape_csv_field(&format_sql_value(cell)));
+        }
+        output.push('\n');
+    }
+    
+    output
+}
+
+fn format_json_output(result: &QueryResult) -> String {
+    let mut output = String::new();
+    output.push('[');
+    
+    for (row_idx, row) in result.rows().iter().enumerate() {
+        if row_idx > 0 {
+            output.push(',');
+        }
+        output.push('\n');
+        output.push_str("  {");
+        
+        for (col_idx, cell) in row.iter().enumerate() {
+            if col_idx > 0 {
+                output.push(',');
+            }
+            let col_name = &result.columns()[col_idx];
+            let cell_value = format_sql_value(cell);
+            output.push_str(&format!("\n    \"{}\": {}", col_name, escape_json_value(&cell_value)));
+        }
+        
+        output.push('\n');
+        output.push_str("  }");
+    }
+    
+    output.push('\n');
+    output.push(']');
+    output
+}
+
+fn escape_csv_field(field: &str) -> String {
+    if field.contains(',') || field.contains('"') || field.contains('\n') {
+        format!("\"{}\"", field.replace('"', "\"\""))
+    } else {
+        field.to_string()
+    }
+}
+
+fn escape_json_value(value: &str) -> String {
+    if value == "NULL" {
+        "null".to_string()
+    } else if value.starts_with('"') && value.ends_with('"') {
+        // Already a string literal
+        value.to_string()
+    } else if value.parse::<i64>().is_ok() || value.parse::<f64>().is_ok() {
+        // Number
+        value.to_string()
+    } else {
+        // String - escape and quote
+        format!("\"{}\"", value.replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r"))
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "tg")]
 #[command(about = "TegDB CLI - A lightweight embedded database")]
@@ -107,6 +193,17 @@ struct Cli {
     /// Quiet mode (output results only)
     #[arg(short, long)]
     quiet: bool,
+    
+    /// Output format (table, csv, json)
+    #[arg(long, default_value = "table")]
+    mode: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OutputFormat {
+    Table,
+    Csv,
+    Json,
 }
 
 struct CliState {
@@ -114,6 +211,7 @@ struct CliState {
     timer_enabled: bool,
     echo_enabled: bool,
     output_file: Option<String>,
+    output_format: OutputFormat,
 }
 
 impl CliState {
@@ -124,6 +222,7 @@ impl CliState {
             timer_enabled: false,
             echo_enabled: false,
             output_file: None,
+            output_format: OutputFormat::Table,
         })
     }
     
@@ -137,10 +236,13 @@ impl CliState {
         // Check if it's a SELECT statement
         let trimmed_sql = sql.trim().to_uppercase();
         let is_select = trimmed_sql.starts_with("SELECT");
+        let is_copy = trimmed_sql.starts_with("COPY");
         
         let result = if is_select {
             let query_result = self.db.query(sql)?;
-            format_query_result(&query_result)
+            format_query_result(&query_result, self.output_format)
+        } else if is_copy {
+            self.handle_copy_command(sql)?
         } else {
             let rows_affected = self.db.execute(sql)?;
             format!("{}", rows_affected)
@@ -163,6 +265,67 @@ impl CliState {
         Ok(())
     }
     
+    fn handle_copy_command(&mut self, sql: &str) -> Result<String, Box<dyn std::error::Error>> {
+        // Simple COPY command parser
+        let parts: Vec<&str> = sql.split_whitespace().collect();
+        if parts.len() < 4 {
+            return Err(format!("Invalid COPY command syntax: expected at least 4 parts, got {}", parts.len()).into());
+        }
+        
+        if parts[2].to_uppercase() == "FROM" {
+            // COPY table FROM file
+            let table_name = parts[1];
+            let file_path = parts[3];
+            
+            // Read CSV file and insert into table
+            let content = fs::read_to_string(file_path)?;
+            let lines: Vec<&str> = content.lines().collect();
+            
+            if lines.is_empty() {
+                return Ok("0 rows imported".to_string());
+            }
+            
+            // Assume first line is header
+            let header = lines[0];
+            let columns: Vec<&str> = header.split(',').map(|s| s.trim()).collect();
+            
+            let mut imported = 0;
+            for line in &lines[1..] {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                
+                let values: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+                if values.len() != columns.len() {
+                    continue; // Skip malformed rows
+                }
+                
+                // Build INSERT statement
+                let values_str = values.iter()
+                    .map(|v| if v.parse::<i64>().is_ok() || v.parse::<f64>().is_ok() { v.to_string() } else { format!("'{}'", v) })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                
+                let insert_sql = format!("INSERT INTO {} ({}) VALUES ({})", 
+                    table_name, 
+                    columns.join(", "), 
+                    values_str
+                );
+                
+                self.db.execute(&insert_sql)?;
+                imported += 1;
+            }
+            
+            Ok(format!("{} rows imported", imported))
+        } else if parts[1].to_uppercase() == "TO" {
+            // COPY (SELECT ...) TO file
+            // This is more complex and would require parsing the SELECT part
+            return Err("COPY TO not yet implemented".into());
+        } else {
+            Err("Invalid COPY command syntax".into())
+        }
+    }
+    
     fn handle_dot_command(&mut self, line: &str) -> Result<bool, Box<dyn std::error::Error>> {
         let parts: Vec<&str> = line.trim().split_whitespace().collect();
         if parts.is_empty() {
@@ -180,6 +343,8 @@ impl CliState {
                 println!("  .read FILE     - Execute SQL from file");
                 println!("  .timer on|off  - Toggle execution timing");
                 println!("  .echo on|off   - Toggle SQL echo");
+                println!("  .mode table|csv|json - Set output format");
+                println!("  .stats         - Show database statistics");
                 println!("  .quit/.exit    - Exit REPL");
             }
             ".tables" => {
@@ -295,6 +460,45 @@ impl CliState {
                     println!("Usage: .echo on|off");
                 }
             }
+            ".mode" => {
+                if let Some(format) = parts.get(1) {
+                    match *format {
+                        "table" => {
+                            self.output_format = OutputFormat::Table;
+                            println!("Output mode set to table");
+                        }
+                        "csv" => {
+                            self.output_format = OutputFormat::Csv;
+                            println!("Output mode set to CSV");
+                        }
+                        "json" => {
+                            self.output_format = OutputFormat::Json;
+                            println!("Output mode set to JSON");
+                        }
+                        _ => println!("Usage: .mode table|csv|json"),
+                    }
+                } else {
+                    println!("Usage: .mode table|csv|json");
+                }
+            }
+            ".stats" => {
+                let schemas = self.db.get_table_schemas_ref();
+                println!("Database Statistics:");
+                println!("  Tables: {}", schemas.len());
+                
+                let mut total_columns = 0;
+                let mut total_indexes = 0;
+                
+                for (table_name, schema) in schemas {
+                    total_columns += schema.columns.len();
+                    total_indexes += schema.indexes.len();
+                    println!("  Table '{}': {} columns, {} indexes", 
+                        table_name, schema.columns.len(), schema.indexes.len());
+                }
+                
+                println!("  Total columns: {}", total_columns);
+                println!("  Total indexes: {}", total_indexes);
+            }
             _ => return Ok(false),
         }
         Ok(false)
@@ -330,6 +534,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(output) = cli.output {
         state.output_file = Some(output);
+    }
+    
+    // Set output format
+    match cli.mode.as_str() {
+        "table" => state.output_format = OutputFormat::Table,
+        "csv" => state.output_format = OutputFormat::Csv,
+        "json" => state.output_format = OutputFormat::Json,
+        _ => {
+            eprintln!("Error: Invalid output mode '{}'. Use table, csv, or json", cli.mode);
+            process::exit(1);
+        }
     }
     
     // Handle command mode
