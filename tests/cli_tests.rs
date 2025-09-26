@@ -118,7 +118,7 @@ fn test_cli_repl_basic_commands() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
-    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\n.tables\n.quit\n";
+    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\n.tables\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0);
@@ -131,7 +131,7 @@ fn test_cli_dot_commands() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
-    let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50))\n.tables\n.schema users\n.stats\n.help\n.quit\n";
+    let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50));\n.tables\n.schema users\n.stats\n.help\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0);
@@ -147,7 +147,7 @@ fn test_cli_output_formats() {
     let db_path = temp_dir.path().join("test.db");
 
     // Create table and insert data
-    let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO test (id, name) VALUES (1, 'Alice')\n.quit\n";
+    let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.quit\n";
     run_cli_command(&[db_path.to_str().unwrap()], Some(setup_input));
 
     // Test table format (default)
@@ -200,7 +200,7 @@ fn test_cli_script_execution() {
     let script_path = temp_dir.path().join("script.sql");
 
     // Create a script file
-    let script_content = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO users (id, name) VALUES (1, 'Alice')\nINSERT INTO users (id, name) VALUES (2, 'Bob')\n";
+    let script_content = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO users (id, name) VALUES (1, 'Alice');\nINSERT INTO users (id, name) VALUES (2, 'Bob');\n";
     fs::write(&script_path, script_content).expect("Failed to write script file");
 
     // Execute script
@@ -236,7 +236,7 @@ fn test_cli_timer_and_echo() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
-    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO test (id, name) VALUES (1, 'Alice')\n.timer on\n.echo on\nSELECT * FROM test\n.quit\n";
+    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.timer on\n.echo on\nSELECT * FROM test;\n.quit\n";
     let (stdout, stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0);
@@ -254,7 +254,7 @@ fn test_cli_output_redirection() {
     let output_path = temp_dir.path().join("output.txt");
 
     // Create table and insert data
-    let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO test (id, name) VALUES (1, 'Alice')\n.quit\n";
+    let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.quit\n";
     run_cli_command(&[db_path.to_str().unwrap()], Some(setup_input));
 
     // Test output redirection
@@ -289,7 +289,7 @@ fn test_cli_csv_import() {
 
     // Create table
     let setup_input =
-        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50), age INTEGER)\n.quit\n";
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50), age INTEGER);\n.quit\n";
     run_cli_command(&[db_path.to_str().unwrap()], Some(setup_input));
 
     // Import CSV
@@ -347,7 +347,7 @@ fn test_cli_quiet_mode() {
     let db_path = temp_dir.path().join("test.db");
 
     // Create a table first
-    let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO test (id, name) VALUES (1, 'Alice')\n.quit\n";
+    let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.quit\n";
     run_cli_command(&[db_path.to_str().unwrap()], Some(setup_input));
 
     // Test quiet mode
@@ -371,7 +371,7 @@ fn test_cli_repl_mode_switching() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
-    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO test (id, name) VALUES (1, 'Alice')\n.mode csv\nSELECT * FROM test\n.mode json\nSELECT * FROM test\n.quit\n";
+    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.mode csv\nSELECT * FROM test;\n.mode json\nSELECT * FROM test;\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0);
@@ -388,11 +388,11 @@ fn test_cli_read_command() {
     let script_path = temp_dir.path().join("script.sql");
 
     // Create a script file
-    let script_content = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO users (id, name) VALUES (1, 'Alice')\n";
+    let script_content = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO users (id, name) VALUES (1, 'Alice');\n";
     fs::write(&script_path, script_content).expect("Failed to write script file");
 
     let input = &format!(
-        ".read {}\nSELECT * FROM users\n.quit\n",
+        ".read {}\nSELECT * FROM users;\n.quit\n",
         script_path.to_str().unwrap()
     );
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
@@ -406,10 +406,43 @@ fn test_cli_output_stdout_redirection() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
-    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50))\nINSERT INTO test (id, name) VALUES (1, 'Alice')\n.output stdout\nSELECT * FROM test\n.quit\n";
+    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.output stdout\nSELECT * FROM test;\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("Output set to stdout"));
     assert!(stdout.contains("Alice")); // Data should be in stdout
+}
+
+#[test]
+fn test_cli_multiline_sql() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let db_path = temp_dir.path().join("test.db");
+
+    // Test multi-line CREATE TABLE
+    let input = "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  name TEXT(50),\n  age INTEGER\n);\n.tables\n.quit\n";
+    let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+
+    assert_eq!(exit_code, 0);
+    assert!(stdout.contains("users")); // Table should be created
+
+    // Test single-line INSERT (parser limitation)
+    let input = "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25);\nSELECT * FROM users;\n.quit\n";
+    let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+
+    assert_eq!(exit_code, 0);
+    assert!(stdout.contains("Alice")); // Data should be inserted and selected
+}
+
+#[test]
+fn test_cli_clear_buffer() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let db_path = temp_dir.path().join("test.db");
+
+    // Test clearing SQL buffer
+    let input = "SELECT *\nFROM test;\n.clear\n.quit\n";
+    let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+
+    assert_eq!(exit_code, 0);
+    assert!(stdout.contains("SQL buffer cleared"));
 }

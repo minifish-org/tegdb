@@ -228,6 +228,7 @@ struct CliState {
     echo_enabled: bool,
     output_file: Option<String>,
     output_format: OutputFormat,
+    sql_buffer: String, // Buffer for multi-line SQL
 }
 
 impl CliState {
@@ -239,6 +240,7 @@ impl CliState {
             echo_enabled: false,
             output_file: None,
             output_format: OutputFormat::Table,
+            sql_buffer: String::new(),
         })
     }
 
@@ -279,6 +281,29 @@ impl CliState {
         }
 
         Ok(())
+    }
+
+    fn handle_sql_input(&mut self, input: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        // Add input to buffer
+        if !self.sql_buffer.is_empty() {
+            self.sql_buffer.push(' ');
+        }
+        self.sql_buffer.push_str(input.trim());
+
+        // Check if SQL is complete (ends with semicolon)
+        if self.sql_buffer.trim().ends_with(';') {
+            // Remove trailing semicolon and execute
+            let sql = self.sql_buffer.trim_end_matches(';').trim().to_string();
+            if !sql.is_empty() {
+                self.execute_sql(&sql)?;
+            }
+            // Clear buffer
+            self.sql_buffer.clear();
+            return Ok(false); // Continue REPL
+        }
+
+        // SQL is incomplete, continue reading
+        Ok(false)
     }
 
     fn handle_copy_command(&mut self, sql: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -373,7 +398,10 @@ impl CliState {
                 println!("  .echo on|off   - Toggle SQL echo");
                 println!("  .mode table|csv|json - Set output format");
                 println!("  .stats         - Show database statistics");
+                println!("  .clear         - Clear current SQL buffer");
                 println!("  .quit/.exit    - Exit REPL");
+                println!();
+                println!("Note: SQL statements can span multiple lines. End with ';' to execute.");
             }
             ".tables" => {
                 let pattern = parts.get(1).unwrap_or(&"");
@@ -531,6 +559,10 @@ impl CliState {
                 println!("  Total columns: {total_columns}");
                 println!("  Total indexes: {total_indexes}");
             }
+            ".clear" => {
+                self.sql_buffer.clear();
+                println!("SQL buffer cleared");
+            }
             _ => return Ok(false),
         }
         Ok(false)
@@ -623,7 +655,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = Editor::<(), rustyline::history::FileHistory>::new()?;
 
     loop {
-        let readline = rl.readline("tg> ");
+        // Show different prompt based on whether we're in multi-line mode
+        let prompt = if state.sql_buffer.is_empty() {
+            "tg> "
+        } else {
+            "  -> "
+        };
+        
+        let readline = rl.readline(prompt);
         match readline {
             Ok(line) => {
                 let trimmed = line.trim();
@@ -641,9 +680,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 } else {
-                    // Execute SQL
-                    if let Err(e) = state.execute_sql(trimmed) {
+                    // Handle SQL input (supports multi-line)
+                    if let Err(e) = state.handle_sql_input(trimmed) {
                         eprintln!("Error: {e}");
+                        // Clear buffer on error
+                        state.sql_buffer.clear();
                     }
                 }
             }
