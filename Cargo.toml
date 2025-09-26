@@ -282,6 +282,11 @@ name = "arithmetic_parser_tests"
 path = "tests/arithmetic/arithmetic_parser_tests.rs"
 required-features = ["dev"]
 
+[[test]]
+name = "cli_tests"
+path = "tests/cli_tests.rs"
+required-features = ["dev"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
