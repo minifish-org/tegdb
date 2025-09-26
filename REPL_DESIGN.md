@@ -133,12 +133,13 @@ Options:
 
 - [ ] Users can download a single `tg` executable and use it immediately
 - [ ] CLI experience matches SQLite/DuckDB familiarity
-- [ ] File reading capabilities enable "command-line data tool" usage
+- [ ] CLI provides professional database management experience
 - [ ] Script integration works seamlessly in CI/CD pipelines
 - [ ] Cross-platform compatibility across major operating systems
 
 ## Future Considerations
 
+- **File reading table functions**: Direct CSV/Parquet/JSON file access
 - **Plugin system**: Allow extensions for custom file formats
 - **Remote database support**: Connect to remote TegDB instances
 - **Advanced analytics**: Built-in statistical functions
