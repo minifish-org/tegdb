@@ -287,6 +287,11 @@ name = "cli_tests"
 path = "tests/cli_tests.rs"
 required-features = ["dev"]
 
+[[test]]
+name = "parser_tests"
+path = "tests/parser_tests.rs"
+required-features = ["dev"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

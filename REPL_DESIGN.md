@@ -76,7 +76,7 @@ TegDB currently exists as a library-only solution, lacking the standalone execut
 **Goal**: Professional-grade CLI experience
 
 **Tasks**:
-- [ ] Multi-line SQL editing support
+- [x] Multi-line SQL editing support
 - [ ] Auto-completion for keywords/tables/columns
 - [ ] Command history search
 - [ ] SQL syntax highlighting
@@ -146,18 +146,21 @@ Options:
 
 ### ✅ Completed Features
 - **CLI Foundation**: Complete binary with argument parsing and REPL
-- **Core Dot Commands**: .help, .tables, .schema, .output, .read, .timer, .echo, .quit
+- **Core Dot Commands**: .help, .tables, .schema, .output, .read, .timer, .echo, .quit, .clear
 - **Script Execution**: File and stdin input support
 - **Output Formats**: Table, CSV, JSON with proper escaping
 - **Database Statistics**: .stats command for metadata
 - **CSV Import**: Basic COPY FROM functionality
 - **Error Handling**: Proper exit codes and error messages
 - **Execution Timing**: Performance measurement
+- **Multi-line SQL**: Support for complex statements with semicolon termination
+- **Enhanced Parser**: Improved SQL parsing with better multi-line support
+- **String Escaping**: Proper handling of escape sequences in string literals
+- **Comprehensive Testing**: 31 parser tests and 34 CLI tests covering all features
 
 ### 🚧 Remaining Features
 - **COPY TO**: Export query results to files
 - **Pagination**: Large result set handling
-- **Multi-line Editing**: Advanced SQL editing
 - **Auto-completion**: Keyword/table/column suggestions
 - **Syntax Highlighting**: SQL code highlighting
 - **Cross-platform Distribution**: Binary releases
