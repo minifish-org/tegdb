@@ -296,14 +296,21 @@ impl QuerySchema {
         for (i, expr) in selected_columns.iter().enumerate() {
             match expr {
                 crate::parser::Expression::Column(name) => {
-                    // This is a regular column
-                    column_names.push(name.clone());
-                    if let Some(index) = schema.get_column_index(name) {
-                        column_indices.push(index);
+                    // Special case: "*" is not a real column, treat as expression
+                    if name == "*" {
+                        column_names.push(format!("expr_{i}"));
+                        column_indices.push(0); // Placeholder for expressions
+                        expressions.push(expr.clone());
                     } else {
-                        column_indices.push(0); // Placeholder
+                        // This is a regular column
+                        column_names.push(name.clone());
+                        if let Some(index) = schema.get_column_index(name) {
+                            column_indices.push(index);
+                        } else {
+                            column_indices.push(0); // Placeholder
+                        }
+                        expressions.push(expr.clone());
                     }
-                    expressions.push(expr.clone());
                 }
                 _ => {
                     // This is an expression (function call, etc.)
@@ -608,6 +615,7 @@ impl<'a> std::fmt::Debug for SelectRowIterator<'a> {
             .finish()
     }
 }
+
 
 /// Query execution result
 #[derive(Debug)]
@@ -1353,9 +1361,14 @@ impl<'a> QueryProcessor<'a> {
                     }
                     _ => {
                         let value = if let Some(first_row) = rows.first() {
-                            expr.evaluate(first_row).map_err(|e| {
-                                Error::Other(format!("Expression evaluation error: {e}"))
-                            })?
+                            // Special case: "*" column should not be evaluated in aggregate context
+                            if matches!(expr, Expression::Column(name) if name == "*") {
+                                SqlValue::Null // "*" is not a real column
+                            } else {
+                                expr.evaluate(first_row).map_err(|e| {
+                                    Error::Other(format!("Expression evaluation error: {e}"))
+                                })?
+                            }
                         } else {
                             let empty_context: HashMap<String, SqlValue> = HashMap::new();
                             match expr.evaluate(&empty_context) {
@@ -1412,20 +1425,16 @@ impl<'a> QueryProcessor<'a> {
             }
             "SUM" => {
                 let mut has_value = false;
-                let mut saw_real = false;
-                let mut sum_i128: i128 = 0;
                 let mut sum_f64: f64 = 0.0;
 
                 for value in values.iter() {
                     match value {
                         SqlValue::Integer(i) => {
-                            sum_i128 += *i as i128;
                             sum_f64 += *i as f64;
                             has_value = true;
                         }
                         SqlValue::Real(r) => {
                             sum_f64 += *r;
-                            saw_real = true;
                             has_value = true;
                         }
                         _ => {}
@@ -1434,10 +1443,9 @@ impl<'a> QueryProcessor<'a> {
 
                 if !has_value {
                     Ok(SqlValue::Null)
-                } else if saw_real || sum_i128 > i64::MAX as i128 || sum_i128 < i64::MIN as i128 {
-                    Ok(SqlValue::Real(sum_f64))
                 } else {
-                    Ok(SqlValue::Integer(sum_i128 as i64))
+                    // Always return Real for SUM to match SQL standard behavior
+                    Ok(SqlValue::Real(sum_f64))
                 }
             }
             "AVG" => {
@@ -1606,6 +1614,86 @@ impl<'a> QueryProcessor<'a> {
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(row_iter),
+                })
+            }
+            ExecutionPlan::IndexScan {
+                table,
+                index,
+                column_value,
+                selected_columns,
+                additional_filter,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new_with_expressions(&selected_columns, &schema);
+
+                // Check if this is an aggregate query
+                if self.has_aggregate_functions(&selected_columns) {
+                    return self.execute_aggregate_query(plan_clone.clone(), query_schema);
+                }
+
+                // For now, use the existing non-streaming index scan implementation
+                // TODO: Implement proper streaming index scan iterator
+                let (index_start, index_end) =
+                    crate::catalog::index_prefix_range(&table, &index, &column_value);
+
+                let mut row_maps = Vec::new();
+                for (key, _value) in self.transaction.scan(index_start..index_end)? {
+                    if let Some((_table, _index, _col_val, pk_str)) =
+                        crate::catalog::decode_index_key(&key)
+                    {
+                        let pk_value = if let Ok(pk_int) = pk_str.parse::<i64>() {
+                            SqlValue::Integer(pk_int)
+                        } else {
+                            SqlValue::Text(pk_str)
+                        };
+                        let pk_key = self.build_primary_key_from_value(&table, &pk_value);
+                        if let Some(value) = self.transaction.get(&pk_key.to_storage_bytes()) {
+                            if self.row_matches_condition(
+                                &schema,
+                                value.as_ref(),
+                                additional_filter.as_ref(),
+                            )? {
+                                row_maps.push(
+                                    self.storage_format
+                                        .deserialize_row_full(value.as_ref(), &schema)?,
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Convert to streaming iterator
+                let row_values: Vec<Vec<SqlValue>> = row_maps
+                    .into_iter()
+                    .map(|row_map| {
+                        query_schema
+                            .column_names
+                            .iter()
+                            .map(|col_name| {
+                                row_map.get(col_name)
+                                    .cloned()
+                                    .unwrap_or(SqlValue::Null)
+                            })
+                            .collect()
+                    })
+                    .collect();
+
+                // Create a simple iterator that yields the collected rows
+                let row_iter = SelectRowIterator::new(
+                    Box::new(std::iter::empty()) as ScanIterator,
+                    schema.clone(),
+                    query_schema.clone(),
+                    None,
+                    None,
+                );
+                
+                // Override the iterator's behavior by setting sorted_results
+                let mut result_iter = row_iter;
+                result_iter.sorted_results = Some(row_values.into_iter());
+                
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(result_iter),
                 })
             }
             ExecutionPlan::TableScan {
