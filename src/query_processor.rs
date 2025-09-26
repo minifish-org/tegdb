@@ -616,7 +616,6 @@ impl<'a> std::fmt::Debug for SelectRowIterator<'a> {
     }
 }
 
-
 /// Query execution result
 #[derive(Debug)]
 pub enum ResultSet<'a> {
@@ -1670,9 +1669,7 @@ impl<'a> QueryProcessor<'a> {
                             .column_names
                             .iter()
                             .map(|col_name| {
-                                row_map.get(col_name)
-                                    .cloned()
-                                    .unwrap_or(SqlValue::Null)
+                                row_map.get(col_name).cloned().unwrap_or(SqlValue::Null)
                             })
                             .collect()
                     })
@@ -1686,11 +1683,11 @@ impl<'a> QueryProcessor<'a> {
                     None,
                     None,
                 );
-                
+
                 // Override the iterator's behavior by setting sorted_results
                 let mut result_iter = row_iter;
                 result_iter.sorted_results = Some(row_values.into_iter());
-                
+
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(result_iter),
