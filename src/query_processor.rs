@@ -1015,7 +1015,8 @@ impl<'a> QueryProcessor<'a> {
             ExecutionPlan::PrimaryKeyLookup { .. }
             | ExecutionPlan::TableRangeScan { .. }
             | ExecutionPlan::TableScan { .. }
-            | ExecutionPlan::IndexScan { .. } => self.execute_select_plan_streaming(plan),
+            | ExecutionPlan::IndexScan { .. }
+            | ExecutionPlan::VectorSearch { .. } => self.execute_select_plan_streaming(plan),
             ExecutionPlan::Sort {
                 input_plan,
                 order_by_items,
@@ -1058,6 +1059,26 @@ impl<'a> QueryProcessor<'a> {
                                     )?;
                                 rows.push(row_values);
                             }
+                        }
+                        rows
+                    }
+                    ExecutionPlan::VectorSearch { table, .. } => {
+                        // For VectorSearch, we need to get the full rows to sort properly
+                        let start_key = PrimaryKey::table_prefix(table);
+                        let end_key = PrimaryKey::table_end_marker(table);
+                        let scan_iter = self.transaction.scan(start_key..end_key)?;
+                        let table_schema = self.get_table_schema(table)?;
+
+                        let mut rows = Vec::new();
+                        for (_, value) in scan_iter {
+                            // Get the full row data
+                            let row_values =
+                                self.storage_format.get_columns_by_indices_with_metadata(
+                                    &value,
+                                    &table_schema,
+                                    &(0..table_schema.columns.len()).collect::<Vec<_>>(),
+                                )?;
+                            rows.push(row_values);
                         }
                         rows
                     }
@@ -1725,6 +1746,40 @@ impl<'a> QueryProcessor<'a> {
                     rows: Box::new(row_iter),
                 })
             }
+            ExecutionPlan::VectorSearch { .. } => {
+                // Handle VectorSearch execution plan
+                let ExecutionPlan::VectorSearch {
+                    table,
+                    selected_columns,
+                    additional_filter,
+                    ..
+                } = plan else { unreachable!() };
+                
+                let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new_with_expressions(&selected_columns, &schema);
+
+                // Check if this is an aggregate query
+                if self.has_aggregate_functions(&selected_columns) {
+                    return self.execute_aggregate_query(plan_clone.clone(), query_schema);
+                }
+
+                // Fall back to table scan for now
+                let start_key = PrimaryKey::table_prefix(&table);
+                let end_key = PrimaryKey::table_end_marker(&table);
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    schema.clone(),
+                    query_schema.clone(),
+                    additional_filter,
+                    None,
+                );
+
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(row_iter),
+                })
+            }
             _ => Err(Error::Other("Expected SELECT execution plan".to_string())),
         }
     }
@@ -2047,6 +2102,30 @@ impl<'a> QueryProcessor<'a> {
                     }
                 }
             }
+            ExecutionPlan::VectorSearch {
+                table,
+                additional_filter,
+                ..
+            } => {
+                let start_key = PrimaryKey::table_prefix(table);
+                let end_key = PrimaryKey::table_end_marker(table);
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+
+                for (key, value_rc) in scan_iter {
+                    let matches = if let Some(filter_cond) = additional_filter {
+                        // Use pre-computed metadata from schema
+                        self.storage_format
+                            .matches_condition_with_metadata(&value_rc, schema, filter_cond)
+                            .unwrap_or(false)
+                    } else {
+                        true
+                    };
+
+                    if matches {
+                        keys.push(key);
+                    }
+                }
+            }
             _ => {
                 return Err(crate::Error::Other(
                     "Unsupported scan plan for key collection".to_string(),
@@ -2210,6 +2289,53 @@ impl<'a> QueryProcessor<'a> {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(row_iter),
                 })
+            },
+            ExecutionPlan::VectorSearch {
+                table,
+                index: _index,
+                query_vector: _query_vector,
+                similarity_function: _similarity_function,
+                k,
+                selected_columns,
+                additional_filter,
+            } => {
+                let schema = self.get_table_schema(&table)?;
+                let query_schema = QuerySchema::new_with_expressions(&selected_columns, &schema);
+
+                // Check if this is an aggregate query
+                if self.has_aggregate_functions(&selected_columns) {
+                    let plan_for_aggregate = ExecutionPlan::VectorSearch {
+                        table,
+                        index: _index,
+                        query_vector: _query_vector,
+                        similarity_function: _similarity_function,
+                        k,
+                        selected_columns,
+                        additional_filter: additional_filter.clone(),
+                    };
+                    return self.execute_aggregate_query(plan_for_aggregate, query_schema);
+                }
+
+                // For now, fall back to table scan with vector similarity computation
+                // TODO: Implement proper vector index usage
+                let start_key = PrimaryKey::table_prefix(&table);
+                let end_key = PrimaryKey::table_end_marker(&table);
+                let scan_iter = self.transaction.scan(start_key..end_key)?;
+                
+                // For now, use a table scan with vector similarity computation
+                // TODO: Implement proper vector index usage
+                let row_iter = SelectRowIterator::new(
+                    scan_iter,
+                    schema.clone(),
+                    query_schema.clone(),
+                    additional_filter,
+                    Some(k as u64),
+                );
+
+                Ok(ResultSet::Select {
+                    columns: query_schema.column_names.clone(),
+                    rows: Box::new(row_iter),
+                })
             }
             _ => self.execute_plan(plan),
         }
@@ -2343,3 +2469,4 @@ impl<'a> QueryProcessor<'a> {
         Ok(())
     }
 }
+
