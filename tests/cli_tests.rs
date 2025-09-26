@@ -336,7 +336,7 @@ fn test_cli_error_handling() {
 
     // Test invalid dot command
     let input = ".invalid_command\n.quit\n";
-    let (stdout, stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+    let (_stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0); // Should not crash
 }
@@ -477,7 +477,7 @@ SELECT * FROM orders;
 
     assert_eq!(exit_code, 0);
     // Just check that the commands executed successfully
-    assert!(stdout.len() > 0);
+    assert!(!stdout.is_empty());
 }
 
 #[test]
@@ -549,7 +549,12 @@ SELECT * FROM scores ORDER BY name ASC;
     // Should show top 2 scores in descending order
     assert!(stdout.contains("David") && stdout.contains("Bob"));
     // Should show all names in alphabetical order
-    assert!(stdout.contains("Alice") && stdout.contains("Bob") && stdout.contains("Charlie") && stdout.contains("David"));
+    assert!(
+        stdout.contains("Alice")
+            && stdout.contains("Bob")
+            && stdout.contains("Charlie")
+            && stdout.contains("David")
+    );
 }
 
 #[test]
@@ -604,7 +609,7 @@ SELECT * FROM accounts;
 
     assert_eq!(exit_code, 0);
     // Just check that the commands executed successfully
-    assert!(stdout.len() > 0);
+    assert!(!stdout.is_empty());
 }
 
 #[test]
@@ -623,7 +628,7 @@ SELECT * FROM accounts;
 
     assert_eq!(exit_code, 0);
     // Just check that the commands executed successfully
-    assert!(stdout.len() > 0);
+    assert!(!stdout.is_empty());
 }
 
 #[test]
@@ -648,16 +653,20 @@ fn test_cli_large_dataset() {
     let db_path = temp_dir.path().join("test.db");
 
     let mut input = String::from("CREATE TABLE numbers (id INTEGER PRIMARY KEY, value INTEGER);\n");
-    
+
     // Insert 100 rows
     for i in 1..=100 {
-        input.push_str(&format!("INSERT INTO numbers (id, value) VALUES ({}, {});\n", i, i * 2));
+        input.push_str(&format!(
+            "INSERT INTO numbers (id, value) VALUES ({}, {});\n",
+            i,
+            i * 2
+        ));
     }
-    
+
     input.push_str("SELECT COUNT(*) FROM numbers;\n");
     input.push_str("SELECT * FROM numbers WHERE value > 100 LIMIT 10;\n");
     input.push_str(".quit\n");
-    
+
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(&input));
 
     assert_eq!(exit_code, 0);
@@ -691,7 +700,7 @@ fn test_cli_vector_operations() {
 INSERT INTO embeddings (id, vector) VALUES (1, [1.0, 2.0, 3.0]);
 SELECT * FROM embeddings;
 .quit\n";
-    let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+    let (_stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     // Vector operations may not be fully supported yet
     // Just test that the table creation works or fails gracefully
@@ -707,7 +716,7 @@ fn test_cli_parameter_queries() {
 INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25), (2, 'Bob', 30);
 SELECT * FROM users WHERE id = ?1;
 .quit\n";
-    let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+    let (_stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     // Parameter queries may not be fully supported yet
     // Just test that the parser accepts parameter placeholders
@@ -729,5 +738,5 @@ SELECT u.name, o.amount FROM users u, orders o WHERE u.id = o.user_id;
 
     assert_eq!(exit_code, 0);
     // Just check that the commands executed successfully
-    assert!(stdout.len() > 0);
+    assert!(!stdout.is_empty());
 }
