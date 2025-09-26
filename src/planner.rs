@@ -638,21 +638,26 @@ impl QueryPlanner {
     }
 
     /// Try to create a vector similarity search plan
-    fn try_vector_similarity_search(&self, select: &SelectStatement) -> Result<Option<ExecutionPlan>> {
+    fn try_vector_similarity_search(
+        &self,
+        select: &SelectStatement,
+    ) -> Result<Option<ExecutionPlan>> {
         // Check if we have ORDER BY with vector similarity functions
         if let Some(order_by) = &select.order_by {
             for item in &order_by.items {
-                if let Some((similarity_func, query_vector, k)) = self.extract_vector_similarity_from_expr(&item.expression)? {
+                if let Some((similarity_func, query_vector, k)) =
+                    self.extract_vector_similarity_from_expr(&item.expression)?
+                {
                     // Find a suitable vector index for this table
                     if let Some(index_name) = self.find_vector_index(&select.table)? {
-                        let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-                        
+                        let expr_columns =
+                            self.normalize_selected_columns(&select.table, &select.columns)?;
+
                         // Extract additional filter conditions
-                        let additional_filter = if let Some(where_clause) = &select.where_clause {
-                            Some(where_clause.condition.clone())
-                        } else {
-                            None
-                        };
+                        let additional_filter = select
+                            .where_clause
+                            .as_ref()
+                            .map(|where_clause| where_clause.condition.clone());
 
                         return Ok(Some(ExecutionPlan::VectorSearch {
                             table: select.table.clone(),
@@ -670,12 +675,16 @@ impl QueryPlanner {
 
         // Check WHERE clause for vector similarity conditions
         if let Some(where_clause) = &select.where_clause {
-            if let Some((similarity_func, query_vector, _)) = self.extract_vector_similarity_from_condition(&where_clause.condition)? {
+            if let Some((similarity_func, query_vector, _)) =
+                self.extract_vector_similarity_from_condition(&where_clause.condition)?
+            {
                 if let Some(index_name) = self.find_vector_index(&select.table)? {
-                    let expr_columns = self.normalize_selected_columns(&select.table, &select.columns)?;
-                    
+                    let expr_columns =
+                        self.normalize_selected_columns(&select.table, &select.columns)?;
+
                     // Extract additional filter conditions (non-vector conditions)
-                    let additional_filter = self.extract_non_vector_conditions(&where_clause.condition)?;
+                    let additional_filter =
+                        self.extract_non_vector_conditions(&where_clause.condition)?;
 
                     return Ok(Some(ExecutionPlan::VectorSearch {
                         table: select.table.clone(),
@@ -694,9 +703,47 @@ impl QueryPlanner {
     }
 
     /// Extract vector similarity information from an expression
-    fn extract_vector_similarity_from_expr(&self, expr: &crate::parser::Expression) -> Result<Option<(VectorSimilarityFunction, Vec<f64>, usize)>> {
-        match expr {
-            crate::parser::Expression::FunctionCall { name, args } => {
+    fn extract_vector_similarity_from_expr(
+        &self,
+        expr: &crate::parser::Expression,
+    ) -> Result<Option<(VectorSimilarityFunction, Vec<f64>, usize)>> {
+        if let crate::parser::Expression::FunctionCall { name, args } = expr {
+            let similarity_func = match name.to_uppercase().as_str() {
+                "COSINE_SIMILARITY" => VectorSimilarityFunction::CosineSimilarity,
+                "EUCLIDEAN_DISTANCE" => VectorSimilarityFunction::EuclideanDistance,
+                "DOT_PRODUCT" => VectorSimilarityFunction::DotProduct,
+                _ => return Ok(None),
+            };
+
+            if args.len() == 2 {
+                if let (
+                    crate::parser::Expression::Column(_),
+                    crate::parser::Expression::Value(SqlValue::Vector(vector)),
+                ) = (&args[0], &args[1])
+                {
+                    return Ok(Some((similarity_func, vector.clone(), 10))); // Default k=10
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Extract vector similarity information from a condition
+    fn extract_vector_similarity_from_condition(
+        &self,
+        condition: &Condition,
+    ) -> Result<Option<(VectorSimilarityFunction, Vec<f64>, usize)>> {
+        if let Condition::Comparison {
+            left,
+            operator: _,
+            right,
+        } = condition
+        {
+            if let (
+                crate::parser::Expression::FunctionCall { name, args },
+                SqlValue::Real(_threshold),
+            ) = (left, right)
+            {
                 let similarity_func = match name.to_uppercase().as_str() {
                     "COSINE_SIMILARITY" => VectorSimilarityFunction::CosineSimilarity,
                     "EUCLIDEAN_DISTANCE" => VectorSimilarityFunction::EuclideanDistance,
@@ -705,36 +752,16 @@ impl QueryPlanner {
                 };
 
                 if args.len() == 2 {
-                    if let (crate::parser::Expression::Column(_), crate::parser::Expression::Value(SqlValue::Vector(vector))) = (&args[0], &args[1]) {
-                        return Ok(Some((similarity_func, vector.clone(), 10))); // Default k=10
+                    if let (
+                        crate::parser::Expression::Column(_),
+                        crate::parser::Expression::Value(SqlValue::Vector(vector)),
+                    ) = (&args[0], &args[1])
+                    {
+                        return Ok(Some((similarity_func, vector.clone(), 100)));
+                        // Default k=100 for WHERE
                     }
                 }
             }
-            _ => {}
-        }
-        Ok(None)
-    }
-
-    /// Extract vector similarity information from a condition
-    fn extract_vector_similarity_from_condition(&self, condition: &Condition) -> Result<Option<(VectorSimilarityFunction, Vec<f64>, usize)>> {
-        match condition {
-            Condition::Comparison { left, operator: _, right } => {
-                if let (crate::parser::Expression::FunctionCall { name, args }, SqlValue::Real(_threshold)) = (left, right) {
-                    let similarity_func = match name.to_uppercase().as_str() {
-                        "COSINE_SIMILARITY" => VectorSimilarityFunction::CosineSimilarity,
-                        "EUCLIDEAN_DISTANCE" => VectorSimilarityFunction::EuclideanDistance,
-                        "DOT_PRODUCT" => VectorSimilarityFunction::DotProduct,
-                        _ => return Ok(None),
-                    };
-
-                    if args.len() == 2 {
-                        if let (crate::parser::Expression::Column(_), crate::parser::Expression::Value(SqlValue::Vector(vector))) = (&args[0], &args[1]) {
-                            return Ok(Some((similarity_func, vector.clone(), 100))); // Default k=100 for WHERE
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
         Ok(None)
     }
@@ -743,7 +770,12 @@ impl QueryPlanner {
     fn find_vector_index(&self, table_name: &str) -> Result<Option<String>> {
         if let Some(schema) = self.table_schemas.get(table_name) {
             for index in &schema.indexes {
-                if matches!(index.index_type, crate::parser::IndexType::HNSW | crate::parser::IndexType::IVF | crate::parser::IndexType::LSH) {
+                if matches!(
+                    index.index_type,
+                    crate::parser::IndexType::HNSW
+                        | crate::parser::IndexType::IVF
+                        | crate::parser::IndexType::LSH
+                ) {
                     return Ok(Some(index.name.clone()));
                 }
             }

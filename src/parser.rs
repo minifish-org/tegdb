@@ -27,19 +27,23 @@ pub struct ParseError {
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Parse error at line {}, column {}:", self.line, self.column)?;
+        writeln!(
+            f,
+            "Parse error at line {}, column {}:",
+            self.line, self.column
+        )?;
         writeln!(f, "  {}", self.context)?;
         writeln!(f, "  {}", " ".repeat(self.column - 1) + "^")?;
         writeln!(f, "Error: {}", self.message)?;
-        
+
         if !self.expected.is_empty() {
             writeln!(f, "Expected one of: {}", self.expected.join(", "))?;
         }
-        
+
         if let Some(found) = &self.found {
-            writeln!(f, "Found: '{}'", found)?;
+            writeln!(f, "Found: '{found}'")?;
         }
-        
+
         Ok(())
     }
 }
@@ -48,9 +52,9 @@ impl std::fmt::Display for ParseError {
 fn calculate_position(input: &str, position: usize) -> (usize, usize) {
     let before_error = &input[..position];
     let line = before_error.matches('\n').count() + 1;
-    let column = before_error.rfind('\n').map_or(position + 1, |last_newline| {
-        position - last_newline
-    });
+    let column = before_error
+        .rfind('\n')
+        .map_or(position + 1, |last_newline| position - last_newline);
     (line, column)
 }
 
@@ -59,9 +63,9 @@ fn extract_context(input: &str, position: usize, context_size: usize) -> String 
     let start = position.saturating_sub(context_size);
     let end = (position + context_size).min(input.len());
     let context = &input[start..end];
-    
+
     // Replace newlines with spaces for single-line display
-    context.replace('\n', " ").replace('\r', " ")
+    context.replace(['\n', '\r'], " ")
 }
 
 /// Convert nom error to our enhanced error format
@@ -70,32 +74,38 @@ fn convert_nom_error(input: &str, error: nom::Err<nom::error::Error<&str>>) -> P
         nom::Err::Error(e) | nom::Err::Failure(e) => {
             let (line, column) = calculate_position(input, input.len() - e.input.len());
             let context = extract_context(input, input.len() - e.input.len(), 20);
-            
+
             // Provide more specific error messages based on error kind
             let (message, expected) = match e.code {
-                nom::error::ErrorKind::Tag => {
-                    ("Unexpected token".to_string(), vec!["keyword".to_string(), "identifier".to_string()])
-                }
-                nom::error::ErrorKind::Alpha => {
-                    ("Expected alphabetic character".to_string(), vec!["letter".to_string()])
-                }
+                nom::error::ErrorKind::Tag => (
+                    "Unexpected token".to_string(),
+                    vec!["keyword".to_string(), "identifier".to_string()],
+                ),
+                nom::error::ErrorKind::Alpha => (
+                    "Expected alphabetic character".to_string(),
+                    vec!["letter".to_string()],
+                ),
                 nom::error::ErrorKind::Digit => {
                     ("Expected digit".to_string(), vec!["number".to_string()])
                 }
-                nom::error::ErrorKind::AlphaNumeric => {
-                    ("Expected alphanumeric character".to_string(), vec!["letter or digit".to_string()])
-                }
-                nom::error::ErrorKind::Char => {
-                    ("Expected specific character".to_string(), vec!["character".to_string()])
-                }
-                nom::error::ErrorKind::Eof => {
-                    ("Unexpected end of input".to_string(), vec!["more input".to_string()])
-                }
-                _ => {
-                    (format!("Parse error: {:?}", e.code), vec!["valid SQL syntax".to_string()])
-                }
+                nom::error::ErrorKind::AlphaNumeric => (
+                    "Expected alphanumeric character".to_string(),
+                    vec!["letter or digit".to_string()],
+                ),
+                nom::error::ErrorKind::Char => (
+                    "Expected specific character".to_string(),
+                    vec!["character".to_string()],
+                ),
+                nom::error::ErrorKind::Eof => (
+                    "Unexpected end of input".to_string(),
+                    vec!["more input".to_string()],
+                ),
+                _ => (
+                    format!("Parse error: {:?}", e.code),
+                    vec!["valid SQL syntax".to_string()],
+                ),
             };
-            
+
             ParseError {
                 message,
                 line,
@@ -108,7 +118,7 @@ fn convert_nom_error(input: &str, error: nom::Err<nom::error::Error<&str>>) -> P
         nom::Err::Incomplete(_) => {
             let (line, column) = calculate_position(input, input.len());
             let context = extract_context(input, input.len(), 20);
-            
+
             ParseError {
                 message: "Incomplete input - more data expected".to_string(),
                 line,
@@ -130,8 +140,8 @@ pub fn debug_parse_sql(input: &str) -> Result<Statement, ParseError> {
             // Provide additional debugging information
             eprintln!("=== PARSER DEBUG INFO ===");
             eprintln!("Input length: {}", input.len());
-            eprintln!("Input: {:?}", input);
-            eprintln!("Error: {}", error);
+            eprintln!("Input: {input:?}");
+            eprintln!("Error: {error}");
             eprintln!("========================");
             Err(error)
         }
@@ -146,7 +156,9 @@ pub fn parse_sql_with_suggestions(input: &str) -> Result<Statement, ParseError> 
             // Add suggestions based on common mistakes
             let suggestions = generate_suggestions(input, &error);
             if !suggestions.is_empty() {
-                error.message.push_str(&format!("\n\nSuggestions:\n{}", suggestions.join("\n")));
+                error
+                    .message
+                    .push_str(&format!("\n\nSuggestions:\n{}", suggestions.join("\n")));
             }
             Err(error)
         }
@@ -156,7 +168,7 @@ pub fn parse_sql_with_suggestions(input: &str) -> Result<Statement, ParseError> 
 /// Generate helpful suggestions for common parser errors
 fn generate_suggestions(input: &str, error: &ParseError) -> Vec<String> {
     let mut suggestions = Vec::new();
-    
+
     // Check for common SQL syntax issues
     if error.message.contains("Unexpected token") {
         if input.to_uppercase().contains("SELCT") {
@@ -172,7 +184,7 @@ fn generate_suggestions(input: &str, error: &ParseError) -> Vec<String> {
             suggestions.push("- Did you mean 'INSERT' instead of 'INSRT'?".to_string());
         }
     }
-    
+
     // Check for missing keywords
     if error.message.contains("Expected") && error.expected.contains(&"keyword".to_string()) {
         let context = &error.context;
@@ -186,7 +198,7 @@ fn generate_suggestions(input: &str, error: &ParseError) -> Vec<String> {
             suggestions.push("- Missing 'SET' clause after UPDATE".to_string());
         }
     }
-    
+
     // Check for missing punctuation
     if error.message.contains("Expected specific character") {
         if error.context.contains("(") && !error.context.contains(")") {
@@ -199,7 +211,7 @@ fn generate_suggestions(input: &str, error: &ParseError) -> Vec<String> {
             suggestions.push("- Missing closing double quote".to_string());
         }
     }
-    
+
     suggestions
 }
 
@@ -737,7 +749,7 @@ pub fn parse_sql(input: &str) -> Result<Statement, ParseError> {
     if !remaining.trim().is_empty() {
         let (line, column) = calculate_position(input, input.len() - remaining.len());
         let context = extract_context(input, input.len() - remaining.len(), 20);
-        
+
         return Err(ParseError {
             message: "Unexpected input after statement".to_string(),
             line,

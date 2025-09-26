@@ -48,9 +48,9 @@ fn main() -> tegdb::Result<()> {
     println!("\n4. Testing vector similarity functions...");
     let result = db.query(
         "SELECT id, text, COSINE_SIMILARITY(embedding, [1.0, 0.0, 0.0]) 
-         FROM embeddings WHERE id = 1"
+         FROM embeddings WHERE id = 1",
     )?;
-    
+
     println!("Cosine similarity test:");
     for row in result.rows() {
         println!("  {row:?}");
@@ -62,9 +62,9 @@ fn main() -> tegdb::Result<()> {
         "SELECT id, text, COSINE_SIMILARITY(embedding, [0.8, 0.2, 0.0]) 
          FROM embeddings 
          ORDER BY COSINE_SIMILARITY(embedding, [0.8, 0.2, 0.0]) DESC 
-         LIMIT 3"
+         LIMIT 3",
     )?;
-    
+
     println!("K-NN search results (should be ordered by similarity):");
     for row in result.rows() {
         println!("  {row:?}");
@@ -74,9 +74,9 @@ fn main() -> tegdb::Result<()> {
     println!("\n6. Testing similarity threshold query...");
     let result = db.query(
         "SELECT id, text FROM embeddings 
-         WHERE COSINE_SIMILARITY(embedding, [1.0, 0.0, 0.0]) > 0.5"
+         WHERE COSINE_SIMILARITY(embedding, [1.0, 0.0, 0.0]) > 0.5",
     )?;
-    
+
     println!("Similarity threshold results (> 0.5):");
     for row in result.rows() {
         println!("  {row:?}");
@@ -84,15 +84,15 @@ fn main() -> tegdb::Result<()> {
 
     // Test different similarity functions
     println!("\n7. Testing different similarity functions...");
-    
+
     // Euclidean distance
     let result = db.query(
         "SELECT id, text, EUCLIDEAN_DISTANCE(embedding, [1.0, 0.0, 0.0]) 
          FROM embeddings 
          ORDER BY EUCLIDEAN_DISTANCE(embedding, [1.0, 0.0, 0.0]) ASC 
-         LIMIT 2"
+         LIMIT 2",
     )?;
-    
+
     println!("Euclidean distance results (closest first):");
     for row in result.rows() {
         println!("  {row:?}");
@@ -103,9 +103,9 @@ fn main() -> tegdb::Result<()> {
         "SELECT id, text, DOT_PRODUCT(embedding, [1.0, 0.0, 0.0]) 
          FROM embeddings 
          ORDER BY DOT_PRODUCT(embedding, [1.0, 0.0, 0.0]) DESC 
-         LIMIT 2"
+         LIMIT 2",
     )?;
-    
+
     println!("Dot product results (highest first):");
     for row in result.rows() {
         println!("  {row:?}");

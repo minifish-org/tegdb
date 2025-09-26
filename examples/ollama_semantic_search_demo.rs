@@ -1,6 +1,6 @@
+use serde_json::json;
 use tegdb::Database;
 use tempfile::NamedTempFile;
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,11 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Generate embeddings using Ollama
     println!("3. Generating embeddings using Ollama...");
     let mut document_embeddings = Vec::new();
-    
+
     for (i, (title, content)) in documents.iter().enumerate() {
-        let text = format!("{}: {}", title, content);
-        println!("   Generating embedding for: {}", title);
-        
+        let text = format!("{title}: {content}");
+        println!("   Generating embedding for: {title}");
+
         // Generate real embeddings using Ollama
         let embedding = generate_embedding(&text).await?;
         document_embeddings.push((i + 1, title, content, embedding));
@@ -53,13 +53,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Insert documents with embeddings
     println!("4. Inserting documents with embeddings...");
     for (id, title, content, embedding) in document_embeddings {
-        let embedding_str = format!("[{}]", embedding.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(", "));
-        
-        let text = format!("{}: {}", title, content);
+        let embedding_str = format!(
+            "[{}]",
+            embedding
+                .iter()
+                .map(|v| format!("{v:.1}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        let text = format!("{title}: {content}");
         db.execute(&format!(
             "INSERT INTO embeddings (id, text, embedding) VALUES 
-             ({}, '{}', {})",
-            id, text, embedding_str
+             ({id}, '{text}', {embedding_str})"
         ))?;
     }
 
@@ -69,16 +75,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Query 1: Programming languages - use real Ollama embedding
     println!("Query 1: 'programming languages and development'");
     let query1_embedding = generate_embedding("programming languages and development").await?;
-    let query1_str = format!("[{}]", query1_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
-    
+    let query1_str = format!(
+        "[{}]",
+        query1_embedding
+            .iter()
+            .map(|v| format!("{v:.6}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     let result1 = db.query(&format!(
-        "SELECT text, COSINE_SIMILARITY(embedding, {}) 
+        "SELECT text, COSINE_SIMILARITY(embedding, {query1_str}) 
          FROM embeddings 
-         ORDER BY COSINE_SIMILARITY(embedding, {}) DESC 
-         LIMIT 3",
-        query1_str, query1_str
+         ORDER BY COSINE_SIMILARITY(embedding, {query1_str}) DESC 
+         LIMIT 3"
     ))?;
-    
+
     println!("Top 3 most similar documents:");
     for row in result1.rows() {
         let text = match &row[0] {
@@ -89,19 +101,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tegdb::SqlValue::Real(r) => *r,
             _ => 0.0,
         };
-        println!("  - {} (similarity: {:.4})", text, similarity);
+        println!("  - {text} (similarity: {similarity:.4})");
     }
 
     // Query 2: Data and analytics
     println!("\nQuery 2: 'data analysis and statistics'");
     let query2_embedding = generate_embedding("data analysis and statistics").await?;
-    let query2_str = format!("[{}]", query2_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
-    
+    let query2_str = format!(
+        "[{}]",
+        query2_embedding
+            .iter()
+            .map(|v| format!("{v:.6}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     let result2 = db.query(&format!(
-        "SELECT text, COSINE_SIMILARITY(embedding, {}) FROM embeddings ORDER BY COSINE_SIMILARITY(embedding, {}) DESC LIMIT 3",
-        query2_str, query2_str
+        "SELECT text, COSINE_SIMILARITY(embedding, {query2_str}) FROM embeddings ORDER BY COSINE_SIMILARITY(embedding, {query2_str}) DESC LIMIT 3"
     ))?;
-    
+
     println!("Top 3 most similar documents:");
     for row in result2.rows() {
         let text = match &row[0] {
@@ -112,19 +130,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tegdb::SqlValue::Real(r) => *r,
             _ => 0.0,
         };
-        println!("  - {} (similarity: {:.4})", text, similarity);
+        println!("  - {text} (similarity: {similarity:.4})");
     }
 
     // Query 3: Similarity threshold
     println!("\nQuery 3: 'computer security and protection' (similarity > 0.7)");
     let query3_embedding = generate_embedding("computer security and protection").await?;
-    let query3_str = format!("[{}]", query3_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
-    
+    let query3_str = format!(
+        "[{}]",
+        query3_embedding
+            .iter()
+            .map(|v| format!("{v:.6}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     let result3 = db.query(&format!(
-        "SELECT text, COSINE_SIMILARITY(embedding, {}) FROM embeddings WHERE COSINE_SIMILARITY(embedding, {}) > 0.7 ORDER BY COSINE_SIMILARITY(embedding, {}) DESC",
-        query3_str, query3_str, query3_str
+        "SELECT text, COSINE_SIMILARITY(embedding, {query3_str}) FROM embeddings WHERE COSINE_SIMILARITY(embedding, {query3_str}) > 0.7 ORDER BY COSINE_SIMILARITY(embedding, {query3_str}) DESC"
     ))?;
-    
+
     println!("Documents with similarity > 0.7:");
     for row in result3.rows() {
         let text = match &row[0] {
@@ -135,19 +159,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tegdb::SqlValue::Real(r) => *r,
             _ => 0.0,
         };
-        println!("  - {} (similarity: {:.4})", text, similarity);
+        println!("  - {text} (similarity: {similarity:.4})");
     }
 
     // Query 4: Different similarity function
     println!("\nQuery 4: 'web technologies' using Euclidean distance");
     let query4_embedding = generate_embedding("web technologies").await?;
-    let query4_str = format!("[{}]", query4_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
-    
+    let query4_str = format!(
+        "[{}]",
+        query4_embedding
+            .iter()
+            .map(|v| format!("{v:.6}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
     let result4 = db.query(&format!(
-        "SELECT text, EUCLIDEAN_DISTANCE(embedding, {}) FROM embeddings ORDER BY EUCLIDEAN_DISTANCE(embedding, {}) ASC LIMIT 3",
-        query4_str, query4_str
+        "SELECT text, EUCLIDEAN_DISTANCE(embedding, {query4_str}) FROM embeddings ORDER BY EUCLIDEAN_DISTANCE(embedding, {query4_str}) ASC LIMIT 3"
     ))?;
-    
+
     println!("Top 3 closest documents (Euclidean distance):");
     for row in result4.rows() {
         let text = match &row[0] {
@@ -158,7 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tegdb::SqlValue::Real(r) => *r,
             _ => 0.0,
         };
-        println!("  - {} (distance: {:.4})", text, distance);
+        println!("  - {text} (distance: {distance:.4})");
     }
 
     println!("\n✅ Semantic search with Ollama embeddings is working!");
@@ -173,7 +203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn generate_embedding(text: &str) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    
+
     let payload = json!({
         "model": "nomic-embed-text:latest",
         "prompt": text
@@ -190,7 +220,7 @@ async fn generate_embedding(text: &str) -> Result<Vec<f64>, Box<dyn std::error::
     }
 
     let result: serde_json::Value = response.json().await?;
-    
+
     if let Some(embedding) = result["embedding"].as_array() {
         let embedding_vec: Result<Vec<f64>, _> = embedding
             .iter()

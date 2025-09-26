@@ -1753,8 +1753,11 @@ impl<'a> QueryProcessor<'a> {
                     selected_columns,
                     additional_filter,
                     ..
-                } = plan else { unreachable!() };
-                
+                } = plan
+                else {
+                    unreachable!()
+                };
+
                 let schema = self.get_table_schema(&table)?;
                 let query_schema = QuerySchema::new_with_expressions(&selected_columns, &schema);
 
@@ -2289,7 +2292,7 @@ impl<'a> QueryProcessor<'a> {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(row_iter),
                 })
-            },
+            }
             ExecutionPlan::VectorSearch {
                 table,
                 index: _index,
@@ -2321,7 +2324,7 @@ impl<'a> QueryProcessor<'a> {
                 let start_key = PrimaryKey::table_prefix(&table);
                 let end_key = PrimaryKey::table_end_marker(&table);
                 let scan_iter = self.transaction.scan(start_key..end_key)?;
-                
+
                 // For now, use a table scan with vector similarity computation
                 // TODO: Implement proper vector index usage
                 let row_iter = SelectRowIterator::new(
@@ -2469,4 +2472,3 @@ impl<'a> QueryProcessor<'a> {
         Ok(())
     }
 }
-
