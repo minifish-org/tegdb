@@ -426,8 +426,8 @@ fn test_cli_multiline_sql() {
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("users")); // Table should be created
 
-    // Test single-line INSERT (parser limitation)
-    let input = "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25);\nSELECT * FROM users;\n.quit\n";
+    // Test multi-line INSERT (now supported)
+    let input = "INSERT INTO users (\n  id,\n  name,\n  age\n) VALUES (\n  1,\n  'Alice',\n  25\n);\nSELECT * FROM users;\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
 
     assert_eq!(exit_code, 0);
@@ -445,4 +445,17 @@ fn test_cli_clear_buffer() {
 
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("SQL buffer cleared"));
+}
+
+#[test]
+fn test_cli_string_escaping() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let db_path = temp_dir.path().join("test.db");
+
+    // Test string escaping
+    let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Charlie\\'s Name');\nSELECT * FROM test;\n.quit\n";
+    let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
+
+    assert_eq!(exit_code, 0);
+    assert!(stdout.contains("Charlie's Name")); // Should handle escaped quotes
 }

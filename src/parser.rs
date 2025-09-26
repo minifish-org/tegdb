@@ -5,7 +5,7 @@
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case, take_while1},
+    bytes::complete::{tag, tag_no_case},
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
     combinator::{map, map_res, opt, recognize},
     multi::{many0, separated_list0, separated_list1},
@@ -807,20 +807,22 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
     .parse(input)
 }
 
-// Parse CREATE TABLE statement
+// Parse CREATE TABLE statement with improved multi-line support
 fn parse_create_table(input: &str) -> IResult<&str, Statement> {
     let (input, _) = delimited(multispace0, tag_no_case("CREATE"), multispace1).parse(input)?;
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
+    
+    // Parse column definitions with better multi-line support
     let (input, _) = char('(').parse(input)?;
     let (input, columns) = separated_list0(
         delimited(multispace0, char(','), multispace0),
         delimited(multispace0, parse_column_definition, multispace0),
     )
     .parse(input)?;
-    let (input, _) = char(')').parse(input)?;
+    let (input, _) = delimited(multispace0, char(')'), multispace0).parse(input)?;
 
     Ok((
         input,
@@ -831,41 +833,44 @@ fn parse_create_table(input: &str) -> IResult<&str, Statement> {
     ))
 }
 
-// Parse INSERT statement
+// Parse INSERT statement with improved multi-line support
 fn parse_insert(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = tag_no_case("INSERT").parse(input)?;
-    let (input, _) = multispace1.parse(input)?;
+    let (input, _) = delimited(multispace0, tag_no_case("INSERT"), multispace1).parse(input)?;
     let (input, _) = tag_no_case("INTO").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    let (input, _) = char('(').parse(input)?;
-    let (input, columns_expr) = parse_column_list_optimized.parse(input)?;
-    let columns: Vec<String> = columns_expr
-        .into_iter()
-        .map(|expr| {
-            if let Expression::Column(name) = expr {
-                name
-            } else {
-                panic!("Only column names are allowed in INSERT column list")
-            }
-        })
-        .collect();
-    let (input, _) = char(')').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    
+    // Parse optional column list
+    let (input, columns) = if let Ok((input, _)) = char::<&str, nom::error::Error<&str>>('(').parse(input) {
+        let (input, columns_expr) = separated_list0(
+            delimited(multispace0, char(','), multispace0),
+            delimited(multispace0, parse_identifier_optimized, multispace0),
+        ).parse(input)?;
+        
+        let (input, _) = char(')').parse(input)?;
+        let (input, _) = multispace0.parse(input)?;
+        
+        let columns: Vec<String> = columns_expr.into_iter().map(|s| s.to_string()).collect();
+        (input, columns)
+    } else {
+        (input, Vec::new()) // No column list specified
+    };
+    
+    // Parse VALUES keyword with better whitespace handling
     let (input, _) = tag_no_case("VALUES").parse(input)?;
     let (input, _) = multispace0.parse(input)?;
 
-    // Parse one or more value tuples
+    // Parse one or more value tuples with improved multi-line support
     let (input, values) = separated_list1(
         delimited(multispace0, char(','), multispace0),
         delimited(
-            char('('),
+            delimited(multispace0, char('('), multispace0),
             separated_list0(
                 delimited(multispace0, char(','), multispace0),
                 parse_sql_value,
             ),
-            char(')'),
+            delimited(multispace0, char(')'), multispace0),
         ),
     )
     .parse(input)?;
@@ -880,16 +885,17 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     ))
 }
 
-// Parse SELECT statement
+// Parse SELECT statement with improved multi-line support
 fn parse_select(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = tag_no_case("SELECT").parse(input)?;
-    let (input, _) = multispace1.parse(input)?;
+    let (input, _) = delimited(multispace0, tag_no_case("SELECT"), multispace1).parse(input)?;
     let (input, columns) = parse_column_list_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
+    
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
+    
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, order_by) = opt(parse_order_by_clause).parse(input)?;
@@ -1371,14 +1377,46 @@ fn parse_column_constraint(input: &str) -> IResult<&str, ColumnConstraint> {
     .parse(input)
 }
 
-// Parse string literal - simplified version
+// Parse string literal with escape sequence support
 fn parse_string_literal(input: &str) -> IResult<&str, String> {
-    delimited(
-        char('\''),
-        map(take_while1(|c| c != '\''), |s: &str| s.to_string()),
-        char('\''),
-    )
-    .parse(input)
+    let (input, _) = char('\'').parse(input)?;
+    let mut result = String::new();
+    let mut chars = input.chars();
+    
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\'' => {
+                // End of string
+                let remaining = chars.as_str();
+                return Ok((remaining, result));
+            }
+            '\\' => {
+                // Escape sequence
+                if let Some(next_ch) = chars.next() {
+                    match next_ch {
+                        'n' => result.push('\n'),
+                        't' => result.push('\t'),
+                        'r' => result.push('\r'),
+                        '\\' => result.push('\\'),
+                        '\'' => result.push('\''),
+                        _ => {
+                            // Unknown escape sequence, treat as literal
+                            result.push('\\');
+                            result.push(next_ch);
+                        }
+                    }
+                } else {
+                    // Backslash at end of string
+                    result.push('\\');
+                    break;
+                }
+            }
+            _ => result.push(ch),
+        }
+    }
+    
+    // If we get here, the string wasn't properly closed
+    Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))
 }
 
 // Parse integer - optimized version with error handling
