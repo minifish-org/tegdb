@@ -1,5 +1,6 @@
 use tegdb::Database;
 use tempfile::NamedTempFile;
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "CREATE TABLE embeddings (
             id INTEGER PRIMARY KEY,
             text TEXT(32),
-            embedding VECTOR(3)
+            embedding VECTOR(768)
         )",
     )?;
 
@@ -41,21 +42,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut document_embeddings = Vec::new();
     
     for (i, (title, content)) in documents.iter().enumerate() {
-        let _text = format!("{}: {}", title, content);
+        let text = format!("{}: {}", title, content);
         println!("   Generating embedding for: {}", title);
         
-        // For demo purposes, use simple 3D vectors based on content
-        let embedding = match i {
-            0 => vec![1.0, 0.0, 0.0], // Rust - programming
-            1 => vec![0.0, 1.0, 0.0], // ML - data science
-            2 => vec![0.8, 0.2, 0.0], // React - web development
-            3 => vec![0.0, 0.0, 1.0], // Database - systems
-            4 => vec![0.0, 0.8, 0.2], // Python - data science
-            5 => vec![0.0, 0.0, 0.8], // Cloud - infrastructure
-            6 => vec![0.0, 0.0, 1.0], // Security - systems
-            7 => vec![0.5, 0.5, 0.0], // Mobile - development
-            _ => vec![0.0, 0.0, 0.0],
-        };
+        // Generate real embeddings using Ollama
+        let embedding = generate_embedding(&text).await?;
         document_embeddings.push((i + 1, title, content, embedding));
     }
 
@@ -75,10 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test semantic search queries
     println!("\n5. Testing semantic search queries...\n");
 
-    // Query 1: Programming languages - use a simple 3D vector for demo
+    // Query 1: Programming languages - use real Ollama embedding
     println!("Query 1: 'programming languages and development'");
-    let query1_embedding = vec![0.8, 0.2, 0.0]; // Simple demo vector
-    let query1_str = format!("[{}]", query1_embedding.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(", "));
+    let query1_embedding = generate_embedding("programming languages and development").await?;
+    let query1_str = format!("[{}]", query1_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
     
     let result1 = db.query(&format!(
         "SELECT text, COSINE_SIMILARITY(embedding, {}) 
@@ -103,8 +94,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Query 2: Data and analytics
     println!("\nQuery 2: 'data analysis and statistics'");
-    let query2_embedding = vec![0.0, 0.8, 0.2]; // Simple demo vector
-    let query2_str = format!("[{}]", query2_embedding.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(", "));
+    let query2_embedding = generate_embedding("data analysis and statistics").await?;
+    let query2_str = format!("[{}]", query2_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
     
     let result2 = db.query(&format!(
         "SELECT text, COSINE_SIMILARITY(embedding, {}) FROM embeddings ORDER BY COSINE_SIMILARITY(embedding, {}) DESC LIMIT 3",
@@ -126,8 +117,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Query 3: Similarity threshold
     println!("\nQuery 3: 'computer security and protection' (similarity > 0.7)");
-    let query3_embedding = vec![0.0, 0.0, 0.8]; // Simple demo vector
-    let query3_str = format!("[{}]", query3_embedding.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(", "));
+    let query3_embedding = generate_embedding("computer security and protection").await?;
+    let query3_str = format!("[{}]", query3_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
     
     let result3 = db.query(&format!(
         "SELECT text, COSINE_SIMILARITY(embedding, {}) FROM embeddings WHERE COSINE_SIMILARITY(embedding, {}) > 0.7 ORDER BY COSINE_SIMILARITY(embedding, {}) DESC",
@@ -149,8 +140,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Query 4: Different similarity function
     println!("\nQuery 4: 'web technologies' using Euclidean distance");
-    let query4_embedding = vec![0.5, 0.5, 0.0]; // Simple demo vector
-    let query4_str = format!("[{}]", query4_embedding.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(", "));
+    let query4_embedding = generate_embedding("web technologies").await?;
+    let query4_str = format!("[{}]", query4_embedding.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(", "));
     
     let result4 = db.query(&format!(
         "SELECT text, EUCLIDEAN_DISTANCE(embedding, {}) FROM embeddings ORDER BY EUCLIDEAN_DISTANCE(embedding, {}) ASC LIMIT 3",
@@ -170,44 +161,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  - {} (distance: {:.4})", text, distance);
     }
 
-    println!("\n✅ Semantic search demo is working!");
-    println!("   - Generated embeddings using simple 3D vectors for demo");
+    println!("\n✅ Semantic search with Ollama embeddings is working!");
+    println!("   - Generated embeddings using nomic-embed-text model");
     println!("   - Performed semantic similarity search in TegDB");
     println!("   - Tested multiple similarity functions and thresholds");
-    println!("   - Demonstrated document search capabilities");
-    println!("   - Ready for integration with real Ollama embeddings!");
+    println!("   - Demonstrated real-world document search capabilities");
+    println!("   - Successfully integrated with Ollama embedding service!");
 
     Ok(())
 }
 
-// Note: Real Ollama integration function (commented out for demo)
-// async fn generate_embedding(text: &str) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
-//     let client = reqwest::Client::new();
-//     
-//     let payload = json!({
-//         "model": "nomic-embed-text:latest",
-//         "prompt": text
-//     });
-//
-//     let response = client
-//         .post("http://localhost:11434/api/embeddings")
-//         .json(&payload)
-//         .send()
-//         .await?;
-//
-//     if !response.status().is_success() {
-//         return Err(format!("Ollama API error: {}", response.status()).into());
-//     }
-//
-//     let result: serde_json::Value = response.json().await?;
-//     
-//     if let Some(embedding) = result["embedding"].as_array() {
-//         let embedding_vec: Result<Vec<f64>, _> = embedding
-//             .iter()
-//             .map(|v| v.as_f64().ok_or("Invalid embedding value"))
-//             .collect();
-//         Ok(embedding_vec?)
-//     } else {
-//         Err("No embedding found in response".into())
-//     }
-// }
+async fn generate_embedding(text: &str) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    
+    let payload = json!({
+        "model": "nomic-embed-text:latest",
+        "prompt": text
+    });
+
+    let response = client
+        .post("http://localhost:11434/api/embeddings")
+        .json(&payload)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        return Err(format!("Ollama API error: {}", response.status()).into());
+    }
+
+    let result: serde_json::Value = response.json().await?;
+    
+    if let Some(embedding) = result["embedding"].as_array() {
+        let embedding_vec: Result<Vec<f64>, _> = embedding
+            .iter()
+            .map(|v| v.as_f64().ok_or("Invalid embedding value"))
+            .collect();
+        Ok(embedding_vec?)
+    } else {
+        Err("No embedding found in response".into())
+    }
+}
