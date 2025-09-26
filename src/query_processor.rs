@@ -855,7 +855,7 @@ impl<'a> QueryProcessor<'a> {
             .get_column(&create.column_name)
             .ok_or_else(|| Error::ColumnNotFound(create.column_name.clone()))?;
 
-        let requested_index_type = create.index_type.unwrap_or_else(|| {
+        let requested_index_type = create.index_type.unwrap_or({
             if matches!(column_info.data_type, DataType::Vector(_)) {
                 IndexType::HNSW
             } else {
@@ -879,8 +879,7 @@ impl<'a> QueryProcessor<'a> {
             }
             (_, IndexType::HNSW | IndexType::IVF | IndexType::LSH) => {
                 return Err(Error::Other(format!(
-                    "Index type '{:?}' requires a VECTOR column",
-                    requested_index_type
+                    "Index type '{requested_index_type:?}' requires a VECTOR column"
                 )));
             }
             _ => {}
@@ -1311,8 +1310,7 @@ impl<'a> QueryProcessor<'a> {
             }
             other => {
                 return Err(Error::Other(format!(
-                    "Aggregate execution not supported for plan: {:?}",
-                    other
+                    "Aggregate execution not supported for plan: {other:?}"
                 )));
             }
         }
