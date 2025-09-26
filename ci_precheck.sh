@@ -18,8 +18,13 @@ run_step() {
     echo "   ${description} completed"
 }
 
-run_step "Checking formatting" cargo fmt --all -- --check
-run_step "Running clippy (all targets, all features)" \
+run_step "Auto-fixing formatting" cargo fmt --all
+run_step "Auto-fixing clippy suggestions (all targets, all features)" \
+    cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged
+
+# Verify fixes were successful (what CI will check)
+run_step "Verifying formatting is clean" cargo fmt --all -- --check
+run_step "Verifying clippy is clean" \
     cargo clippy --all-targets --all-features -- -D warnings
 run_step "Building documentation" cargo doc --no-deps --document-private-items
 run_step "Building with all features" cargo build --all-features
