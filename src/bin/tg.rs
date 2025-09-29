@@ -7,172 +7,6 @@ use std::path::Path;
 use std::process;
 use tegdb::{Database, QueryResult, SqlValue};
 
-// SQL syntax highlighting
-fn highlight_sql(sql: &str) -> String {
-    let keywords = [
-        "SELECT",
-        "FROM",
-        "WHERE",
-        "INSERT",
-        "INTO",
-        "VALUES",
-        "UPDATE",
-        "SET",
-        "DELETE",
-        "CREATE",
-        "TABLE",
-        "DROP",
-        "ALTER",
-        "INDEX",
-        "PRIMARY",
-        "KEY",
-        "UNIQUE",
-        "NOT",
-        "NULL",
-        "INTEGER",
-        "TEXT",
-        "REAL",
-        "VECTOR",
-        "REFERENCES",
-        "FOREIGN",
-        "CHECK",
-        "DEFAULT",
-        "ORDER",
-        "BY",
-        "GROUP",
-        "HAVING",
-        "LIMIT",
-        "OFFSET",
-        "INNER",
-        "LEFT",
-        "RIGHT",
-        "OUTER",
-        "JOIN",
-        "ON",
-        "AS",
-        "ASC",
-        "DESC",
-        "DISTINCT",
-        "ALL",
-        "ANY",
-        "SOME",
-        "EXISTS",
-        "BETWEEN",
-        "LIKE",
-        "IN",
-        "IS",
-        "AND",
-        "OR",
-        "COUNT",
-        "SUM",
-        "AVG",
-        "MIN",
-        "MAX",
-        "TRANSACTION",
-        "BEGIN",
-        "COMMIT",
-        "ROLLBACK",
-        "COPY",
-        "TO",
-        "FORMAT",
-        "CSV",
-        "JSON",
-        "PARQUET",
-        "UNION",
-        "INTERSECT",
-        "EXCEPT",
-    ];
-
-    let mut highlighted = String::new();
-    let mut chars = sql.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '\'' => {
-                // Handle string literals
-                highlighted.push_str("\x1b[32m"); // Green for strings
-                highlighted.push(ch);
-                while let Some(next_ch) = chars.next() {
-                    highlighted.push(next_ch);
-                    if next_ch == '\'' && (chars.peek().is_none() || chars.peek() != Some(&'\'')) {
-                        break;
-                    }
-                }
-                highlighted.push_str("\x1b[0m");
-            }
-            '"' => {
-                // Handle double-quoted identifiers
-                highlighted.push_str("\x1b[36m"); // Cyan for identifiers
-                highlighted.push(ch);
-                for next_ch in chars.by_ref() {
-                    highlighted.push(next_ch);
-                    if next_ch == '"' {
-                        break;
-                    }
-                }
-                highlighted.push_str("\x1b[0m");
-            }
-            ch if ch.is_alphabetic() || ch == '_' => {
-                // Collect word
-                let mut word = String::new();
-                word.push(ch);
-
-                while let Some(&next_ch) = chars.peek() {
-                    if next_ch.is_alphanumeric() || next_ch == '_' {
-                        word.push(chars.next().unwrap());
-                    } else {
-                        break;
-                    }
-                }
-
-                let upper_word = word.to_uppercase();
-                if keywords
-                    .iter()
-                    .any(|kw| kw.to_lowercase() == upper_word.to_lowercase())
-                {
-                    // Highlight SQL keywords in blue/bold
-                    highlighted.push_str(&format!("\x1b[1;34m{word}\x1b[0m"));
-                } else {
-                    // Regular identifiers
-                    highlighted.push_str(&word);
-                }
-            }
-            ch if ch.is_ascii_digit() => {
-                // Collect number
-                highlighted.push_str("\x1b[33m"); // Yellow for numbers
-                highlighted.push(ch);
-
-                let mut has_dot = false;
-                while let Some(&next_ch) = chars.peek() {
-                    if next_ch.is_ascii_digit()
-                        || (next_ch == '.'
-                            && !has_dot
-                            && chars.peek().map(|c| c.is_ascii_digit()).unwrap_or(false))
-                    {
-                        has_dot = has_dot || next_ch == '.';
-                        highlighted.push(chars.next().unwrap());
-                    } else {
-                        break;
-                    }
-                }
-                highlighted.push_str("\x1b[0m");
-            }
-            '(' | ')' | '[' | ']' | '{' | '}' => {
-                // Highlight brackets in cyan
-                highlighted.push_str(&format!("\x1b[36m{ch}\x1b[0m"));
-            }
-            ';' | ',' | '.' => {
-                // Highlight punctuation in cyan
-                highlighted.push_str(&format!("\x1b[36m{ch}\x1b[0m"));
-            }
-            ch => {
-                highlighted.push(ch);
-            }
-        }
-    }
-
-    highlighted
-}
 
 fn format_sql_value(value: &SqlValue) -> String {
     match value {
@@ -413,7 +247,7 @@ impl CliState {
 
     fn execute_sql(&mut self, sql: &str) -> Result<(), Box<dyn std::error::Error>> {
         if self.echo_enabled {
-            println!("{}", highlight_sql(sql));
+            println!("{sql}");
         }
 
         let start = std::time::Instant::now();
@@ -570,11 +404,6 @@ impl CliState {
                 println!();
                 println!("Note: SQL statements can span multiple lines. End with ';' to execute.");
                 println!();
-                println!("Example SQL with syntax highlighting:");
-                println!(
-                    "{}",
-                    highlight_sql("SELECT * FROM users WHERE age > 25 ORDER BY name LIMIT 10;")
-                );
             }
             ".tables" => {
                 let pattern = parts.get(1).unwrap_or(&"");

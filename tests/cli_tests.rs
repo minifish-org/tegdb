@@ -242,7 +242,7 @@ fn test_cli_timer_and_echo() {
     assert_eq!(exit_code, 0);
     assert!(stdout.contains("Timer enabled"));
     assert!(stdout.contains("Echo enabled"));
-    assert!(stdout.contains("SELECT") && stdout.contains("FROM") && stdout.contains("test")); // Echoed SQL with highlighting
+    assert!(stdout.contains("SELECT * FROM test")); // Echoed SQL
     assert!(stderr.contains("Query executed in") || stderr.contains("µs") || stderr.contains("ms"));
     // Timing output
 }
