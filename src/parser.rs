@@ -814,7 +814,7 @@ fn parse_create_table(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     // Parse column definitions with better multi-line support
     let (input, _) = char('(').parse(input)?;
     let (input, columns) = separated_list0(
@@ -840,23 +840,25 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     // Parse optional column list
-    let (input, columns) = if let Ok((input, _)) = char::<&str, nom::error::Error<&str>>('(').parse(input) {
-        let (input, columns_expr) = separated_list0(
-            delimited(multispace0, char(','), multispace0),
-            delimited(multispace0, parse_identifier_optimized, multispace0),
-        ).parse(input)?;
-        
-        let (input, _) = char(')').parse(input)?;
-        let (input, _) = multispace0.parse(input)?;
-        
-        let columns: Vec<String> = columns_expr.into_iter().map(|s| s.to_string()).collect();
-        (input, columns)
-    } else {
-        (input, Vec::new()) // No column list specified
-    };
-    
+    let (input, columns) =
+        if let Ok((input, _)) = char::<&str, nom::error::Error<&str>>('(').parse(input) {
+            let (input, columns_expr) = separated_list0(
+                delimited(multispace0, char(','), multispace0),
+                delimited(multispace0, parse_identifier_optimized, multispace0),
+            )
+            .parse(input)?;
+
+            let (input, _) = char(')').parse(input)?;
+            let (input, _) = multispace0.parse(input)?;
+
+            let columns: Vec<String> = columns_expr.into_iter().map(|s| s.to_string()).collect();
+            (input, columns)
+        } else {
+            (input, Vec::new()) // No column list specified
+        };
+
     // Parse VALUES keyword with better whitespace handling
     let (input, _) = tag_no_case("VALUES").parse(input)?;
     let (input, _) = multispace0.parse(input)?;
@@ -890,12 +892,12 @@ fn parse_select(input: &str) -> IResult<&str, Statement> {
     let (input, _) = delimited(multispace0, tag_no_case("SELECT"), multispace1).parse(input)?;
     let (input, columns) = parse_column_list_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
     let (input, _) = multispace0.parse(input)?;
-    
+
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, order_by) = opt(parse_order_by_clause).parse(input)?;
@@ -1382,7 +1384,7 @@ fn parse_string_literal(input: &str) -> IResult<&str, String> {
     let (input, _) = char('\'').parse(input)?;
     let mut result = String::new();
     let mut chars = input.chars();
-    
+
     while let Some(ch) = chars.next() {
         match ch {
             '\'' => {
@@ -1414,9 +1416,12 @@ fn parse_string_literal(input: &str) -> IResult<&str, String> {
             _ => result.push(ch),
         }
     }
-    
+
     // If we get here, the string wasn't properly closed
-    Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)))
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Tag,
+    )))
 }
 
 // Parse integer - optimized version with error handling

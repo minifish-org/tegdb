@@ -77,9 +77,9 @@ TegDB currently exists as a library-only solution, lacking the standalone execut
 
 **Tasks**:
 - [x] Multi-line SQL editing support
-- [ ] Auto-completion for keywords/tables/columns
-- [ ] Command history search
-- [ ] SQL syntax highlighting
+- [x] Auto-completion for keywords/tables/columns
+- [x] Command history search
+- [x] SQL syntax highlighting
 - [ ] Progress indicators and ETA for long-running queries
 - [x] Execution time reporting
 
@@ -161,9 +161,12 @@ Options:
 ### 🚧 Remaining Features
 - **COPY TO**: Export query results to files
 - **Pagination**: Large result set handling
-- **Auto-completion**: Keyword/table/column suggestions
-- **Syntax Highlighting**: SQL code highlighting
 - **Cross-platform Distribution**: Binary releases
+
+### ✅ Recently Completed Features (v0.3.0)
+- **Auto-completion**: SQL keyword completion with Tab key
+- **Command History**: Persistent history with Ctrl+R search functionality
+- **SQL Syntax Highlighting**: Color-coded SQL with keywords, strings, numbers, and punctuation
 
 ## Future Considerations
 
