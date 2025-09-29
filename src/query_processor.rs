@@ -412,14 +412,16 @@ impl<'a> SelectRowIterator<'a> {
                             crate::parser::ArithmeticOperator::Divide => {
                                 if b == 0 {
                                     return Err(crate::Error::Other(
-                                        "Division by zero".to_string(),
+                                        format!("Division by zero in expression: {} / {}", a, b)
                                     ));
                                 }
                                 a / b
                             }
                             crate::parser::ArithmeticOperator::Modulo => {
                                 if b == 0 {
-                                    return Err(crate::Error::Other("Modulo by zero".to_string()));
+                                    return Err(crate::Error::Other(
+                                        format!("Modulo by zero in expression: {} % {}", a, b)
+                                    ));
                                 }
                                 a % b
                             }
@@ -434,14 +436,16 @@ impl<'a> SelectRowIterator<'a> {
                             crate::parser::ArithmeticOperator::Divide => {
                                 if b == 0.0 {
                                     return Err(crate::Error::Other(
-                                        "Division by zero".to_string(),
+                                        format!("Division by zero in expression: {} / {}", a, b)
                                     ));
                                 }
                                 a / b
                             }
                             crate::parser::ArithmeticOperator::Modulo => {
                                 if b == 0.0 {
-                                    return Err(crate::Error::Other("Modulo by zero".to_string()));
+                                    return Err(crate::Error::Other(
+                                        format!("Modulo by zero in expression: {} % {}", a, b)
+                                    ));
                                 }
                                 a % b
                             }
@@ -449,7 +453,7 @@ impl<'a> SelectRowIterator<'a> {
                         Ok(SqlValue::Real(result))
                     }
                     _ => Err(crate::Error::Other(
-                        "Unsupported operation for these types".to_string(),
+                        format!("Unsupported operation for mixed types: {:?}", operator)
                     )),
                 }
             }
@@ -487,7 +491,7 @@ impl<'a> SelectRowIterator<'a> {
                     "MAX" => Ok(SqlValue::Integer(0)),   // Placeholder
                     "MIN" => Ok(SqlValue::Integer(0)),   // Placeholder
                     _ => Err(crate::Error::Other(format!(
-                        "Aggregate function '{name}' not implemented"
+                        "Aggregate function '{name}' is not implemented. Supported functions: COUNT, SUM, AVG, MAX, MIN"
                     ))),
                 }
             }
@@ -700,8 +704,9 @@ impl<'a> QueryProcessor<'a> {
         // Check that all provided columns exist
         for column_name in row_data.keys() {
             if !schema.has_column(column_name) {
+                let available_columns = schema.get_column_names().join(", ");
                 return Err(Error::ColumnNotFound(format!(
-                    "Column '{column_name}' does not exist in table '{table_name}'"
+                    "Column '{column_name}' does not exist in table '{table_name}'. Available columns: {available_columns}"
                 )));
             }
         }
@@ -792,8 +797,9 @@ impl<'a> QueryProcessor<'a> {
 
         if !drop.if_exists && !table_existed {
             let table_name = &drop.table;
+            let available_tables = self.table_schemas.keys().cloned().collect::<Vec<_>>().join(", ");
             return Err(Error::TableNotFound(format!(
-                "Table '{table_name}' does not exist"
+                "Table '{table_name}' does not exist. Available tables: {available_tables}"
             )));
         }
 
@@ -831,8 +837,9 @@ impl<'a> QueryProcessor<'a> {
         // Check if table exists
         if !self.table_schemas.contains_key(&create.table_name) {
             let table_name = &create.table_name;
+            let available_tables = self.table_schemas.keys().cloned().collect::<Vec<_>>().join(", ");
             return Err(Error::TableNotFound(format!(
-                "Table '{table_name}' does not exist"
+                "Table '{table_name}' does not exist. Available tables: {available_tables}"
             )));
         }
 
@@ -841,8 +848,9 @@ impl<'a> QueryProcessor<'a> {
         if !schema.has_column(&create.column_name) {
             let column_name = &create.column_name;
             let table_name = &create.table_name;
+            let available_columns = schema.get_column_names().join(", ");
             return Err(Error::ColumnNotFound(format!(
-                "Column '{column_name}' does not exist in table '{table_name}'"
+                "Column '{column_name}' does not exist in table '{table_name}'. Available columns: {available_columns}"
             )));
         }
 
@@ -1809,8 +1817,13 @@ impl<'a> QueryProcessor<'a> {
             );
             // Check for primary key conflicts
             if self.transaction.get(&key.to_storage_bytes()).is_some() {
+                let pk_col = schema.get_primary_key_column().unwrap_or("<pk>");
+                let pk_val = row_data
+                    .get(pk_col)
+                    .cloned()
+                    .unwrap_or(SqlValue::Null);
                 return Err(Error::Other(format!(
-                    "Primary key constraint violation for table '{table}'"
+                    "Primary key constraint violation on table '{table}': key '{pk_col}' has duplicate value {pk_val:?}"
                 )));
             }
 
@@ -1913,8 +1926,13 @@ impl<'a> QueryProcessor<'a> {
                     let key_bytes = key.to_storage_bytes();
                     if new_key_bytes != key_bytes && self.transaction.get(&new_key_bytes).is_some()
                     {
+                        let pk_col = schema.get_primary_key_column().unwrap_or("<pk>");
+                        let pk_val = row_data
+                            .get(pk_col)
+                            .cloned()
+                            .unwrap_or(SqlValue::Null);
                         return Err(Error::Other(format!(
-                            "Primary key constraint violation for table '{table}'"
+                            "Primary key constraint violation on table '{table}': key '{pk_col}' has duplicate value {pk_val:?}"
                         )));
                     }
 
@@ -2370,8 +2388,10 @@ impl<'a> QueryProcessor<'a> {
                     {
                         if existing_key != index_key {
                             return Err(Error::Other(format!(
-                                "Unique index '{}' violation for value {:?}",
-                                index.name, column_value
+                                "Unique constraint violation on index '{name}' (column '{col}'): duplicate value {val:?}",
+                                name = index.name,
+                                col = index.column_name,
+                                val = column_value
                             )));
                         }
                     }
@@ -2458,8 +2478,10 @@ impl<'a> QueryProcessor<'a> {
                     {
                         if existing_key != index_key {
                             return Err(Error::Other(format!(
-                                "Unique index '{}' violation for value {:?}",
-                                index.name, column_value
+                                "Unique constraint violation on index '{name}' (column '{col}'): duplicate value {val:?}",
+                                name = index.name,
+                                col = index.column_name,
+                                val = column_value
                             )));
                         }
                     }
