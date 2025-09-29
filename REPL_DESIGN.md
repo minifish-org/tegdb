@@ -79,7 +79,6 @@ TegDB currently exists as a library-only solution, lacking the standalone execut
 - [x] Multi-line SQL editing support
 - [x] Auto-completion for keywords/tables/columns
 - [x] Command history search
-- [ ] SQL syntax highlighting
 - [ ] Progress indicators and ETA for long-running queries
 - [x] Execution time reporting
 
