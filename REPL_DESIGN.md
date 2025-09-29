@@ -165,7 +165,7 @@ Options:
 
 ### ✅ Recently Completed Features (v0.3.0)
 - **Auto-completion**: SQL keyword completion with Tab key
-- **Command History**: Persistent history with Ctrl+R search functionality
+- **Command History**: In-memory history with Ctrl+R search functionality
 
 ## Future Considerations
 

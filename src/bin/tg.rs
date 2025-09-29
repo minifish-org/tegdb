@@ -654,17 +654,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Connected to database: {db_path}");
     }
 
-    // Create editor with history search support
+    // Create editor with in-memory history support
     let config = Config::default();
-    let mut rl = Editor::<(), rustyline::history::FileHistory>::with_config(config)?;
-
-    // Enable history search (Ctrl+R for reverse search)
-    if let Err(e) = rl.load_history("~/.tegdb_history") {
-        // History file doesn't exist yet, that's ok
-        if !matches!(e, ReadlineError::Io(_)) {
-            eprintln!("Warning: Could not load history: {e}");
-        }
-    }
+    let mut rl = Editor::<(), rustyline::history::DefaultHistory>::with_config(config)?;
 
     loop {
         // Show different prompt based on whether we're in multi-line mode
@@ -727,10 +719,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Save history when exiting
-    if let Err(e) = rl.save_history("~/.tegdb_history") {
-        eprintln!("Warning: Could not save history: {e}");
-    }
 
     Ok(())
 }
