@@ -7,7 +7,6 @@ use std::path::Path;
 use std::process;
 use tegdb::{Database, QueryResult, SqlValue};
 
-
 fn format_sql_value(value: &SqlValue) -> String {
     match value {
         SqlValue::Integer(i) => i.to_string(),
@@ -718,7 +717,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
 
     Ok(())
 }
