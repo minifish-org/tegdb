@@ -248,11 +248,7 @@ impl CliState {
         if self.echo_enabled {
             println!("{sql}");
             let bytes = sql.as_bytes();
-            let preview: Vec<String> = bytes
-                .iter()
-                .take(16)
-                .map(|b| format!("{b:02X}"))
-                .collect();
+            let preview: Vec<String> = bytes.iter().take(16).map(|b| format!("{b:02X}")).collect();
             eprintln!("[DEBUG] SQL first 16 bytes: {}", preview.join(" "));
         }
 
@@ -392,26 +388,28 @@ impl CliState {
             return Ok(false);
         }
 
-        match parts[0] {
-            ".quit" | ".exit" => return Ok(true),
-            ".help" => {
+        let command = parts[0];
+
+        match command {
+            ".quit" | ".exit" | ".q" => return Ok(true),
+            ".help" | ".h" => {
                 println!("Available dot commands:");
-                println!("  .help          - Show this help");
-                println!("  .tables        - List all tables");
+                println!("  .help/.h       - Show this help");
+                println!("  .tables/.t     - List all tables");
                 println!("  .schema [table] - Show table schema");
                 println!("  .output FILE   - Set output file");
                 println!("  .read FILE     - Execute SQL from file");
                 println!("  .timer on|off  - Toggle execution timing");
                 println!("  .echo on|off   - Toggle SQL echo");
                 println!("  .mode table|csv|json - Set output format");
-                println!("  .stats         - Show database statistics");
-                println!("  .clear         - Clear current SQL buffer");
-                println!("  .quit/.exit    - Exit REPL");
+                println!("  .stats/.s      - Show database statistics");
+                println!("  .clear/.c      - Clear current SQL buffer");
+                println!("  .quit/.exit/.q - Exit REPL");
                 println!();
                 println!("Note: SQL statements can span multiple lines. End with ';' to execute.");
                 println!();
             }
-            ".tables" => {
+            ".tables" | ".t" => {
                 let pattern = parts.get(1).unwrap_or(&"");
                 let schemas = self.db.get_table_schemas_ref();
                 let mut tables: Vec<&String> = schemas.keys().collect();
@@ -545,7 +543,7 @@ impl CliState {
                     println!("Usage: .mode table|csv|json");
                 }
             }
-            ".stats" => {
+            ".stats" | ".s" => {
                 let schemas = self.db.get_table_schemas_ref();
                 println!("Database Statistics:");
                 println!("  Tables: {}", schemas.len());
@@ -567,11 +565,16 @@ impl CliState {
                 println!("  Total columns: {total_columns}");
                 println!("  Total indexes: {total_indexes}");
             }
-            ".clear" => {
+            ".clear" | ".c" => {
                 self.sql_buffer.clear();
                 println!("SQL buffer cleared");
             }
-            _ => return Ok(false),
+            _ => {
+                eprintln!(
+                    "Error: Unknown command '{command}'. Type '.help' for available commands."
+                );
+                return Ok(false);
+            }
         }
         Ok(false)
     }
