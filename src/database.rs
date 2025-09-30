@@ -400,14 +400,7 @@ impl Database {
         let normalized = normalize_sql_input(sql);
         #[cfg(feature = "dev")]
         {
-            let preview: String = normalized
-                .as_bytes()
-                .iter()
-                .take(16)
-                .map(|b| format!("{b:02X} "))
-                .collect();
-            eprintln!("[DB DEBUG] first 16 bytes: {}", preview.trim_end());
-            eprintln!("[DB DEBUG] sql: {normalized}");
+            // Debug mode enabled but no longer printing debug info to avoid log spam
         }
         let statement =
             parse_sql(&normalized).map_err(|e| crate::Error::ParseError(e.to_string()))?;

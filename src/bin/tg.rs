@@ -247,9 +247,6 @@ impl CliState {
     fn execute_sql(&mut self, sql: &str) -> Result<(), Box<dyn std::error::Error>> {
         if self.echo_enabled {
             println!("{sql}");
-            let bytes = sql.as_bytes();
-            let preview: Vec<String> = bytes.iter().take(16).map(|b| format!("{b:02X}")).collect();
-            eprintln!("[DEBUG] SQL first 16 bytes: {}", preview.join(" "));
         }
 
         let start = std::time::Instant::now();

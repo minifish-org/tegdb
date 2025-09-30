@@ -137,12 +137,8 @@ pub fn debug_parse_sql(input: &str) -> Result<Statement, ParseError> {
     match parse_sql(input) {
         Ok(statement) => Ok(statement),
         Err(error) => {
-            // Provide additional debugging information
-            eprintln!("=== PARSER DEBUG INFO ===");
-            eprintln!("Input length: {}", input.len());
-            eprintln!("Input: {input:?}");
-            eprintln!("Error: {error}");
-            eprintln!("========================");
+            // Provide minimal debugging information without log spam
+            eprintln!("Parser error: {error}");
             Err(error)
         }
     }
