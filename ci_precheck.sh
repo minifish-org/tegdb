@@ -31,32 +31,39 @@ run_step() {
     fi
 }
 
-run_step_verbose() {
+run_step_show_warnings() {
     local description="$1"
     shift
     echo -e "${GREEN}==>${NC} ${description}"
-    if "$@" >/dev/null 2>&1; then
+    local output
+    if output=$("$@" 2>&1); then
         echo -e "${GREEN}✓${NC} ${description} completed"
     else
         echo -e "${RED}✗${NC} ${description} failed - CI would break"
+        echo "$output" | grep -E "(warning|error)" || echo "$output"
         exit 1
     fi
 }
+
 
 echo -e "${YELLOW}🔧 Auto-fixing issues first...${NC}"
 
 # Auto-fix issues first (these don't break CI, just improve code)
 echo -e "${GREEN}==>${NC} Auto-fixing formatting"
-cargo fmt --all >/dev/null 2>&1 && echo -e "${GREEN}✓${NC} Formatting fixed" || echo -e "${YELLOW}⚠${NC} No formatting changes needed"
+cargo fmt --all 2>&1 | grep -E "(Diff at|Formatting|reformatted)" || echo -e "${GREEN}✓${NC} No formatting changes needed"
 
 echo -e "${GREEN}==>${NC} Auto-fixing clippy suggestions"
-cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged >/dev/null 2>&1 && echo -e "${GREEN}✓${NC} Clippy suggestions fixed" || echo -e "${YELLOW}⚠${NC} No clippy fixes needed"
+if cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged 2>&1 | grep -E "(warning|error|Fixed)"; then
+    echo -e "${GREEN}✓${NC} Clippy auto-fixes applied (see output above for details)"
+else
+    echo -e "${GREEN}✓${NC} No clippy auto-fixes needed"
+fi
 
 echo -e "\n${YELLOW}🔍 Verifying CI-critical checks (will fail fast)...${NC}"
 
 # Critical checks that would break CI - fail immediately
 run_step "Verifying formatting is clean" cargo fmt --all -- --check
-run_step "Verifying clippy is clean" cargo clippy --all-targets --all-features -- -D warnings
+run_step_show_warnings "Verifying clippy is clean" cargo clippy --all-targets --all-features -- -D warnings
 run_step "Building with all features" cargo build --all-features
 run_step "Building documentation" cargo doc --no-deps --document-private-items
 run_step "Running doc tests" cargo test --doc
