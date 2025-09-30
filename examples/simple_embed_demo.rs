@@ -27,9 +27,7 @@ fn main() -> Result<()> {
             .collect::<Vec<_>>()
             .join(",")
     );
-    db.execute(&format!(
-        "INSERT INTO test (id, vec) VALUES (1, {vec_str})"
-    ))?;
+    db.execute(&format!("INSERT INTO test (id, vec) VALUES (1, {vec_str})"))?;
     println!("   ✓ Manual vector inserted\n");
 
     // Now try with EMBED

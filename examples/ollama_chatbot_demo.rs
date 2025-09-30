@@ -184,7 +184,7 @@ fn find_relevant_context(db: &mut Database, query: &str, limit: usize) -> Result
 async fn generate_response_with_context(
     conversation_history: &[serde_json::Value],
     context: &[String],
-    current_query: &str,
+    _current_query: &str,
 ) -> Result<String> {
     let mut messages = Vec::new();
 

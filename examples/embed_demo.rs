@@ -55,7 +55,7 @@ fn main() -> Result<()> {
 
     // Test 5: Different models
     println!("\n5. Testing different embedding models...");
-    let result = db.query("SELECT EMBED('test', 'simple') as simple_embed")?;
+    let _result = db.query("SELECT EMBED('test', 'simple') as simple_embed")?;
     println!("   ✓ Simple model works");
 
     println!("\n=== Demo Complete! ===");

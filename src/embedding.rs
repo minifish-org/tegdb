@@ -7,9 +7,10 @@
 use crate::Result;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
 /// Supported embedding models
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingModel {
     /// Simple hash-based embedding (default, fast, deterministic)
     Simple,
@@ -19,19 +20,22 @@ pub enum EmbeddingModel {
     AllMiniLM,
 }
 
-impl EmbeddingModel {
-    /// Parse model name from string
-    pub fn from_str(name: &str) -> Result<Self> {
-        match name.to_lowercase().as_str() {
+impl FromStr for EmbeddingModel {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
             "simple" | "default" => Ok(Self::Simple),
             "tinybert" => Ok(Self::TinyBERT),
             "all-minilm" | "minilm" => Ok(Self::AllMiniLM),
-            _ => Err(crate::Error::Other(format!(
-                "Unknown embedding model: {name}. Available models: simple, tinybert, all-minilm"
+            other => Err(crate::Error::Other(format!(
+                "Unknown embedding model: {other}. Available models: simple, tinybert, all-minilm"
             ))),
         }
     }
+}
 
+impl EmbeddingModel {
     /// Get the dimension of embeddings produced by this model
     pub fn dimension(&self) -> usize {
         match self {
@@ -189,19 +193,19 @@ mod tests {
     #[test]
     fn test_model_from_str() {
         assert!(matches!(
-            EmbeddingModel::from_str("simple").unwrap(),
+            "simple".parse::<EmbeddingModel>().unwrap(),
             EmbeddingModel::Simple
         ));
         assert!(matches!(
-            EmbeddingModel::from_str("tinybert").unwrap(),
+            "tinybert".parse::<EmbeddingModel>().unwrap(),
             EmbeddingModel::TinyBERT
         ));
         assert!(matches!(
-            EmbeddingModel::from_str("all-minilm").unwrap(),
+            "all-minilm".parse::<EmbeddingModel>().unwrap(),
             EmbeddingModel::AllMiniLM
         ));
 
-        let result = EmbeddingModel::from_str("unknown");
+        let result = "unknown".parse::<EmbeddingModel>();
         assert!(result.is_err());
     }
 

@@ -9,7 +9,7 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
     combinator::{map, map_res, opt, peek, recognize},
     multi::{many0, separated_list0, separated_list1},
-    sequence::{delimited, pair, preceded, tuple},
+    sequence::{delimited, pair, preceded},
     IResult, Parser,
 };
 use std::collections::HashMap;
@@ -724,7 +724,8 @@ impl Expression {
                         match text {
                             SqlValue::Text(t) => {
                                 // Parse model
-                                let model = crate::embedding::EmbeddingModel::from_str(&model_name)
+                                let model = model_name
+                                    .parse::<crate::embedding::EmbeddingModel>()
                                     .map_err(|e| format!("EMBED model error: {e}"))?;
 
                                 // Generate embedding
@@ -820,20 +821,12 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
         preceded(peek(tag_no_case("UPDATE")), parse_update),
         preceded(peek(tag_no_case("DELETE")), parse_delete),
         preceded(
-            peek(tuple((
-                tag_no_case("DROP"),
-                multispace1,
-                tag_no_case("TABLE"),
-            ))),
+            peek(pair(tag_no_case("DROP"), multispace1).and(tag_no_case("TABLE"))),
             parse_drop_table,
         ),
         preceded(peek(tag_no_case("CREATE")), parse_create_index),
         preceded(
-            peek(tuple((
-                tag_no_case("DROP"),
-                multispace1,
-                tag_no_case("INDEX"),
-            ))),
+            peek(pair(tag_no_case("DROP"), multispace1).and(tag_no_case("INDEX"))),
             parse_drop_index,
         ),
         preceded(
