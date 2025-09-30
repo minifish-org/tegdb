@@ -373,7 +373,7 @@ impl CliState {
         } else if parts[1].to_uppercase() == "TO" {
             // COPY (SELECT ...) TO file
             // This is more complex and would require parsing the SELECT part
-            return Err("COPY TO not yet implemented".into());
+            Err("COPY TO not yet implemented".into())
         } else {
             Err("Invalid COPY command syntax".into())
         }
