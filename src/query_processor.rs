@@ -452,6 +452,58 @@ impl<'a> SelectRowIterator<'a> {
                         };
                         Ok(SqlValue::Real(result))
                     }
+                    // Support mixed types: Integer + Real
+                    (SqlValue::Integer(a), SqlValue::Real(b)) => {
+                        let a_f64 = a as f64;
+                        let result = match operator {
+                            crate::parser::ArithmeticOperator::Add => a_f64 + b,
+                            crate::parser::ArithmeticOperator::Subtract => a_f64 - b,
+                            crate::parser::ArithmeticOperator::Multiply => a_f64 * b,
+                            crate::parser::ArithmeticOperator::Divide => {
+                                if b == 0.0 {
+                                    return Err(crate::Error::Other(format!(
+                                        "Division by zero in expression: {a} / {b}"
+                                    )));
+                                }
+                                a_f64 / b
+                            }
+                            crate::parser::ArithmeticOperator::Modulo => {
+                                if b == 0.0 {
+                                    return Err(crate::Error::Other(format!(
+                                        "Modulo by zero in expression: {a} % {b}"
+                                    )));
+                                }
+                                a_f64 % b
+                            }
+                        };
+                        Ok(SqlValue::Real(result))
+                    }
+                    // Support mixed types: Real + Integer
+                    (SqlValue::Real(a), SqlValue::Integer(b)) => {
+                        let b_f64 = b as f64;
+                        let result = match operator {
+                            crate::parser::ArithmeticOperator::Add => a + b_f64,
+                            crate::parser::ArithmeticOperator::Subtract => a - b_f64,
+                            crate::parser::ArithmeticOperator::Multiply => a * b_f64,
+                            crate::parser::ArithmeticOperator::Divide => {
+                                if b_f64 == 0.0 {
+                                    return Err(crate::Error::Other(format!(
+                                        "Division by zero in expression: {a} / {b}"
+                                    )));
+                                }
+                                a / b_f64
+                            }
+                            crate::parser::ArithmeticOperator::Modulo => {
+                                if b_f64 == 0.0 {
+                                    return Err(crate::Error::Other(format!(
+                                        "Modulo by zero in expression: {a} % {b}"
+                                    )));
+                                }
+                                a % b_f64
+                            }
+                        };
+                        Ok(SqlValue::Real(result))
+                    }
                     _ => Err(crate::Error::Other(format!(
                         "Unsupported operation for mixed types: {operator:?}"
                     ))),
