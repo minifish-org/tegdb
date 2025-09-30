@@ -49,6 +49,7 @@
 pub mod backends;
 pub mod catalog;
 pub mod database;
+pub mod embedding;
 pub mod error;
 pub mod log;
 pub mod protocol_utils;

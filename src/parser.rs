@@ -7,9 +7,9 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case},
     character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
-    combinator::{map, map_res, opt, recognize},
+    combinator::{map, map_res, opt, peek, recognize},
     multi::{many0, separated_list0, separated_list1},
-    sequence::{delimited, pair, preceded},
+    sequence::{delimited, pair, preceded, tuple},
     IResult, Parser,
 };
 use std::collections::HashMap;
@@ -705,6 +705,37 @@ impl Expression {
                             _ => Err("L2_NORMALIZE requires vector argument".to_string()),
                         }
                     }
+                    "EMBED" => {
+                        // EMBED(text) or EMBED(text, model)
+                        if args.is_empty() || args.len() > 2 {
+                            return Err("EMBED requires 1 or 2 arguments: EMBED(text) or EMBED(text, model)".to_string());
+                        }
+
+                        let text = args[0].evaluate(context)?;
+                        let model_name = if args.len() == 2 {
+                            match args[1].evaluate(context)? {
+                                SqlValue::Text(s) => s,
+                                _ => return Err("EMBED model argument must be text".to_string()),
+                            }
+                        } else {
+                            "simple".to_string() // Default model
+                        };
+
+                        match text {
+                            SqlValue::Text(t) => {
+                                // Parse model
+                                let model = crate::embedding::EmbeddingModel::from_str(&model_name)
+                                    .map_err(|e| format!("EMBED model error: {e}"))?;
+
+                                // Generate embedding
+                                let embedding = crate::embedding::embed(&t, model)
+                                    .map_err(|e| format!("EMBED error: {e}"))?;
+
+                                Ok(SqlValue::Vector(embedding))
+                            }
+                            _ => Err("EMBED requires text argument".to_string()),
+                        }
+                    }
                     "ABS" => {
                         if args.len() != 1 {
                             return Err("ABS requires exactly 1 argument".to_string());
@@ -739,8 +770,22 @@ impl Expression {
 
 /// Parse SQL and assign unique parameter indices
 pub fn parse_sql(input: &str) -> Result<Statement, ParseError> {
+    // Pre-normalize input to be robust to REPL/control inputs
+    let mut normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    if let Some(stripped) = normalized.strip_prefix('\u{FEFF}') {
+        normalized = stripped.to_string();
+    }
+    // Strip leading control chars (except space/tab/newline) and stray leading semicolons
+    let normalized = normalized
+        .trim_start_matches(|c: char| {
+            let cu = c as u32;
+            (cu < 0x20 && c != ' ' && c != '\t' && c != '\n') || cu == 0x7F
+        })
+        .trim_start_matches(';')
+        .to_string();
+
     let (remaining, statement) = parse_statement
-        .parse(input)
+        .parse(&normalized)
         .map_err(|e| convert_nom_error(input, e))?;
 
     // Allow trailing whitespace and optional semicolon(s)
@@ -767,18 +812,36 @@ pub fn parse_sql(input: &str) -> Result<Statement, ParseError> {
 fn parse_statement(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multispace0.parse(input)?;
 
+    // Guard each branch with a non-consuming peek on the leading keyword(s)
     alt((
-        parse_create_table,
-        parse_insert,
-        parse_select,
-        parse_update,
-        parse_delete,
-        parse_drop_table,
-        parse_create_index,
-        parse_drop_index,
-        parse_begin_transaction,
-        parse_commit,
-        parse_rollback,
+        preceded(peek(tag_no_case("CREATE")), parse_create_table),
+        preceded(peek(tag_no_case("INSERT")), parse_insert),
+        preceded(peek(tag_no_case("SELECT")), parse_select),
+        preceded(peek(tag_no_case("UPDATE")), parse_update),
+        preceded(peek(tag_no_case("DELETE")), parse_delete),
+        preceded(
+            peek(tuple((
+                tag_no_case("DROP"),
+                multispace1,
+                tag_no_case("TABLE"),
+            ))),
+            parse_drop_table,
+        ),
+        preceded(peek(tag_no_case("CREATE")), parse_create_index),
+        preceded(
+            peek(tuple((
+                tag_no_case("DROP"),
+                multispace1,
+                tag_no_case("INDEX"),
+            ))),
+            parse_drop_index,
+        ),
+        preceded(
+            peek(alt((tag_no_case("BEGIN"), tag_no_case("START")))),
+            parse_begin_transaction,
+        ),
+        preceded(peek(tag_no_case("COMMIT")), parse_commit),
+        preceded(peek(tag_no_case("ROLLBACK")), parse_rollback),
     ))
     .parse(input)
 }
@@ -1330,15 +1393,12 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
         map(tag_no_case("INT"), |_| DataType::Integer),
         map(tag_no_case("REAL"), |_| DataType::Real),
         map(tag_no_case("FLOAT"), |_| DataType::Real),
-        // Text with required length: TEXT(10)
+        // TEXT requires fixed length: TEXT(10)
         map(
-            pair(
-                alt((tag_no_case("TEXT"), tag_no_case("VARCHAR"))),
-                parse_length_specification,
-            ),
+            pair(tag_no_case("TEXT"), parse_length_specification),
             |(_, length)| DataType::Text(Some(length)),
         ),
-        // Vector with required dimension: VECTOR(384)
+        // VECTOR requires fixed dimension: VECTOR(384)
         map(
             pair(tag_no_case("VECTOR"), parse_length_specification),
             |(_, dimension)| DataType::Vector(Some(dimension)),

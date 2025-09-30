@@ -411,17 +411,17 @@ impl<'a> SelectRowIterator<'a> {
                             crate::parser::ArithmeticOperator::Multiply => a * b,
                             crate::parser::ArithmeticOperator::Divide => {
                                 if b == 0 {
-                                    return Err(crate::Error::Other(
-                                        format!("Division by zero in expression: {} / {}", a, b)
-                                    ));
+                                    return Err(crate::Error::Other(format!(
+                                        "Division by zero in expression: {a} / {b}"
+                                    )));
                                 }
                                 a / b
                             }
                             crate::parser::ArithmeticOperator::Modulo => {
                                 if b == 0 {
-                                    return Err(crate::Error::Other(
-                                        format!("Modulo by zero in expression: {} % {}", a, b)
-                                    ));
+                                    return Err(crate::Error::Other(format!(
+                                        "Modulo by zero in expression: {a} % {b}"
+                                    )));
                                 }
                                 a % b
                             }
@@ -435,26 +435,26 @@ impl<'a> SelectRowIterator<'a> {
                             crate::parser::ArithmeticOperator::Multiply => a * b,
                             crate::parser::ArithmeticOperator::Divide => {
                                 if b == 0.0 {
-                                    return Err(crate::Error::Other(
-                                        format!("Division by zero in expression: {} / {}", a, b)
-                                    ));
+                                    return Err(crate::Error::Other(format!(
+                                        "Division by zero in expression: {a} / {b}"
+                                    )));
                                 }
                                 a / b
                             }
                             crate::parser::ArithmeticOperator::Modulo => {
                                 if b == 0.0 {
-                                    return Err(crate::Error::Other(
-                                        format!("Modulo by zero in expression: {} % {}", a, b)
-                                    ));
+                                    return Err(crate::Error::Other(format!(
+                                        "Modulo by zero in expression: {a} % {b}"
+                                    )));
                                 }
                                 a % b
                             }
                         };
                         Ok(SqlValue::Real(result))
                     }
-                    _ => Err(crate::Error::Other(
-                        format!("Unsupported operation for mixed types: {:?}", operator)
-                    )),
+                    _ => Err(crate::Error::Other(format!(
+                        "Unsupported operation for mixed types: {operator:?}"
+                    ))),
                 }
             }
             Expression::FunctionCall { name, args } => {
@@ -797,7 +797,12 @@ impl<'a> QueryProcessor<'a> {
 
         if !drop.if_exists && !table_existed {
             let table_name = &drop.table;
-            let available_tables = self.table_schemas.keys().cloned().collect::<Vec<_>>().join(", ");
+            let available_tables = self
+                .table_schemas
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(Error::TableNotFound(format!(
                 "Table '{table_name}' does not exist. Available tables: {available_tables}"
             )));
@@ -837,7 +842,12 @@ impl<'a> QueryProcessor<'a> {
         // Check if table exists
         if !self.table_schemas.contains_key(&create.table_name) {
             let table_name = &create.table_name;
-            let available_tables = self.table_schemas.keys().cloned().collect::<Vec<_>>().join(", ");
+            let available_tables = self
+                .table_schemas
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(Error::TableNotFound(format!(
                 "Table '{table_name}' does not exist. Available tables: {available_tables}"
             )));
@@ -1818,10 +1828,7 @@ impl<'a> QueryProcessor<'a> {
             // Check for primary key conflicts
             if self.transaction.get(&key.to_storage_bytes()).is_some() {
                 let pk_col = schema.get_primary_key_column().unwrap_or("<pk>");
-                let pk_val = row_data
-                    .get(pk_col)
-                    .cloned()
-                    .unwrap_or(SqlValue::Null);
+                let pk_val = row_data.get(pk_col).cloned().unwrap_or(SqlValue::Null);
                 return Err(Error::Other(format!(
                     "Primary key constraint violation on table '{table}': key '{pk_col}' has duplicate value {pk_val:?}"
                 )));
@@ -1927,10 +1934,7 @@ impl<'a> QueryProcessor<'a> {
                     if new_key_bytes != key_bytes && self.transaction.get(&new_key_bytes).is_some()
                     {
                         let pk_col = schema.get_primary_key_column().unwrap_or("<pk>");
-                        let pk_val = row_data
-                            .get(pk_col)
-                            .cloned()
-                            .unwrap_or(SqlValue::Null);
+                        let pk_val = row_data.get(pk_col).cloned().unwrap_or(SqlValue::Null);
                         return Err(Error::Other(format!(
                             "Primary key constraint violation on table '{table}': key '{pk_col}' has duplicate value {pk_val:?}"
                         )));

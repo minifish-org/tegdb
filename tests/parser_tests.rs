@@ -526,3 +526,38 @@ fn test_parse_parameter_placeholders() {
         panic!("Expected Select statement");
     }
 }
+
+#[test]
+fn test_parse_create_table_text_requires_length() {
+    // TEXT without length should be rejected
+    let sql = "CREATE TABLE t (id INTEGER PRIMARY KEY, msg TEXT)";
+    let res = parse_sql(sql);
+    assert!(res.is_err(), "Expected parse error for TEXT without length");
+}
+
+#[test]
+fn test_parse_create_table_text_with_length_ok() {
+    // TEXT(32) should be accepted
+    let sql = "CREATE TABLE t (id INTEGER PRIMARY KEY, msg TEXT(32))";
+    let res = parse_sql(sql);
+    assert!(res.is_ok(), "Expected TEXT(32) to parse successfully");
+}
+
+#[test]
+fn test_parse_create_table_vector_requires_dimension() {
+    // VECTOR without dimension should be rejected
+    let sql = "CREATE TABLE t (id INTEGER PRIMARY KEY, v VECTOR)";
+    let res = parse_sql(sql);
+    assert!(
+        res.is_err(),
+        "Expected parse error for VECTOR without dimension"
+    );
+}
+
+#[test]
+fn test_parse_create_table_vector_with_dimension_ok() {
+    // VECTOR(128) should be accepted
+    let sql = "CREATE TABLE t (id INTEGER PRIMARY KEY, v VECTOR(128))";
+    let res = parse_sql(sql);
+    assert!(res.is_ok(), "Expected VECTOR(128) to parse successfully");
+}

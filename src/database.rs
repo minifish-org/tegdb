@@ -141,6 +141,31 @@ impl PreparedStatement {
         &self.sql
     }
 }
+/// Normalize SQL input before parsing.
+///
+/// Goals:
+/// - Handle mixed/newline styles (CRLF/CR) by converting to `\n`
+/// - Strip UTF-8 BOM and leading non-printable control characters
+/// - Preserve internal whitespace and content
+fn normalize_sql_input(sql: &str) -> String {
+    // Normalize newlines first
+    let mut out = sql.replace("\r\n", "\n").replace('\r', "\n");
+
+    // Trim UTF-8 BOM if present
+    if let Some(stripped) = out.strip_prefix('\u{FEFF}') {
+        out = stripped.to_string();
+    }
+
+    // Strip leading control characters except space/tab/newline
+    let trimmed = out
+        .trim_start_matches(|c: char| {
+            let cu = c as u32;
+            (cu < 0x20 && c != ' ' && c != '\t' && c != '\n') || cu == 0x7F
+        })
+        .to_string();
+
+    trimmed
+}
 
 /// Database connection, similar to sqlite::Connection
 ///
@@ -253,7 +278,9 @@ impl Database {
         sql: &str,
         schemas: &HashMap<String, Rc<TableSchema>>,
     ) -> Result<QueryResult> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
+        let normalized = normalize_sql_input(sql);
+        let statement =
+            parse_sql(&normalized).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         // Only SELECT statements make sense for queries
         match &statement {
@@ -370,7 +397,20 @@ impl Database {
 
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
+        let normalized = normalize_sql_input(sql);
+        #[cfg(feature = "dev")]
+        {
+            let preview: String = normalized
+                .as_bytes()
+                .iter()
+                .take(16)
+                .map(|b| format!("{b:02X} "))
+                .collect();
+            eprintln!("[DB DEBUG] first 16 bytes: {}", preview.trim_end());
+            eprintln!("[DB DEBUG] sql: {normalized}");
+        }
+        let statement =
+            parse_sql(&normalized).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);
@@ -383,7 +423,9 @@ impl Database {
     /// Execute SQL query, return all results materialized in memory
     /// This follows the parse -> plan -> execute_plan pipeline but returns simple QueryResult
     pub fn query(&mut self, sql: &str) -> Result<QueryResult> {
-        let statement = parse_sql(sql).map_err(|e| crate::Error::ParseError(e.to_string()))?;
+        let normalized = normalize_sql_input(sql);
+        let statement =
+            parse_sql(&normalized).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let planner = QueryPlanner::new(schemas);

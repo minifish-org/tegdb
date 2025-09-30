@@ -6,6 +6,8 @@ pub mod commit_marker_tests;
 pub mod drop_table_integration_test;
 pub mod engine_tests;
 pub mod explicit_transaction_integration_tests;
+pub mod parse_embed_unit_test;
+pub mod parser_insert_vector_regression;
 pub mod planner_database_integration_test;
 pub mod query_iterator_test;
 pub mod query_processor_acid_tests_new;

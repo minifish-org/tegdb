@@ -247,6 +247,13 @@ impl CliState {
     fn execute_sql(&mut self, sql: &str) -> Result<(), Box<dyn std::error::Error>> {
         if self.echo_enabled {
             println!("{sql}");
+            let bytes = sql.as_bytes();
+            let preview: Vec<String> = bytes
+                .iter()
+                .take(16)
+                .map(|b| format!("{b:02X}"))
+                .collect();
+            eprintln!("[DEBUG] SQL first 16 bytes: {}", preview.join(" "));
         }
 
         let start = std::time::Instant::now();
@@ -292,8 +299,8 @@ impl CliState {
 
         // Check if SQL is complete (ends with semicolon)
         if self.sql_buffer.trim().ends_with(';') {
-            // Remove trailing semicolon and execute
-            let sql = self.sql_buffer.trim_end_matches(';').trim().to_string();
+            // Execute exactly one statement (single or multi-line) as entered
+            let sql = self.sql_buffer.trim().to_string();
             if !sql.is_empty() {
                 self.execute_sql(&sql)?;
             }
@@ -573,19 +580,30 @@ impl CliState {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Convert to absolute path
-    let db_path = if Path::new(&cli.db_path).is_absolute() {
+    // Normalize DB identifier to always use file:// protocol expected by Database::open
+    let db_path = if tegdb::protocol_utils::has_protocol(&cli.db_path, "file") {
+        // Already a file:// identifier, use as-is
         cli.db_path.clone()
     } else {
-        std::env::current_dir()?
-            .join(&cli.db_path)
-            .to_string_lossy()
-            .to_string()
+        // Build absolute filesystem path and prefix with file://
+        let abs = if Path::new(&cli.db_path).is_absolute() {
+            cli.db_path.clone()
+        } else {
+            std::env::current_dir()?
+                .join(&cli.db_path)
+                .to_string_lossy()
+                .to_string()
+        };
+        format!("file://{abs}")
     };
 
     // Create database if it doesn't exist
-    if !Path::new(&db_path).exists() && !cli.quiet {
-        eprintln!("Creating new database: {db_path}");
+    // Print create message if backing file does not exist
+    if !cli.quiet {
+        let fs_path = tegdb::protocol_utils::extract_path(&db_path);
+        if !Path::new(fs_path).exists() {
+            eprintln!("Creating new database: {db_path}");
+        }
     }
 
     // Initialize CLI state
