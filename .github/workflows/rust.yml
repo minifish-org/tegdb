@@ -81,7 +81,7 @@ jobs:
         VERBOSE: true
 
     - name: Run additional unit tests
-      run: cargo test --lib --verbose
+      run: cargo test --lib --all-features --verbose
 
     - name: Run doc tests
       run: cargo test --doc --verbose
