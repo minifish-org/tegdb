@@ -54,7 +54,7 @@ impl PreparedStatement {
                 .iter()
                 .map(|row| {
                     row.iter()
-                        .filter(|v| matches!(v, SqlValue::Parameter(_)))
+                        .filter(|expr| expr_has_param(*expr))
                         .count()
                 })
                 .sum::<usize>(),
@@ -532,6 +532,58 @@ impl Database {
         }
     }
 
+    /// Execute a prepared statement with simple Rust types - no SqlValue required!
+    pub fn execute_prepared_simple<T>(
+        &mut self,
+        stmt: &PreparedStatement,
+        params: &[T],
+    ) -> Result<usize>
+    where
+        T: Into<SqlValue> + Clone,
+    {
+        let sql_values: Vec<SqlValue> = params.iter().map(|p| p.to_owned().into()).collect();
+        self.execute_prepared(stmt, &sql_values)
+    }
+
+    /// Ultra-clean API: Execute 4 parameters with mixed types
+    pub fn execute_prepared_4<A, B, C, D>(
+        &mut self,
+        stmt: &PreparedStatement,
+        a: A, b: B, c: C, d: D,
+    ) -> Result<usize>
+    where
+        A: Into<SqlValue>, B: Into<SqlValue>, C: Into<SqlValue>, D: Into<SqlValue>,
+    {
+        let sql_values = vec![a.into(), b.into(), c.into(), d.into()];
+        self.execute_prepared(stmt, &sql_values)
+    }
+
+    /// Ultra-clean API: Execute 5 parameters with mixed types
+    pub fn execute_prepared_5<A, B, C, D, E>(
+        &mut self,
+        stmt: &PreparedStatement,
+        a: A, b: B, c: C, d: D, e: E,
+    ) -> Result<usize>
+    where
+        A: Into<SqlValue>, B: Into<SqlValue>, C: Into<SqlValue>, D: Into<SqlValue>, E: Into<SqlValue>,
+    {
+        let sql_values = vec![a.into(), b.into(), c.into(), d.into(), e.into()];
+        self.execute_prepared(stmt, &sql_values)
+    }
+
+    /// Execute a prepared SELECT statement with simple Rust types - no SqlValue required!
+    pub fn query_prepared_simple<T>(
+        &mut self,
+        stmt: &PreparedStatement,
+        params: &[T],
+    ) -> Result<QueryResult>
+    where
+        T: Into<SqlValue> + Clone,
+    {
+        let sql_values: Vec<SqlValue> = params.iter().map(|p| p.to_owned().into()).collect();
+        self.query_prepared(stmt, &sql_values)
+    }
+
     /// Execute a prepared SELECT statement with parameters
     /// This is similar to SQLite's prepared statement query execution
     pub fn query_prepared(
@@ -686,11 +738,13 @@ impl Database {
                 }))
             }
             Statement::Insert(s) => {
+                // Bind expressions instead of SqlValues
                 let mut values = Vec::new();
                 for row in &s.values {
                     let mut new_row = Vec::new();
-                    for v in row {
-                        new_row.push(bind_value(v, params)?);
+                    for expr in row {
+                        // Bind parameters in expressions
+                        new_row.push(bind_expr(expr, params)?);
                     }
                     values.push(new_row);
                 }
@@ -775,9 +829,58 @@ impl QueryResult {
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
+
     /// Collect rows into a Vec (for compatibility)
     pub fn collect_rows(self) -> Result<Vec<Vec<crate::parser::SqlValue>>> {
         Ok(self.rows)
+    }
+
+    // ========== CLEAN API METHODS - No SqlValue exposed! ==========
+
+    /// Get the first row as clean Rust types - no SqlValue!
+    pub fn first_row_text(&self) -> Option<Vec<String>> {
+        self.rows.first().map(|row| {
+            row.iter().map(|value| value.as_text().unwrap_or_default()).collect()
+        })
+    }
+
+    /// Get all rows as clean String vectors - no SqlValue!
+    pub fn rows_as_text(&self) -> Vec<Vec<String>> {
+        self.rows.iter().map(|row| {
+            row.iter().map(|value| value.as_text().unwrap_or_default()).collect()
+        }).collect()
+    }
+
+    /// Get a specific cell as text - no SqlValue!
+    pub fn get_cell_text(&self, row: usize, col: usize) -> Option<String> {
+        self.rows.get(row).and_then(|r| r.get(col)).and_then(|v| v.as_text())
+    }
+
+    /// Get a specific cell as integer - no SqlValue!
+    pub fn get_cell_integer(&self, row: usize, col: usize) -> Option<i64> {
+        self.rows.get(row).and_then(|r| r.get(col)).and_then(|v| v.as_integer())
+    }
+
+    /// Get a specific cell as real number - no SqlValue!
+    pub fn get_cell_real(&self, row: usize, col: usize) -> Option<f64> {
+        self.rows.get(row).and_then(|r| r.get(col)).and_then(|v| v.as_real())
+    }
+
+    /// Get all values in a column as text - no SqlValue!
+    pub fn get_column_text(&self, col_index: usize) -> Vec<String> {
+        self.rows.iter()
+            .filter_map(|row| row.get(col_index))
+            .filter_map(|value| value.as_text())
+            .collect()
+    }
+
+    /// Convert to a simple HashMap<String, String> for first row - useful for single-row results
+    pub fn as_map(&self) -> Option<std::collections::HashMap<String, String>> {
+        self.first_row_text().map(|row| {
+            self.columns.iter().zip(row.iter())
+                .map(|(col, val)| (col.clone(), val.clone()))
+                .collect()
+        })
     }
 }
 

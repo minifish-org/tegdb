@@ -316,7 +316,7 @@ pub struct SelectStatement {
 pub struct InsertStatement {
     pub table: String,
     pub columns: Vec<String>,
-    pub values: Vec<Vec<SqlValue>>,
+    pub values: Vec<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -454,6 +454,104 @@ pub enum SqlValue {
     Vector(Vec<f64>), // Vector of f64 values for AI embeddings
     Null,
     Parameter(usize), // Parameter placeholder with index
+}
+
+impl SqlValue {
+    /// Convert from common Rust types - clean API without exposing SqlValue::Integer!
+    pub fn from_simple<T>(value: T) -> SqlValue 
+    where 
+        T: Into<SqlValue>
+    {
+        value.into()
+    }
+}
+
+// Implement From trait for common Rust types - automatic conversion!
+impl From<i32> for SqlValue {
+    fn from(value: i32) -> Self {
+        SqlValue::Integer(value as i64)
+    }
+}
+
+impl From<i64> for SqlValue {
+    fn from(value: i64) -> Self {
+        SqlValue::Integer(value)
+    }
+}
+
+impl From<usize> for SqlValue {
+    fn from(value: usize) -> Self {
+        SqlValue::Integer(value as i64)
+    }
+}
+
+impl From<f32> for SqlValue {
+    fn from(value: f32) -> Self {
+        SqlValue::Real(value as f64)
+    }
+}
+
+impl From<f64> for SqlValue {
+    fn from(value: f64) -> Self {
+        SqlValue::Real(value)
+    }
+}
+
+impl From<String> for SqlValue {
+    fn from(value: String) -> Self {
+        SqlValue::Text(value)
+    }
+}
+
+impl From<&str> for SqlValue {
+    fn from(value: &str) -> Self {
+        SqlValue::Text(value.to_string())
+    }
+}
+
+impl From<Vec<f64>> for SqlValue {
+    fn from(value: Vec<f64>) -> Self {
+        SqlValue::Vector(value)
+    }
+}
+
+// Convert FROM SqlValue back to Rust types - for reading query results!
+impl SqlValue {
+    /// Convert SqlValue to String safely
+    pub fn as_text(&self) -> Option<String> {
+        match self {
+            SqlValue::Text(s) => Some(s.clone()),
+            SqlValue::Integer(i) => Some(i.to_string()),
+            SqlValue::Real(f) => Some(f.to_string()),
+            SqlValue::Null => Some("NULL".to_string()),
+            SqlValue::Vector(v) => Some(format!("{:?}", v)),
+            SqlValue::Parameter(idx) => Some(format!("?{}", idx + 1)),
+        }
+    }
+
+    /// Convert SqlValue to i64 safely  
+    pub fn as_integer(&self) -> Option<i64> {
+        match self {
+            SqlValue::Integer(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Convert SqlValue to f64 safely
+    pub fn as_real(&self) -> Option<f64> {
+        match self {
+            SqlValue::Real(f) => Some(*f),
+            SqlValue::Integer(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+}
+
+// Implement Into trait for reverse conversion
+impl From<&SqlValue> for String {
+    fn from(value: &SqlValue) -> Self {
+        value.as_text().unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -922,7 +1020,7 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
             delimited(multispace0, char('('), multispace0),
             separated_list0(
                 delimited(multispace0, char(','), multispace0),
-                parse_sql_value,
+                parse_primary_expression,
             ),
             delimited(multispace0, char(')'), multispace0),
         ),

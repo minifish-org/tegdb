@@ -381,13 +381,16 @@ impl QueryPlanner {
 
     /// Plan INSERT statement
     fn plan_insert(&self, insert: InsertStatement) -> Result<ExecutionPlan> {
-        // Convert values to HashMap format
+        // Convert expressions to values, then to HashMap format
         let mut rows = Vec::with_capacity(insert.values.len());
-        for value_row in insert.values {
+        for expr_row in insert.values {
             let mut row_data = HashMap::with_capacity(insert.columns.len());
             for (i, col_name) in insert.columns.iter().enumerate() {
-                if let Some(value) = value_row.get(i) {
-                    row_data.insert(col_name.clone(), value.clone());
+                if let Some(expr) = expr_row.get(i) {
+                    // Evaluate expression to get SqlValue
+                    let context = HashMap::new(); // Empty context for INSERT
+                    let value = expr.evaluate(&context).map_err(|e| crate::Error::Other(e))?;
+                    row_data.insert(col_name.clone(), value);
                 }
             }
             rows.push(row_data);
