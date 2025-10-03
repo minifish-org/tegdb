@@ -330,25 +330,25 @@ fn parse_column_part_from_bytes(column_part: &[u8], columns: &mut Vec<ColumnInfo
 }
 
 /// Escape a string for safe use in SQL string literals
-/// 
+///
 /// Converts special characters to SQL escape sequences:
-/// - Single quotes (') become (\') 
+/// - Single quotes (') become (\')
 /// - Backslashes (\) become (\)
 /// - Newlines (\n) become (\n)
 /// - Tabs (\t) become (\t)
 /// - Carriage returns (\r) become (\r)
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use tegdb::sql_utils::escape_sql_string;
-/// 
+///
 /// let escaped = escape_sql_string("It's a 'quoted' string\nwith newline");
 /// assert_eq!(escaped, "It\\'s a \\'quoted\\' string\nwith newline");
 /// ```
 pub fn escape_sql_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len() * 2); // Reserve extra capacity for escape characters
-    
+
     for ch in s.chars() {
         match ch {
             '\'' => {
@@ -364,7 +364,7 @@ pub fn escape_sql_string(s: &str) -> String {
                 result.push('\n');
             }
             '\t' => {
-                // Literal tabs (don't escape - let parser handle them) 
+                // Literal tabs (don't escape - let parser handle them)
                 result.push('\t');
             }
             '\r' => {
@@ -377,6 +377,6 @@ pub fn escape_sql_string(s: &str) -> String {
             }
         }
     }
-    
+
     result
 }

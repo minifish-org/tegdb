@@ -52,11 +52,7 @@ impl PreparedStatement {
             Statement::Insert(insert) => insert
                 .values
                 .iter()
-                .map(|row| {
-                    row.iter()
-                        .filter(|expr| expr_has_param(*expr))
-                        .count()
-                })
+                .map(|row| row.iter().filter(|expr| expr_has_param(expr)).count())
                 .sum::<usize>(),
             Statement::Update(update) => {
                 let assignment_params = update
@@ -549,10 +545,16 @@ impl Database {
     pub fn execute_prepared_4<A, B, C, D>(
         &mut self,
         stmt: &PreparedStatement,
-        a: A, b: B, c: C, d: D,
+        a: A,
+        b: B,
+        c: C,
+        d: D,
     ) -> Result<usize>
     where
-        A: Into<SqlValue>, B: Into<SqlValue>, C: Into<SqlValue>, D: Into<SqlValue>,
+        A: Into<SqlValue>,
+        B: Into<SqlValue>,
+        C: Into<SqlValue>,
+        D: Into<SqlValue>,
     {
         let sql_values = vec![a.into(), b.into(), c.into(), d.into()];
         self.execute_prepared(stmt, &sql_values)
@@ -562,10 +564,18 @@ impl Database {
     pub fn execute_prepared_5<A, B, C, D, E>(
         &mut self,
         stmt: &PreparedStatement,
-        a: A, b: B, c: C, d: D, e: E,
+        a: A,
+        b: B,
+        c: C,
+        d: D,
+        e: E,
     ) -> Result<usize>
     where
-        A: Into<SqlValue>, B: Into<SqlValue>, C: Into<SqlValue>, D: Into<SqlValue>, E: Into<SqlValue>,
+        A: Into<SqlValue>,
+        B: Into<SqlValue>,
+        C: Into<SqlValue>,
+        D: Into<SqlValue>,
+        E: Into<SqlValue>,
     {
         let sql_values = vec![a.into(), b.into(), c.into(), d.into(), e.into()];
         self.execute_prepared(stmt, &sql_values)
@@ -840,35 +850,52 @@ impl QueryResult {
     /// Get the first row as clean Rust types - no SqlValue!
     pub fn first_row_text(&self) -> Option<Vec<String>> {
         self.rows.first().map(|row| {
-            row.iter().map(|value| value.as_text().unwrap_or_default()).collect()
+            row.iter()
+                .map(|value| value.as_text().unwrap_or_default())
+                .collect()
         })
     }
 
     /// Get all rows as clean String vectors - no SqlValue!
     pub fn rows_as_text(&self) -> Vec<Vec<String>> {
-        self.rows.iter().map(|row| {
-            row.iter().map(|value| value.as_text().unwrap_or_default()).collect()
-        }).collect()
+        self.rows
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|value| value.as_text().unwrap_or_default())
+                    .collect()
+            })
+            .collect()
     }
 
     /// Get a specific cell as text - no SqlValue!
     pub fn get_cell_text(&self, row: usize, col: usize) -> Option<String> {
-        self.rows.get(row).and_then(|r| r.get(col)).and_then(|v| v.as_text())
+        self.rows
+            .get(row)
+            .and_then(|r| r.get(col))
+            .and_then(|v| v.as_text())
     }
 
     /// Get a specific cell as integer - no SqlValue!
     pub fn get_cell_integer(&self, row: usize, col: usize) -> Option<i64> {
-        self.rows.get(row).and_then(|r| r.get(col)).and_then(|v| v.as_integer())
+        self.rows
+            .get(row)
+            .and_then(|r| r.get(col))
+            .and_then(|v| v.as_integer())
     }
 
     /// Get a specific cell as real number - no SqlValue!
     pub fn get_cell_real(&self, row: usize, col: usize) -> Option<f64> {
-        self.rows.get(row).and_then(|r| r.get(col)).and_then(|v| v.as_real())
+        self.rows
+            .get(row)
+            .and_then(|r| r.get(col))
+            .and_then(|v| v.as_real())
     }
 
     /// Get all values in a column as text - no SqlValue!
     pub fn get_column_text(&self, col_index: usize) -> Vec<String> {
-        self.rows.iter()
+        self.rows
+            .iter()
             .filter_map(|row| row.get(col_index))
             .filter_map(|value| value.as_text())
             .collect()
@@ -877,7 +904,9 @@ impl QueryResult {
     /// Convert to a simple HashMap<String, String> for first row - useful for single-row results
     pub fn as_map(&self) -> Option<std::collections::HashMap<String, String>> {
         self.first_row_text().map(|row| {
-            self.columns.iter().zip(row.iter())
+            self.columns
+                .iter()
+                .zip(row.iter())
                 .map(|(col, val)| (col.clone(), val.clone()))
                 .collect()
         })

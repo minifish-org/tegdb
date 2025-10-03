@@ -1,6 +1,7 @@
 //! Test parsing EMBED function
 
-use tegdb::{parse_sql, Result};
+use tegdb::parser::parse_sql;
+use tegdb::Result;
 
 fn main() -> Result<()> {
     println!("Testing EMBED parsing...\n");

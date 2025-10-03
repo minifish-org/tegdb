@@ -96,7 +96,10 @@ fn test_parse_insert_basic() {
         assert_eq!(insert.values.len(), 1);
         assert_eq!(
             insert.values[0],
-            vec![SqlValue::Integer(1), SqlValue::Text("Alice".to_string())]
+            vec![
+                Expression::Value(SqlValue::Integer(1)),
+                Expression::Value(SqlValue::Text("Alice".to_string()))
+            ]
         );
     } else {
         panic!("Expected Insert statement");
@@ -123,9 +126,9 @@ fn test_parse_insert_multiline() {
         assert_eq!(
             insert.values[0],
             vec![
-                SqlValue::Integer(1),
-                SqlValue::Text("Alice".to_string()),
-                SqlValue::Integer(25)
+                Expression::Value(SqlValue::Integer(1)),
+                Expression::Value(SqlValue::Text("Alice".to_string())),
+                Expression::Value(SqlValue::Integer(25))
             ]
         );
     } else {
@@ -145,9 +148,9 @@ fn test_parse_insert_without_columns() {
         assert_eq!(
             insert.values[0],
             vec![
-                SqlValue::Integer(1),
-                SqlValue::Text("Alice".to_string()),
-                SqlValue::Integer(25)
+                Expression::Value(SqlValue::Integer(1)),
+                Expression::Value(SqlValue::Text("Alice".to_string())),
+                Expression::Value(SqlValue::Integer(25))
             ]
         );
     } else {
@@ -165,11 +168,17 @@ fn test_parse_insert_multiple_values() {
         assert_eq!(insert.values.len(), 2);
         assert_eq!(
             insert.values[0],
-            vec![SqlValue::Integer(1), SqlValue::Text("Alice".to_string())]
+            vec![
+                Expression::Value(SqlValue::Integer(1)),
+                Expression::Value(SqlValue::Text("Alice".to_string()))
+            ]
         );
         assert_eq!(
             insert.values[1],
-            vec![SqlValue::Integer(2), SqlValue::Text("Bob".to_string())]
+            vec![
+                Expression::Value(SqlValue::Integer(2)),
+                Expression::Value(SqlValue::Text("Bob".to_string()))
+            ]
         );
     } else {
         panic!("Expected Insert statement");
@@ -185,7 +194,7 @@ fn test_parse_insert_with_escaped_strings() {
     if let Ok(Statement::Insert(insert)) = result {
         assert_eq!(
             insert.values[0][1],
-            SqlValue::Text("Charlie's Name".to_string())
+            Expression::Value(SqlValue::Text("Charlie's Name".to_string()))
         );
     } else {
         panic!("Expected Insert statement");
@@ -199,7 +208,7 @@ fn test_parse_insert_with_null() {
     assert!(result.is_ok());
 
     if let Ok(Statement::Insert(insert)) = result {
-        assert_eq!(insert.values[0][2], SqlValue::Null);
+        assert_eq!(insert.values[0][2], Expression::Value(SqlValue::Null));
     } else {
         panic!("Expected Insert statement");
     }
@@ -490,7 +499,7 @@ fn test_parse_string_escaping() {
     if let Ok(Statement::Insert(insert)) = result {
         assert_eq!(
             insert.values[0][1],
-            SqlValue::Text("Line 1\nLine 2\tTabbed".to_string())
+            Expression::Value(SqlValue::Text("Line 1\nLine 2\tTabbed".to_string()))
         );
     } else {
         panic!("Expected Insert statement");
@@ -504,7 +513,10 @@ fn test_parse_vector_literals() {
     assert!(result.is_ok());
 
     if let Ok(Statement::Insert(insert)) = result {
-        assert_eq!(insert.values[0][1], SqlValue::Vector(vec![1.0, 2.0, 3.0]));
+        assert_eq!(
+            insert.values[0][1],
+            Expression::Value(SqlValue::Vector(vec![1.0, 2.0, 3.0]))
+        );
     } else {
         panic!("Expected Insert statement");
     }

@@ -7,7 +7,6 @@
 //! Run: cargo run --example manual_chatbot --features dev
 
 use serde_json::json;
-use std::io::{self, Write};
 use tegdb::{embedding, Database, Result};
 use tempfile::NamedTempFile;
 
@@ -19,7 +18,7 @@ fn main() -> Result<()> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = temp_file.path();
     let mut db = Database::open(format!("file://{}", db_path.display()))?;
-    
+
     db.execute(
         "CREATE TABLE chat_history (
             id INTEGER PRIMARY KEY,
@@ -38,7 +37,7 @@ fn main() -> Result<()> {
 
     // Test 3: Store embedding manually
     println!("\n3. Testing vector storage...");
-    let vec_str = format!(
+    let _vec_str = format!(
         "[{}]",
         embedding
             .iter()
@@ -46,7 +45,7 @@ fn main() -> Result<()> {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    
+
     let insert_sql = format!(
         "INSERT INTO chat_history (id, message, timestamp) VALUES (1, '{}', {})",
         test_text.replace('\'', "''"),
@@ -95,6 +94,6 @@ fn main() -> Result<()> {
     println!("1. cargo run --example ollama_chatbot_working --features dev");
     println!("2. Type your questions and press Enter");
     println!("3. Type 'exit' to quit");
-    
+
     Ok(())
 }

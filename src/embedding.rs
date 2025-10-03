@@ -156,9 +156,7 @@ pub fn ollama_embed(text: &str) -> Result<Vec<f64>> {
     // Use a simple synchronous HTTP approach for now
     // In a production environment, this would be async-compatible
     match ollama_embed_sync(trimmed_text) {
-        Ok(embedding) => {
-            Ok(embedding)
-        },
+        Ok(embedding) => Ok(embedding),
         Err(_e) => {
             // Graceful fallback to hash embedding (silently)
             crate::embedding::simple_embed_with_dim(text, 1024)
@@ -169,21 +167,25 @@ pub fn ollama_embed(text: &str) -> Result<Vec<f64>> {
 /// Synchronous Ollama embedding using HTTP request
 fn ollama_embed_sync(text: &str) -> Result<Vec<f64>> {
     use std::process::Command;
-    
+
     // Escape the text for JSON
-    let escaped_text = text.replace("\\", "\\\\")
-                          .replace("\"", "\\\"")
-                          .replace("\n", "\\n")
-                          .replace("\r", "\\r")
-                          .replace("\t", "\\t");
-    
+    let escaped_text = text
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t");
+
     // Create the JSON payload
-    let json_payload = format!(r#"{{"model":"nomic-embed-text","prompt":"{}"}}"#, escaped_text);
-    
+    let json_payload = format!(
+        r#"{{"model":"nomic-embed-text","prompt":"{}"}}"#,
+        escaped_text
+    );
+
     // Use curl to make the HTTP request
     let curl_output = Command::new("curl")
-        .arg("-s")  // Silent mode
-        .arg("-X") 
+        .arg("-s") // Silent mode
+        .arg("-X")
         .arg("POST")
         .arg("http://localhost:11434/api/embeddings")
         .arg("-H")
@@ -191,21 +193,22 @@ fn ollama_embed_sync(text: &str) -> Result<Vec<f64>> {
         .arg("-d")
         .arg(&json_payload)
         .arg("--connect-timeout")
-        .arg("5")  // 5 second timeout
+        .arg("5") // 5 second timeout
         .output();
-        
+
     match curl_output {
         Ok(output) => {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(crate::Error::Other(format!(
-                    "Curl failed with status {}: {}", output.status, stderr
+                    "Curl failed with status {}: {}",
+                    output.status, stderr
                 )));
             }
-            
+
             // Parse the JSON response
             let stdout = String::from_utf8_lossy(&output.stdout);
-            
+
             // Parse as JSON: {"embedding": [0.123, -0.456, ...]}
             match serde_json::from_str::<serde_json::Value>(&stdout) {
                 Ok(json) => {
@@ -217,72 +220,74 @@ fn ollama_embed_sync(text: &str) -> Result<Vec<f64>> {
                                 embedding.push(f);
                             } else {
                                 return Err(crate::Error::Other(
-                                    "Invalid embedding value in Ollama response".to_string()
+                                    "Invalid embedding value in Ollama response".to_string(),
                                 ));
                             }
                         }
-                        
+
                         if embedding.is_empty() {
                             return Err(crate::Error::Other(
-                                "Ollama returned empty embedding vector".to_string()
+                                "Ollama returned empty embedding vector".to_string(),
                             ));
                         }
-                        
+
                         // Dimensions vary by model - silently continue
-                        
+
                         Ok(embedding)
                     } else {
                         Err(crate::Error::Other(format!(
-                            "No 'embedding' field in Ollama response. Raw: {}", stdout
+                            "No 'embedding' field in Ollama response. Raw: {}",
+                            stdout
                         )))
                     }
-                },
-                Err(e) => {
-                    Err(crate::Error::Other(format!(
-                        "Failed to parse Ollama response as JSON: {}. Raw: {}", e, stdout
-                    )))
                 }
+                Err(e) => Err(crate::Error::Other(format!(
+                    "Failed to parse Ollama response as JSON: {}. Raw: {}",
+                    e, stdout
+                ))),
             }
-        },
-        Err(e) => {
-            Err(crate::Error::Other(format!(
-                "Failed to execute curl command: {}. Is curl installed?", e
-            )))
         }
+        Err(e) => Err(crate::Error::Other(format!(
+            "Failed to execute curl command: {}. Is curl installed?",
+            e
+        ))),
     }
 }
 
 /// Test Ollama embedding functionality
 pub fn test_ollama_embedding() -> Result<()> {
     println!("🔍 Testing Ollama embedding integration...");
-    
+
     // Test basic embedding
     match ollama_embed("hello world") {
         Ok(vectors) => {
-            println!("✅ Ollama embedding works! Generated {} dimensions", vectors.len());
-            
+            println!(
+                "✅ Ollama embedding works! Generated {} dimensions",
+                vectors.len()
+            );
+
             // Test semantic similarity
             let text1 = "I love dogs";
-            let text2 = "I adore puppies"; 
+            let text2 = "I adore puppies";
             let text3 = "I hate computers";
-            
+
             let emb1 = ollama_embed(text1)?;
             let emb2 = ollama_embed(text2)?;
             let emb3 = ollama_embed(text3)?;
-            
+
             let sim_1_2 = cosine_similarity(&emb1, &emb2)?;
             let sim_1_3 = cosine_similarity(&emb1, &emb3)?;
-            
+
             println!("🎯 Semantic similarity test:");
             println!("  '{}' <-> '{}' = {:.4}", text1, text2, sim_1_2);
             println!("  '{}' <-> '{}' = {:.4}", text1, text3, sim_1_3);
-            
+
             if sim_1_2 > sim_1_3 {
                 println!("✅ Semantic embeddings work! Similar concepts have higher similarity.");
             } else {
                 println!("⚠️  Semantic behavior unclear - may need different text examples.");
             }
-        },
+        }
         Err(e) => {
             println!("❌ Ollama embedding failed: {}", e);
             println!("💡 Make sure Ollama is running: ollama serve");
@@ -290,7 +295,7 @@ pub fn test_ollama_embedding() -> Result<()> {
             return Err(e);
         }
     }
-    
+
     Ok(())
 }
 

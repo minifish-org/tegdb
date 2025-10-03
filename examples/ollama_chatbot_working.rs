@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
              LIMIT 2",
             next_id, vec_str
         );
-        
+
         if let Ok(result) = db.query(&find_similar_sql) {
             for (i, row) in result.rows().iter().take(2).enumerate() {
                 if let tegdb::SqlValue::Text(msg) = &row[0] {
@@ -125,14 +125,21 @@ async fn main() -> Result<()> {
         // Store bot response using proper SQL escaping (handles Unicode safely)
         let escaped_response = tegdb::sql_utils::escape_sql_string(response.trim());
         println!("DEBUG: Original response length: {} chars", response.len());
-        println!("DEBUG: Escaped response length: {} chars", escaped_response.len());
+        println!(
+            "DEBUG: Escaped response length: {} chars",
+            escaped_response.len()
+        );
         println!("DEBUG: Full escaped response: {}", escaped_response);
-        
-        let insert_response_sql = format!(
+
+        let insert_response_sql =
+            format!(
             "INSERT INTO chat_history (id, message, is_user, timestamp) VALUES ({}, '{}', 0, {})",
             next_id, escaped_response, timestamp + 1
         );
-        println!("DEBUG: Final SQL length: {} chars", insert_response_sql.len());
+        println!(
+            "DEBUG: Final SQL length: {} chars",
+            insert_response_sql.len()
+        );
         db.execute(&insert_response_sql)?;
 
         // Store response embedding (simplified - use same embedding as user input)

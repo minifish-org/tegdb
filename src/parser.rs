@@ -458,9 +458,9 @@ pub enum SqlValue {
 
 impl SqlValue {
     /// Convert from common Rust types - clean API without exposing SqlValue::Integer!
-    pub fn from_simple<T>(value: T) -> SqlValue 
-    where 
-        T: Into<SqlValue>
+    pub fn from_simple<T>(value: T) -> SqlValue
+    where
+        T: Into<SqlValue>,
     {
         value.into()
     }
@@ -1685,12 +1685,12 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
             delimited(multispace0, parse_expression, multispace0),
             char(')'),
         ),
+        // Literal values (try before identifiers to handle NULL correctly)
+        map(parse_sql_value, Expression::Value),
         // Column references
         map(parse_identifier_optimized, |name| {
             Expression::Column(name.to_string())
         }),
-        // Literal values
-        map(parse_sql_value, Expression::Value),
     ))
     .parse(input)
 }

@@ -389,7 +389,7 @@ impl QueryPlanner {
                 if let Some(expr) = expr_row.get(i) {
                     // Evaluate expression to get SqlValue
                     let context = HashMap::new(); // Empty context for INSERT
-                    let value = expr.evaluate(&context).map_err(|e| crate::Error::Other(e))?;
+                    let value = expr.evaluate(&context).map_err(crate::Error::Other)?;
                     row_data.insert(col_name.clone(), value);
                 }
             }

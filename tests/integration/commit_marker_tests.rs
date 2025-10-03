@@ -4,7 +4,7 @@
 mod test_helpers;
 use test_helpers::run_with_both_backends;
 
-use tegdb::{Database, Result, SqlValue};
+use tegdb::{Database, Expression, Result, SqlValue};
 
 #[test]
 fn test_commit_marker_and_crash_recovery() -> Result<()> {
@@ -355,10 +355,10 @@ fn test_vector_similarity_functions() {
                 if let Some(vec_value) = row.get(1) {
                     println!("Vector value: {:?}", vec_value);
                     match vec_value {
-                        SqlValue::Vector(v) => {
+                        Expression::Value(SqlValue::Vector(v)) => {
                             println!("Vector parsed correctly: {:?}", v);
                         }
-                        SqlValue::Text(s) => {
+                        Expression::Value(SqlValue::Text(s)) => {
                             println!("Vector parsed as text: '{}'", s);
                         }
                         _ => {
@@ -502,7 +502,7 @@ fn test_vector_parsing() {
                 if let Some(vec_value) = row.get(1) {
                     println!("Vector value: {:?}", vec_value);
                     match vec_value {
-                        SqlValue::Vector(v) => {
+                        Expression::Value(SqlValue::Vector(v)) => {
                             println!("Vector has {} elements: {:?}", v.len(), v);
                             assert_eq!(v.len(), 3);
                             assert_eq!(v[0], 1.0);
