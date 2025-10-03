@@ -39,8 +39,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔄 Loading my memory...");
     let mut id_counter = 1;
     for (topic, fact) in personal_facts {
-        // Ultra-clean API - perfect mixed types!
-        db.execute_prepared_4(&stmt, id_counter, topic, fact, fact)?;
+        // Bind mixed types via explicit SqlValue vector
+        let params = vec![
+            id_counter.into(),
+            (*topic).into(),
+            (*fact).into(),
+            (*fact).into(),
+        ];
+        db.execute_prepared(&stmt, &params)?;
         id_counter += 1;
     }
 

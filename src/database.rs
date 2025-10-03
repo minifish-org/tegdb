@@ -541,45 +541,7 @@ impl Database {
         self.execute_prepared(stmt, &sql_values)
     }
 
-    /// Ultra-clean API: Execute 4 parameters with mixed types
-    pub fn execute_prepared_4<A, B, C, D>(
-        &mut self,
-        stmt: &PreparedStatement,
-        a: A,
-        b: B,
-        c: C,
-        d: D,
-    ) -> Result<usize>
-    where
-        A: Into<SqlValue>,
-        B: Into<SqlValue>,
-        C: Into<SqlValue>,
-        D: Into<SqlValue>,
-    {
-        let sql_values = vec![a.into(), b.into(), c.into(), d.into()];
-        self.execute_prepared(stmt, &sql_values)
-    }
-
-    /// Ultra-clean API: Execute 5 parameters with mixed types
-    pub fn execute_prepared_5<A, B, C, D, E>(
-        &mut self,
-        stmt: &PreparedStatement,
-        a: A,
-        b: B,
-        c: C,
-        d: D,
-        e: E,
-    ) -> Result<usize>
-    where
-        A: Into<SqlValue>,
-        B: Into<SqlValue>,
-        C: Into<SqlValue>,
-        D: Into<SqlValue>,
-        E: Into<SqlValue>,
-    {
-        let sql_values = vec![a.into(), b.into(), c.into(), d.into(), e.into()];
-        self.execute_prepared(stmt, &sql_values)
-    }
+    // Removed fixed-arity helpers in favor of execute_prepared_simple
 
     /// Execute a prepared SELECT statement with simple Rust types - no SqlValue required!
     pub fn query_prepared_simple<T>(
