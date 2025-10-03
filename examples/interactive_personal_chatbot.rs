@@ -97,15 +97,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
-                // Perform real semantic vector search with Ollama embeddings!
-                let escaped_question = tegdb::sql_utils::escape_sql_string(question);
-                let relevant_facts = db.query(&format!(
-                    "SELECT topic, fact FROM knowledge 
-                     WHERE COSINE_SIMILARITY(embed, EMBED('{}', 'ollama')) > 0.25 
-                     ORDER BY COSINE_SIMILARITY(embed, EMBED('{}', 'ollama')) DESC 
-                     LIMIT 5",
-                    escaped_question, escaped_question
-                ))?;
+                // Perform real semantic vector search with Ollama embeddings using prepared statement
+                let search_sql = "SELECT topic, fact FROM knowledge WHERE COSINE_SIMILARITY(embed, EMBED(?1, 'ollama')) > 0.25 ORDER BY COSINE_SIMILARITY(embed, EMBED(?2, 'ollama')) DESC LIMIT 5";
+                let search_stmt = db.prepare(search_sql)?;
+                let relevant_facts =
+                    db.query_prepared(&search_stmt, &[question.into(), question.into()])?;
 
                 // Build context from relevant facts only
                 let mut kb_context = String::new();

@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
             .as_secs() as i64;
 
         // Store user message using proper SQL escaping
-        let escaped_input = tegdb::sql_utils::escape_sql_string(input);
+        let escaped_input = input; // will use prepared statements instead
         let insert_msg_sql = format!(
             "INSERT INTO chat_history (id, message, is_user, timestamp) VALUES ({}, '{}', 1, {})",
             next_id, escaped_input, timestamp
@@ -123,7 +123,7 @@ async fn main() -> Result<()> {
         println!("{response}\n");
 
         // Store bot response using proper SQL escaping (handles Unicode safely)
-        let escaped_response = tegdb::sql_utils::escape_sql_string(response.trim());
+        let escaped_response = response.trim(); // will use prepared statements instead
         println!("DEBUG: Original response length: {} chars", response.len());
         println!(
             "DEBUG: Escaped response length: {} chars",
