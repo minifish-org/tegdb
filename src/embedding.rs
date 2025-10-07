@@ -146,7 +146,7 @@ pub fn cosine_similarity(a: &[f64], b: &[f64]) -> Result<f64> {
 ///
 /// This uses Ollama's HTTP API to generate real semantic embeddings that capture
 /// the meaning and context of text, enabling true semantic similarity search.
-pub fn ollama_embed(text: &str) -> Result<Vec<f64>> {
+fn ollama_embed(text: &str) -> Result<Vec<f64>> {
     // Validate input
     let trimmed_text = text.trim();
     if trimmed_text.is_empty() {
@@ -254,50 +254,6 @@ fn ollama_embed_sync(text: &str) -> Result<Vec<f64>> {
     }
 }
 
-/// Test Ollama embedding functionality
-pub fn test_ollama_embedding() -> Result<()> {
-    println!("🔍 Testing Ollama embedding integration...");
-
-    // Test basic embedding
-    match ollama_embed("hello world") {
-        Ok(vectors) => {
-            println!(
-                "✅ Ollama embedding works! Generated {} dimensions",
-                vectors.len()
-            );
-
-            // Test semantic similarity
-            let text1 = "I love dogs";
-            let text2 = "I adore puppies";
-            let text3 = "I hate computers";
-
-            let emb1 = ollama_embed(text1)?;
-            let emb2 = ollama_embed(text2)?;
-            let emb3 = ollama_embed(text3)?;
-
-            let sim_1_2 = cosine_similarity(&emb1, &emb2)?;
-            let sim_1_3 = cosine_similarity(&emb1, &emb3)?;
-
-            println!("🎯 Semantic similarity test:");
-            println!("  '{}' <-> '{}' = {:.4}", text1, text2, sim_1_2);
-            println!("  '{}' <-> '{}' = {:.4}", text1, text3, sim_1_3);
-
-            if sim_1_2 > sim_1_3 {
-                println!("✅ Semantic embeddings work! Similar concepts have higher similarity.");
-            } else {
-                println!("⚠️  Semantic behavior unclear - may need different text examples.");
-            }
-        }
-        Err(e) => {
-            println!("❌ Ollama embedding failed: {}", e);
-            println!("💡 Make sure Ollama is running: ollama serve");
-            println!("💡 Install embedding model: ollama pull nomic-embed-text");
-            return Err(e);
-        }
-    }
-
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
