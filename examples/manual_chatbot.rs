@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     // Test 2: Embedding generation
     println!("\n2. Testing embedding API...");
     let test_text = "Hello world";
-    let embedding = embedding::embed(test_text, embedding::EmbeddingModel::Simple)?;
+    let embedding = embedding::embed(test_text, embedding::EmbeddingModel::Ollama)?;
     println!("   ✅ Generated embedding: {} dimensions", embedding.len());
     println!("   Values: {:?}", &embedding[..5]);
 

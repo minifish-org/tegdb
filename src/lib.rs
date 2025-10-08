@@ -100,6 +100,9 @@ pub use vector_index::{HNSWIndex, IVFIndex, LSHIndex};
 // Export SqlValue unconditionally as it's needed for working with query results
 pub use parser::SqlValue;
 
+// Export embedding functionality for semantic search
+pub use embedding::{cosine_similarity, embed, EmbeddingModel};
+
 // For backward compatibility, also expose via modules when dev feature is enabled
 #[cfg(feature = "dev")]
 pub mod low_level {

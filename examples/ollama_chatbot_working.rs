@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
         }
 
         // Compute embedding in Rust
-        let emb_user = embedding::embed(input, embedding::EmbeddingModel::Simple)?;
+        let emb_user = embedding::embed(input, embedding::EmbeddingModel::Ollama)?;
 
         // Insert user message
         let timestamp = std::time::SystemTime::now()

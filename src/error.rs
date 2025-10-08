@@ -61,5 +61,11 @@ impl From<io::Error> for Error {
     }
 }
 
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Error::Other(format!("JSON parsing error: {}", err))
+    }
+}
+
 /// Result type for tegdb operations
 pub type Result<T> = std::result::Result<T, Error>;

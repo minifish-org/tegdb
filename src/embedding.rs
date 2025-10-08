@@ -1,24 +1,15 @@
 //! Embedding generation module for TegDB
 //!
-//! This module provides text-to-vector embedding functionality similar to PostgresML's
-//! pgml.embed(). For now, it uses a simple deterministic embedding approach.
-//! In the future, this can be extended to support real ML models.
+//! This module provides text-to-vector embedding functionality using Ollama
+//! for real semantic embeddings.
 
 use crate::Result;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 /// Supported embedding models
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingModel {
-    /// Simple hash-based embedding (default, fast, deterministic)
-    Simple,
-    /// TinyBERT-like model (future: small transformer model)
-    TinyBERT,
-    /// All-MiniLM model (future: sentence transformer)
-    AllMiniLM,
-    /// Ollama-based semantic embeddings (real AI models)
+    /// Ollama-based semantic embeddings (real AI models via local Ollama server)
     Ollama,
 }
 
@@ -27,12 +18,9 @@ impl FromStr for EmbeddingModel {
 
     fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
-            "simple" | "default" => Ok(Self::Simple),
-            "tinybert" => Ok(Self::TinyBERT),
-            "all-minilm" | "minilm" => Ok(Self::AllMiniLM),
             "ollama" => Ok(Self::Ollama),
             other => Err(crate::Error::Other(format!(
-                "Unknown embedding model: {other}. Available models: simple, tinybert, all-minilm, ollama"
+                "Unknown embedding model: {other}. Only 'ollama' is supported."
             ))),
         }
     }
@@ -42,298 +30,122 @@ impl EmbeddingModel {
     /// Get the dimension of embeddings produced by this model
     pub fn dimension(&self) -> usize {
         match self {
-            Self::Simple => 128, // Simple model produces 128-dimensional vectors
-            Self::TinyBERT => 384,
-            Self::AllMiniLM => 384,
             Self::Ollama => 768, // nomic-embed-text produces 768-dimensional vectors
         }
     }
 }
 
-/// Generate an embedding vector from text
+/// Generate an embedding vector from text using Ollama
 pub fn embed(text: &str, model: EmbeddingModel) -> Result<Vec<f64>> {
     match model {
-        EmbeddingModel::Simple => simple_embed(text),
-        EmbeddingModel::TinyBERT => {
-            // For now, fall back to simple embedding
-            // TODO: Implement real TinyBERT model
-            simple_embed_with_dim(text, model.dimension())
-        }
-        EmbeddingModel::AllMiniLM => {
-            // For now, fall back to simple embedding
-            // TODO: Implement real All-MiniLM model
-            simple_embed_with_dim(text, model.dimension())
-        }
-        EmbeddingModel::Ollama => {
-            // Use Ollama for real semantic embeddings
-            ollama_embed(text)
-        }
+        EmbeddingModel::Ollama => ollama_embed(text),
     }
-}
-
-/// Simple hash-based embedding (deterministic and fast)
-///
-/// This creates a deterministic embedding by:
-/// 1. Normalizing the text (lowercase, trim)
-/// 2. Generating multiple hash values from different "views" of the text
-/// 3. Mapping hash values to [-1, 1] range
-/// 4. L2-normalizing the final vector
-fn simple_embed(text: &str) -> Result<Vec<f64>> {
-    simple_embed_with_dim(text, 128)
-}
-
-fn simple_embed_with_dim(text: &str, dim: usize) -> Result<Vec<f64>> {
-    // Normalize input
-    let normalized = text.trim().to_lowercase();
-
-    if normalized.is_empty() {
-        return Err(crate::Error::Other("Cannot embed empty text".to_string()));
-    }
-
-    let mut embedding = Vec::with_capacity(dim);
-
-    // Generate hash-based features
-    // We use multiple hash functions by adding different seeds
-    for i in 0..dim {
-        let mut hasher = DefaultHasher::new();
-
-        // Hash the text with a seed based on position
-        format!("{normalized}:{i}").hash(&mut hasher);
-        let hash = hasher.finish();
-
-        // Map hash to [-1, 1] range using sine function
-        // This gives us a smooth distribution
-        let value = ((hash as f64) * 0.00001).sin();
-        embedding.push(value);
-    }
-
-    // L2-normalize the embedding
-    let magnitude: f64 = embedding.iter().map(|x| x * x).sum::<f64>().sqrt();
-
-    if magnitude > 0.0 {
-        for val in &mut embedding {
-            *val /= magnitude;
-        }
-    }
-
-    Ok(embedding)
 }
 
 /// Calculate cosine similarity between two embeddings
 pub fn cosine_similarity(a: &[f64], b: &[f64]) -> Result<f64> {
     if a.len() != b.len() {
         return Err(crate::Error::Other(format!(
-            "Embedding dimensions don't match: {} vs {}",
+            "Vector dimension mismatch: {} vs {}",
             a.len(),
             b.len()
         )));
     }
 
+    if a.is_empty() {
+        return Ok(0.0);
+    }
+
     let dot_product: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let mag_a: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
-    let mag_b: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
 
-    if mag_a == 0.0 || mag_b == 0.0 {
-        return Err(crate::Error::Other(
-            "Cannot calculate similarity with zero vectors".to_string(),
-        ));
+    let magnitude_a: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
+    let magnitude_b: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
+
+    if magnitude_a == 0.0 || magnitude_b == 0.0 {
+        return Ok(0.0);
     }
 
-    Ok(dot_product / (mag_a * mag_b))
+    Ok(dot_product / (magnitude_a * magnitude_b))
 }
 
-/// Ollama-based semantic embedding (real AI-powered embeddings)
-///
-/// This uses Ollama's HTTP API to generate real semantic embeddings that capture
-/// the meaning and context of text, enabling true semantic similarity search.
+/// Generate embedding using Ollama's embedding API
+/// This uses the local Ollama server with nomic-embed-text model
 fn ollama_embed(text: &str) -> Result<Vec<f64>> {
-    // Validate input
-    let trimmed_text = text.trim();
-    if trimmed_text.is_empty() {
-        return Err(crate::Error::Other("Cannot embed empty text".to_string()));
-    }
-
-    // Use a simple synchronous HTTP approach for now
-    // In a production environment, this would be async-compatible
-    match ollama_embed_sync(trimmed_text) {
-        Ok(embedding) => Ok(embedding),
-        Err(_e) => {
-            // Graceful fallback to hash embedding (silently)
-            crate::embedding::simple_embed_with_dim(text, 1024)
-        }
-    }
-}
-
-/// Synchronous Ollama embedding using HTTP request
-fn ollama_embed_sync(text: &str) -> Result<Vec<f64>> {
     use std::process::Command;
 
-    // Escape the text for JSON
-    let escaped_text = text
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t");
-
-    // Create the JSON payload
-    let json_payload = format!(
-        r#"{{"model":"nomic-embed-text","prompt":"{}"}}"#,
-        escaped_text
-    );
-
-    // Use curl to make the HTTP request
-    let curl_output = Command::new("curl")
-        .arg("-s") // Silent mode
-        .arg("-X")
-        .arg("POST")
+    // Call Ollama API via curl command
+    let output = Command::new("curl")
+        .arg("-s")
         .arg("http://localhost:11434/api/embeddings")
-        .arg("-H")
-        .arg("Content-Type: application/json")
         .arg("-d")
-        .arg(&json_payload)
-        .arg("--connect-timeout")
-        .arg("5") // 5 second timeout
-        .output();
+        .arg(format!(
+            r#"{{"model":"nomic-embed-text","prompt":"{}"}}"#,
+            text.replace('"', r#"\""#)
+        ))
+        .output()
+        .map_err(|e| crate::Error::Other(format!("Failed to call Ollama: {}", e)))?;
 
-    match curl_output {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(crate::Error::Other(format!(
-                    "Curl failed with status {}: {}",
-                    output.status, stderr
-                )));
-            }
-
-            // Parse the JSON response
-            let stdout = String::from_utf8_lossy(&output.stdout);
-
-            // Parse as JSON: {"embedding": [0.123, -0.456, ...]}
-            match serde_json::from_str::<serde_json::Value>(&stdout) {
-                Ok(json) => {
-                    if let Some(embedding_array) = json["embedding"].as_array() {
-                        // Convert JSON array to Vec<f64>
-                        let mut embedding = Vec::new();
-                        for val in embedding_array {
-                            if let Some(f) = val.as_f64() {
-                                embedding.push(f);
-                            } else {
-                                return Err(crate::Error::Other(
-                                    "Invalid embedding value in Ollama response".to_string(),
-                                ));
-                            }
-                        }
-
-                        if embedding.is_empty() {
-                            return Err(crate::Error::Other(
-                                "Ollama returned empty embedding vector".to_string(),
-                            ));
-                        }
-
-                        // Dimensions vary by model - silently continue
-
-                        Ok(embedding)
-                    } else {
-                        Err(crate::Error::Other(format!(
-                            "No 'embedding' field in Ollama response. Raw: {}",
-                            stdout
-                        )))
-                    }
-                }
-                Err(e) => Err(crate::Error::Other(format!(
-                    "Failed to parse Ollama response as JSON: {}. Raw: {}",
-                    e, stdout
-                ))),
-            }
-        }
-        Err(e) => Err(crate::Error::Other(format!(
-            "Failed to execute curl command: {}. Is curl installed?",
-            e
-        ))),
+    if !output.status.success() {
+        return Err(crate::Error::Other(format!(
+            "Ollama command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
+
+    // Parse JSON response
+    let response_text = String::from_utf8(output.stdout)
+        .map_err(|e| crate::Error::Other(format!("Invalid UTF-8 from Ollama: {}", e)))?;
+
+    let json: serde_json::Value = serde_json::from_str(&response_text)
+        .map_err(|e| crate::Error::Other(format!("Failed to parse Ollama response: {}", e)))?;
+
+    // Extract embedding array
+    let embedding_array = json
+        .get("embedding")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| crate::Error::Other("No embedding in Ollama response".to_string()))?;
+
+    // Convert to Vec<f64>
+    let embedding: Vec<f64> = embedding_array.iter().filter_map(|v| v.as_f64()).collect();
+
+    if embedding.len() != 768 {
+        return Err(crate::Error::Other(format!(
+            "Expected 768-dimensional embedding, got {}",
+            embedding.len()
+        )));
+    }
+
+    Ok(embedding)
 }
 
+/// Synchronous version of ollama_embed for use in non-async contexts
+pub fn ollama_embed_sync(text: &str) -> Result<Vec<f64>> {
+    ollama_embed(text)
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_simple_embed() {
-        let text = "Hello, world!";
-        let embedding = embed(text, EmbeddingModel::Simple).unwrap();
-
-        // Check dimension
-        assert_eq!(embedding.len(), 128);
-
-        // Check normalization (L2 norm should be ~1.0)
-        let magnitude: f64 = embedding.iter().map(|x| x * x).sum::<f64>().sqrt();
-        assert!((magnitude - 1.0).abs() < 0.0001);
-    }
-
-    #[test]
-    fn test_embed_deterministic() {
-        let text = "Hello, world!";
-        let emb1 = embed(text, EmbeddingModel::Simple).unwrap();
-        let emb2 = embed(text, EmbeddingModel::Simple).unwrap();
-
-        // Same text should produce same embedding
-        assert_eq!(emb1, emb2);
-    }
-
-    #[test]
-    fn test_embed_different_texts() {
-        let emb1 = embed("Hello", EmbeddingModel::Simple).unwrap();
-        let emb2 = embed("World", EmbeddingModel::Simple).unwrap();
-
-        // Different texts should produce different embeddings
-        assert_ne!(emb1, emb2);
-    }
-
-    #[test]
     fn test_cosine_similarity() {
-        let text = "machine learning";
-        let emb1 = embed(text, EmbeddingModel::Simple).unwrap();
-        let emb2 = embed(text, EmbeddingModel::Simple).unwrap();
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![1.0, 0.0, 0.0];
+        let similarity = cosine_similarity(&a, &b).unwrap();
+        assert!((similarity - 1.0).abs() < 1e-10);
 
-        // Same text should have similarity of 1.0
-        let similarity = cosine_similarity(&emb1, &emb2).unwrap();
-        assert!((similarity - 1.0).abs() < 0.0001);
+        let c = vec![1.0, 0.0, 0.0];
+        let d = vec![0.0, 1.0, 0.0];
+        let similarity = cosine_similarity(&c, &d).unwrap();
+        assert!((similarity - 0.0).abs() < 1e-10);
     }
 
     #[test]
-    fn test_empty_text() {
-        let result = embed("", EmbeddingModel::Simple);
-        assert!(result.is_err());
-
-        let result = embed("   ", EmbeddingModel::Simple);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_model_from_str() {
-        assert!(matches!(
-            "simple".parse::<EmbeddingModel>().unwrap(),
-            EmbeddingModel::Simple
-        ));
-        assert!(matches!(
-            "tinybert".parse::<EmbeddingModel>().unwrap(),
-            EmbeddingModel::TinyBERT
-        ));
-        assert!(matches!(
-            "all-minilm".parse::<EmbeddingModel>().unwrap(),
-            EmbeddingModel::AllMiniLM
-        ));
-
-        let result = "unknown".parse::<EmbeddingModel>();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_model_dimensions() {
-        assert_eq!(EmbeddingModel::Simple.dimension(), 128);
-        assert_eq!(EmbeddingModel::TinyBERT.dimension(), 384);
-        assert_eq!(EmbeddingModel::AllMiniLM.dimension(), 384);
+    fn test_embedding_model_from_str() {
+        assert_eq!(
+            "ollama".parse::<EmbeddingModel>().unwrap(),
+            EmbeddingModel::Ollama
+        );
+        assert!("invalid".parse::<EmbeddingModel>().is_err());
     }
 }

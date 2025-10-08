@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
         }
 
         // Compute embedding in Rust (avoid SQL function to maximize compatibility)
-        let emb_user = embedding::embed(input, embedding::EmbeddingModel::Simple)?;
+        let emb_user = embedding::embed(input, embedding::EmbeddingModel::Ollama)?;
         let _emb_user_str = format!(
             "[{}]",
             emb_user
