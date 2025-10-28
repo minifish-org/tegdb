@@ -185,7 +185,9 @@ impl StorageEngine {
             max_value_size: self.config.max_value_size,
         };
         let mut new_log = Log::new(identifier, &log_config)?;
-        new_log.set_len(0)?;
+        // New logs now include a header; ensure we don't truncate it away
+        // We'll rely on backend initialization to have written the header,
+        // so do not reset to 0 here.
         for (key, value) in &self.key_map {
             new_log.write_entry(key, value.as_ref())?;
             new_key_map.insert(key.clone(), value.clone());

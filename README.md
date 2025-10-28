@@ -226,9 +226,10 @@ COMMIT;
 - **Streaming queries**: LIMIT processed without loading full result
 
 ### Storage Format
-- **Append-only log**: Fast writes, no seek overhead
+- **Fixed header**: 64-byte header with magic `TEGDB\0`, version (1), limits, flags
+- **Append-only log**: Fast writes after the header, no seek overhead
 - **Binary serialization**: Compact data representation
-- **Automatic compaction**: Reclaims space from old entries
+- **Automatic compaction**: Reclaims space from old entries while preserving header
 - **Crash recovery**: Replay from last commit marker
 
 ## Configuration

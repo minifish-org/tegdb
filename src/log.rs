@@ -16,6 +16,21 @@ pub const DEFAULT_MAX_VALUE_SIZE: usize = 256 * 1024; // 256KB
 /// Byte width of the length fields in the log format
 pub const LENGTH_FIELD_BYTES: usize = 4;
 
+/// Storage file magic header and format
+pub const STORAGE_MAGIC: &[u8; 6] = b"TEGDB\0"; // 6 bytes
+pub const STORAGE_FORMAT_VERSION: u16 = 1; // big-endian on disk
+/// Total header size in bytes (fixed)
+pub const STORAGE_HEADER_SIZE: usize = 64; // leave room for future fields
+
+/// In-file header layout (explicit read/write, not repr(C)):
+/// [0..6)   magic:    b"TEGDB\0"
+/// [6..8)   version:  u16 BE
+/// [8..12)  flags:    u32 BE (unused = 0)
+/// [12..16) max_key:  u32 BE
+/// [16..20) max_val:  u32 BE
+/// [20..21) endian:   u8 (1=BE, 2=LE; we write 1)
+/// [21..64) reserved: zero padding
+
 /// Config options for the log
 #[derive(Debug, Clone)]
 pub struct LogConfig {

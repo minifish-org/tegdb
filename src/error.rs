@@ -14,6 +14,12 @@ pub enum Error {
     FileLocked(String),
     /// Error when file is corrupted
     Corrupted(String),
+    /// Storage file does not have the expected magic header
+    InvalidMagic,
+    /// Storage file format version is unsupported
+    UnsupportedVersion(u16),
+    /// Storage file header is malformed
+    CorruptHeader(&'static str),
     /// SQL parsing, planning, or execution error
     SqlError(String),
     /// Error during SQL parsing
@@ -36,6 +42,9 @@ impl fmt::Display for Error {
             Error::ValueTooLarge(size) => write!(f, "Value too large: {size} bytes (max 256KB)"),
             Error::FileLocked(msg) => write!(f, "Database file is locked: {msg}"),
             Error::Corrupted(msg) => write!(f, "Database corrupted: {msg}"),
+            Error::InvalidMagic => write!(f, "Invalid storage file magic header"),
+            Error::UnsupportedVersion(v) => write!(f, "Unsupported storage file version: {v}"),
+            Error::CorruptHeader(msg) => write!(f, "Corrupt storage header: {msg}"),
             Error::SqlError(msg) => write!(f, "SQL error: {msg}"),
             Error::ParseError(msg) => write!(f, "SQL parse error: {msg}"),
             Error::PlanError(msg) => write!(f, "Query planning error: {msg}"),

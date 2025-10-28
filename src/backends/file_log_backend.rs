@@ -3,7 +3,10 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use fs2::FileExt;
 
 use crate::error::{Error, Result};
-use crate::log::{KeyMap, LogBackend, LogConfig, TX_COMMIT_MARKER};
+use crate::log::{
+    KeyMap, LogBackend, LogConfig, LENGTH_FIELD_BYTES, STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE,
+    STORAGE_MAGIC, TX_COMMIT_MARKER,
+};
 use crate::protocol_utils::parse_storage_identifier;
 use std::rc::Rc;
 
@@ -46,7 +49,19 @@ impl LogBackend for FileLogBackend {
         file.try_lock_exclusive()
             .map_err(|e| Error::FileLocked(e.to_string()))?;
 
-        Ok(Self { path, file })
+        let mut backend = Self { path, file };
+
+        // Initialize or validate header
+        let len = backend.file.metadata()?.len();
+        if len == 0 {
+            // Fresh file: write header with provided limits
+            backend.write_header(_config)?;
+        } else {
+            // Existing file: validate header
+            backend.read_header()?;
+        }
+
+        Ok(backend)
     }
 
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
@@ -54,8 +69,9 @@ impl LogBackend for FileLogBackend {
         let mut uncommitted_changes: Vec<ChangeRecord> = Vec::new();
         let file_len = self.file.metadata()?.len();
         let mut reader = std::io::BufReader::new(&mut self.file);
-        let mut pos = reader.seek(SeekFrom::Start(0))?;
-        let mut len_buf = [0u8; crate::log::LENGTH_FIELD_BYTES];
+        // Start scanning after fixed header
+        let mut pos = reader.seek(SeekFrom::Start(STORAGE_HEADER_SIZE as u64))?;
+        let mut len_buf = [0u8; LENGTH_FIELD_BYTES];
         let mut committed = false;
 
         while pos < file_len {
@@ -134,7 +150,7 @@ impl LogBackend for FileLogBackend {
         // Calculate entry size
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
-        let len = (crate::log::LENGTH_FIELD_BYTES * 2) as u32 + key_len + value_len;
+        let len = (LENGTH_FIELD_BYTES * 2) as u32 + key_len + value_len;
 
         // Prepare buffer with same binary format as original TegDB
         let mut buffer = Vec::with_capacity(len as usize);
@@ -166,6 +182,53 @@ impl LogBackend for FileLogBackend {
         let new_path = std::path::PathBuf::from(new_identifier);
         std::fs::rename(&self.path, &new_path)?;
         self.path = new_path;
+        Ok(())
+    }
+}
+
+impl FileLogBackend {
+    fn write_header(&mut self, config: &LogConfig) -> Result<()> {
+        let mut header = vec![0u8; STORAGE_HEADER_SIZE];
+        // magic [0..6)
+        header[0..STORAGE_MAGIC.len()].copy_from_slice(STORAGE_MAGIC);
+        // version [6..8)
+        header[6..8].copy_from_slice(&STORAGE_FORMAT_VERSION.to_be_bytes());
+        // flags [8..12) = 0
+        header[8..12].copy_from_slice(&0u32.to_be_bytes());
+        // max_key [12..16)
+        let max_key = (config.max_key_size as u32).to_be_bytes();
+        header[12..16].copy_from_slice(&max_key);
+        // max_val [16..20)
+        let max_val = (config.max_value_size as u32).to_be_bytes();
+        header[16..20].copy_from_slice(&max_val);
+        // endianness [20] = 1 (BE)
+        header[20] = 1u8;
+        // [21..64) reserved = 0
+
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.write_all(&header)?;
+        self.file.sync_all().map_err(Error::from)
+    }
+
+    fn read_header(&mut self) -> Result<()> {
+        let mut header = vec![0u8; STORAGE_HEADER_SIZE];
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.read_exact(&mut header)?;
+
+        // magic
+        if &header[0..STORAGE_MAGIC.len()] != STORAGE_MAGIC {
+            return Err(Error::InvalidMagic);
+        }
+        // version
+        let version = u16::from_be_bytes([header[6], header[7]]);
+        if version != STORAGE_FORMAT_VERSION {
+            return Err(Error::UnsupportedVersion(version));
+        }
+        // minimal sanity: endianness 1
+        if header[20] != 1u8 {
+            return Err(Error::CorruptHeader("unsupported endianness"));
+        }
+
         Ok(())
     }
 }
