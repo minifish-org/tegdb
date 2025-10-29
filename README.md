@@ -4,6 +4,64 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 
 > **Design Philosophy**: TegDB prioritizes simplicity and reliability over complexity. It uses a single-threaded design to eliminate concurrency bugs, reduce memory overhead, and provide predictable performance - making it ideal for embedded systems and applications where resource efficiency matters more than parallel processing.
 
+## Getting Started (2 minutes)
+
+1) Add TegDB to your project
+
+```toml
+[dependencies]
+tegdb = "0.2"
+```
+
+2) Minimal example
+
+```rust
+use tegdb::Database;
+
+fn main() -> tegdb::Result<()> {
+    let mut db = Database::open("file:///tmp/quickstart.teg")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")?;
+    db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
+    let rows = db.query("SELECT name FROM users")?;
+    println!("rows={}", rows.len());
+    Ok(())
+}
+```
+
+3) Optional: enable cloud backups (S3/MinIO)
+
+```bash
+# Build the streaming backup tool
+cargo build --features cloud-sync --bin tegstream
+
+# Create a config (tegstream.toml)
+cat > tegstream.toml <<'EOF'
+database_path = "/tmp/quickstart.teg"
+
+[s3]
+bucket = "my-bucket"
+prefix = "dbs/quickstart"
+region = "us-east-1"
+
+[base]
+interval_minutes = 60
+segment_size_mb = 100
+
+[segment]
+min_bytes = 1024
+debounce_ms = 2000
+
+[retention]
+bases = 3
+max_segments_bytes = 107374182400
+
+gzip = true
+EOF
+
+# Run continuous replication
+target/debug/tegstream run --config tegstream.toml
+```
+
 ## Architecture Overview
 
 TegDB implements a clean layered architecture with four distinct layers:
