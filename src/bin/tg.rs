@@ -582,22 +582,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Normalize DB identifier to always use file:// protocol expected by Database::open
     let db_path = if tegdb::protocol_utils::has_protocol(&cli.db_path, "file") {
-        // Already a file:// identifier, normalize extension
+        // Already a file:// identifier; require .teg strictly
         let raw = tegdb::protocol_utils::extract_path(&cli.db_path);
-        let mut pb = std::path::PathBuf::from(raw);
+        let pb = std::path::PathBuf::from(raw);
         if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
-            pb.set_extension("teg");
+            eprintln!(
+                "Error: Unsupported database file extension. Expected '.teg': {}",
+                pb.display()
+            );
+            process::exit(1);
         }
         format!("file://{}", pb.to_string_lossy())
     } else {
-        // Build absolute filesystem path and prefix with file://, normalize to .teg
-        let mut pb = if Path::new(&cli.db_path).is_absolute() {
+        // Require provided path to already end with .teg; do not auto-append
+        let pb = if Path::new(&cli.db_path).is_absolute() {
             std::path::PathBuf::from(&cli.db_path)
         } else {
             std::env::current_dir()?.join(&cli.db_path)
         };
         if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
-            pb.set_extension("teg");
+            eprintln!(
+                "Error: Unsupported database file extension. Expected '.teg': {}",
+                pb.display()
+            );
+            process::exit(1);
         }
         format!("file://{}", pb.to_string_lossy())
     };

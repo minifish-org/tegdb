@@ -81,7 +81,7 @@ fn test_cli_version() {
 
 #[test]
 fn test_cli_missing_database() {
-    let (_stdout, _stderr, exit_code) = run_cli_command(&["nonexistent.db", "--help"], None);
+    let (_stdout, _stderr, exit_code) = run_cli_command(&["nonexistent.teg", "--help"], None);
 
     // Should still show help even with invalid database path
     assert_eq!(exit_code, 0);
@@ -90,7 +90,7 @@ fn test_cli_missing_database() {
 #[test]
 fn test_cli_create_database_and_table() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Create a table
     let (stdout, _stderr, exit_code) = run_cli_command(
@@ -116,7 +116,7 @@ fn test_cli_create_database_and_table() {
 #[test]
 fn test_cli_repl_basic_commands() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\n.tables\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
@@ -129,7 +129,7 @@ fn test_cli_repl_basic_commands() {
 #[test]
 fn test_cli_dot_commands() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50));\n.tables\n.schema users\n.stats\n.help\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
@@ -144,7 +144,7 @@ fn test_cli_dot_commands() {
 #[test]
 fn test_cli_output_formats() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Create table and insert data
     let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.quit\n";
@@ -196,7 +196,7 @@ fn test_cli_output_formats() {
 #[test]
 fn test_cli_script_execution() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
     let script_path = temp_dir.path().join("script.sql");
 
     // Create a script file
@@ -234,7 +234,7 @@ fn test_cli_script_execution() {
 #[test]
 fn test_cli_timer_and_echo() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.timer on\n.echo on\nSELECT * FROM test;\n.quit\n";
     let (stdout, stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
@@ -250,7 +250,7 @@ fn test_cli_timer_and_echo() {
 #[test]
 fn test_cli_output_redirection() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
     let output_path = temp_dir.path().join("output.txt");
 
     // Create table and insert data
@@ -280,7 +280,7 @@ fn test_cli_output_redirection() {
 #[test]
 fn test_cli_csv_import() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
     let csv_path = temp_dir.path().join("data.csv");
 
     // Create CSV file
@@ -323,7 +323,7 @@ fn test_cli_csv_import() {
 #[test]
 fn test_cli_error_handling() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Test invalid SQL
     let (stdout, stderr, exit_code) = run_cli_command(
@@ -344,7 +344,7 @@ fn test_cli_error_handling() {
 #[test]
 fn test_cli_quiet_mode() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Create a table first
     let setup_input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.quit\n";
@@ -369,7 +369,7 @@ fn test_cli_quiet_mode() {
 #[test]
 fn test_cli_repl_mode_switching() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.mode csv\nSELECT * FROM test;\n.mode json\nSELECT * FROM test;\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
@@ -384,7 +384,7 @@ fn test_cli_repl_mode_switching() {
 #[test]
 fn test_cli_read_command() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
     let script_path = temp_dir.path().join("script.sql");
 
     // Create a script file
@@ -404,7 +404,7 @@ fn test_cli_read_command() {
 #[test]
 fn test_cli_output_stdout_redirection() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Alice');\n.output stdout\nSELECT * FROM test;\n.quit\n";
     let (stdout, _stderr, exit_code) = run_cli_command(&[db_path.to_str().unwrap()], Some(input));
@@ -417,7 +417,7 @@ fn test_cli_output_stdout_redirection() {
 #[test]
 fn test_cli_multiline_sql() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Test multi-line CREATE TABLE
     let input = "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  name TEXT(50),\n  age INTEGER\n);\n.tables\n.quit\n";
@@ -437,7 +437,7 @@ fn test_cli_multiline_sql() {
 #[test]
 fn test_cli_clear_buffer() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Test clearing SQL buffer
     let input = "SELECT *\nFROM test;\n.clear\n.quit\n";
@@ -450,7 +450,7 @@ fn test_cli_clear_buffer() {
 #[test]
 fn test_cli_string_escaping() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Test string escaping
     let input = "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(50));\nINSERT INTO test (id, name) VALUES (1, 'Charlie\\'s Name');\nSELECT * FROM test;\n.quit\n";
@@ -463,7 +463,7 @@ fn test_cli_string_escaping() {
 #[test]
 fn test_cli_complex_queries() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     // Test basic multi-table operations
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50), age INTEGER);
@@ -483,7 +483,7 @@ SELECT * FROM orders;
 #[test]
 fn test_cli_aggregate_functions() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE sales (id INTEGER PRIMARY KEY, amount REAL, category TEXT(20));
 INSERT INTO sales (id, amount, category) VALUES (1, 100.0, 'Electronics'), (2, 200.0, 'Electronics'), (3, 150.0, 'Books');
@@ -500,7 +500,7 @@ SELECT SUM(amount) FROM sales;
 #[test]
 fn test_cli_arithmetic_expressions() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE products (id INTEGER PRIMARY KEY, price REAL, quantity INTEGER);
 INSERT INTO products (id, price, quantity) VALUES (1, 10.0, 5), (2, 20.0, 3);
@@ -517,7 +517,7 @@ SELECT id, price + 5 FROM products;
 #[test]
 fn test_cli_where_conditions() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50), age INTEGER, city TEXT(30));
 INSERT INTO users (id, name, age, city) VALUES (1, 'Alice', 25, 'NYC'), (2, 'Bob', 30, 'LA'), (3, 'Charlie', 35, 'NYC');
@@ -536,7 +536,7 @@ SELECT * FROM users WHERE name LIKE 'A%';
 #[test]
 fn test_cli_order_by_and_limit() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE scores (id INTEGER PRIMARY KEY, name TEXT(50), score INTEGER);
 INSERT INTO scores (id, name, score) VALUES (1, 'Alice', 85), (2, 'Bob', 92), (3, 'Charlie', 78), (4, 'David', 95);
@@ -560,7 +560,7 @@ SELECT * FROM scores ORDER BY name ASC;
 #[test]
 fn test_cli_update_and_delete() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50), age INTEGER);
 INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25), (2, 'Bob', 30), (3, 'Charlie', 35);
@@ -579,7 +579,7 @@ SELECT * FROM users;
 #[test]
 fn test_cli_index_operations() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT(100), name TEXT(50));
 CREATE INDEX idx_email ON users (email);
@@ -596,7 +596,7 @@ CREATE INDEX idx_email ON users (email);
 #[test]
 fn test_cli_transaction_operations() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL);
 INSERT INTO accounts (id, balance) VALUES (1, 1000.0), (2, 500.0);
@@ -615,7 +615,7 @@ SELECT * FROM accounts;
 #[test]
 fn test_cli_rollback_operations() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL);
 INSERT INTO accounts (id, balance) VALUES (1, 1000.0);
@@ -634,7 +634,7 @@ SELECT * FROM accounts;
 #[test]
 fn test_cli_error_recovery() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE test (id INTEGER PRIMARY KEY);
 INVALID SQL STATEMENT;
@@ -650,7 +650,7 @@ SELECT * FROM test;
 #[test]
 fn test_cli_large_dataset() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let mut input = String::from("CREATE TABLE numbers (id INTEGER PRIMARY KEY, value INTEGER);\n");
 
@@ -676,7 +676,7 @@ fn test_cli_large_dataset() {
 #[test]
 fn test_cli_nested_expressions() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE math (id INTEGER PRIMARY KEY, a INTEGER, b INTEGER, c INTEGER);
 INSERT INTO math (id, a, b, c) VALUES (1, 10, 20, 30);
@@ -694,7 +694,7 @@ SELECT id, a + (b * c) FROM math;
 #[test]
 fn test_cli_vector_operations() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE embeddings (id INTEGER PRIMARY KEY, vector VECTOR(3));
 INSERT INTO embeddings (id, vector) VALUES (1, [1.0, 2.0, 3.0]);
@@ -710,7 +710,7 @@ SELECT * FROM embeddings;
 #[test]
 fn test_cli_parameter_queries() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50), age INTEGER);
 INSERT INTO users (id, name, age) VALUES (1, 'Alice', 25), (2, 'Bob', 30);
@@ -726,7 +726,7 @@ SELECT * FROM users WHERE id = ?1;
 #[test]
 fn test_cli_complex_joins() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir.path().join("test.db");
+    let db_path = temp_dir.path().join("test.teg");
 
     let input = "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50));
 CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL);
