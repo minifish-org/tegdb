@@ -4,7 +4,7 @@ use tegdb::{Database, Result};
 
 fn main() -> Result<()> {
     let temp_dir = tempfile::tempdir().unwrap();
-    let db_path = temp_dir.path().join("simple_embed.db");
+    let db_path = temp_dir.path().join("simple_embed").with_extension("teg");
     let db_file = format!("file://{}", db_path.display());
 
     println!("=== Simple EMBED Demo ===\n");

@@ -582,19 +582,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Normalize DB identifier to always use file:// protocol expected by Database::open
     let db_path = if tegdb::protocol_utils::has_protocol(&cli.db_path, "file") {
-        // Already a file:// identifier, use as-is
-        cli.db_path.clone()
+        // Already a file:// identifier, normalize extension
+        let raw = tegdb::protocol_utils::extract_path(&cli.db_path);
+        let mut pb = std::path::PathBuf::from(raw);
+        if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
+            pb.set_extension("teg");
+        }
+        format!("file://{}", pb.to_string_lossy())
     } else {
-        // Build absolute filesystem path and prefix with file://
-        let abs = if Path::new(&cli.db_path).is_absolute() {
-            cli.db_path.clone()
+        // Build absolute filesystem path and prefix with file://, normalize to .teg
+        let mut pb = if Path::new(&cli.db_path).is_absolute() {
+            std::path::PathBuf::from(&cli.db_path)
         } else {
-            std::env::current_dir()?
-                .join(&cli.db_path)
-                .to_string_lossy()
-                .to_string()
+            std::env::current_dir()?.join(&cli.db_path)
         };
-        format!("file://{abs}")
+        if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
+            pb.set_extension("teg");
+        }
+        format!("file://{}", pb.to_string_lossy())
     };
 
     // Create database if it doesn't exist

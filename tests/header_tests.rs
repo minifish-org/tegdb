@@ -9,7 +9,7 @@ const HEADER_SIZE: usize = 64;
 #[test]
 fn writes_header_on_create() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("tegdb.data");
+    let db_path = tmp.path().join("tegdb").with_extension("teg");
     let identifier = format!("file://{}", db_path.to_string_lossy());
 
     {
@@ -30,7 +30,7 @@ fn writes_header_on_create() {
 #[test]
 fn rejects_missing_or_wrong_magic() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("bad.data");
+    let db_path = tmp.path().join("bad").with_extension("teg");
     {
         let mut f = OpenOptions::new().create(true).write(true).open(&db_path).unwrap();
         // Write bogus header of correct size but wrong magic (6 bytes)
@@ -49,7 +49,7 @@ fn rejects_missing_or_wrong_magic() {
 #[test]
 fn reads_entries_after_header() {
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("entries.data");
+    let db_path = tmp.path().join("entries").with_extension("teg");
     let identifier = format!("file://{}", db_path.to_string_lossy());
 
     {
@@ -72,7 +72,7 @@ fn compaction_preserves_header() {
     use tegdb::storage_engine::StorageEngine;
 
     let tmp = TempDir::new().unwrap();
-    let db_path = tmp.path().join("compact.data");
+    let db_path = tmp.path().join("compact").with_extension("teg");
 
     // Use low-level engine API
     let mut engine = StorageEngine::new(db_path.clone()).unwrap();

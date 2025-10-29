@@ -2,7 +2,7 @@ use tegdb::{Database, Result, SqlValue};
 
 #[test]
 fn test_vector_similarity_functions() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_vector_similarity.db");
+    let db_path = std::env::temp_dir().join("test_vector_similarity.teg");
     let _ = std::fs::remove_file(&db_path);
 
     let mut db = Database::open(db_path.to_string_lossy())?;
@@ -61,7 +61,7 @@ fn test_vector_similarity_functions() -> Result<()> {
 
 #[test]
 fn test_vector_search_operations() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_vector_search.db");
+    let db_path = std::env::temp_dir().join("test_vector_search.teg");
     let _ = std::fs::remove_file(&db_path);
 
     let mut db = Database::open(db_path.to_string_lossy())?;
@@ -178,7 +178,7 @@ fn test_vector_indexing_integration() -> Result<()> {
 
 #[test]
 fn test_vector_data_types() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_vector_types.db");
+    let db_path = std::env::temp_dir().join("test_vector_types.teg");
     let _ = std::fs::remove_file(&db_path);
 
     let mut db = Database::open(db_path.to_string_lossy())?;
@@ -232,7 +232,7 @@ fn test_vector_data_types() -> Result<()> {
 
 #[test]
 fn test_vector_edge_cases() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_vector_edge.db");
+    let db_path = std::env::temp_dir().join("test_vector_edge.teg");
     let _ = std::fs::remove_file(&db_path);
 
     let mut db = Database::open(db_path.to_string_lossy())?;

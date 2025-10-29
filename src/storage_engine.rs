@@ -47,6 +47,8 @@ impl StorageEngine {
 
     /// Creates a new database engine with custom configuration
     pub fn with_config(path: PathBuf, config: EngineConfig) -> Result<Self> {
+        // Default to .teg suffix if none provided; keep user-provided suffixes intact
+        let path = ensure_teg_extension(&path)?;
         let path_str = path.to_string_lossy().to_string();
         Self::with_config_and_identifier(path_str, config)
     }
@@ -194,6 +196,37 @@ impl StorageEngine {
         }
 
         Ok((new_log, new_key_map))
+    }
+}
+
+/// Ensure the database file has a `.teg` suffix when creating/opening by path.
+/// - If the path has no extension, append `.teg`.
+/// - If the path points to an existing directory, return an error.
+fn ensure_teg_extension(path: &std::path::Path) -> Result<std::path::PathBuf> {
+    // Basic sanity: path must not be a directory if it already exists
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.is_dir() {
+            return Err(crate::error::Error::Other(format!(
+                "Path points to a directory, expected file: {}",
+                path.display()
+            )));
+        }
+    }
+
+    // If there's no extension, default to .teg
+    if path.extension().is_none() {
+        let mut with_ext = path.to_path_buf();
+        with_ext.set_extension("teg");
+        Ok(with_ext)
+    } else {
+        // Enforce .teg-only files; reject any other extension
+        if path.extension().and_then(|s| s.to_str()) != Some("teg") {
+            return Err(crate::error::Error::Other(format!(
+                "Unsupported database file extension. Expected '.teg': {}",
+                path.display()
+            )));
+        }
+        Ok(path.to_path_buf())
     }
 }
 

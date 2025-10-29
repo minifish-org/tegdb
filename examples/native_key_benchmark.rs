@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Native Key Benchmark ===");
 
     // Create database with absolute path
-    let mut db = Database::open("file:///tmp/native_key_benchmark.db")?;
+    let mut db = Database::open("file:///tmp/native_key_benchmark.teg")?;
 
     // Clean up any existing data
     let _ = db.execute("DROP TABLE IF EXISTS benchmark_test");

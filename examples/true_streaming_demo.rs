@@ -8,7 +8,7 @@ use tegdb::Database;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a test database
-    let mut db = Database::open("file://streaming_demo.db")?;
+    let mut db = Database::open("file:///tmp/streaming_demo.teg")?;
 
     // Create a test table
     db.execute("CREATE TABLE large_table (id INTEGER PRIMARY KEY, data TEXT(32), value INTEGER)")?;

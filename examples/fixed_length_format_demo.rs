@@ -12,7 +12,7 @@ fn main() -> tegdb::Result<()> {
     println!("=== TegDB Fixed-Length Storage Format Demo ===\n");
 
     // Create a database with fixed-length columns
-    let mut db = Database::open("file:///tmp/fixed_length_demo.db")?;
+    let mut db = Database::open("file:///tmp/fixed_length_demo.teg")?;
 
     // Clean up any existing data
     let _ = db.execute("DROP TABLE IF EXISTS users");

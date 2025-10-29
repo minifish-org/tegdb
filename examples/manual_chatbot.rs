@@ -16,8 +16,9 @@ fn main() -> Result<()> {
     // Test 1: Database setup
     println!("1. Testing database setup...");
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-    let mut db = Database::open(format!("file://{}", db_path.display()))?;
+    let mut pb = std::path::PathBuf::from(temp_file.path());
+    pb.set_extension("teg");
+    let mut db = Database::open(format!("file://{}", pb.display()))?;
 
     db.execute(
         "CREATE TABLE chat_history (

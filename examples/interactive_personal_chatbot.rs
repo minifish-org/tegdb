@@ -3,7 +3,9 @@ use std::io::{self, Write};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create temporary database file
     let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = format!("file://{}", temp_file.path().to_str().unwrap());
+    let mut pb = std::path::PathBuf::from(temp_file.path());
+    pb.set_extension("teg");
+    let db_path = format!("file://{}", pb.display());
 
     let mut db = tegdb::Database::open(&db_path)?;
 

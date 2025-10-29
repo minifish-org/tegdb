@@ -10,8 +10,8 @@
 //! use tegdb::{Database, Result};
 //!
 //! # fn main() -> Result<()> {
-//!     // Open or create a database
-//!     let mut db = Database::open("file://my_database.db")?;
+//!     // Open or create a database (.teg enforced)
+//!     let mut db = Database::open("file:///absolute/path/to/my_database.teg")?;
 //!     
 //!     // Create table
 //!     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER)")?;

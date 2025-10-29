@@ -24,7 +24,7 @@ fn test_file_log_backend() -> Result<()> {
 
     // Test 1: Basic CRUD operations
     {
-        let mut db = Database::open("file://test_file_crud.db")?;
+        let mut db = Database::open("file:///tmp/test_file_crud.teg")?;
 
         // Create
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT(32), value REAL)")?;
@@ -53,7 +53,7 @@ fn test_file_log_backend() -> Result<()> {
 
     // Test 2: Transactions
     {
-        let mut db = Database::open("file://test_file_transactions.db")?;
+        let mut db = Database::open("file:///tmp/test_file_transactions.teg")?;
         db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance REAL)")?;
         db.execute("INSERT INTO accounts (id, balance) VALUES (1, 100.0)")?;
         db.execute("INSERT INTO accounts (id, balance) VALUES (2, 50.0)")?;
@@ -86,7 +86,7 @@ fn test_file_log_backend() -> Result<()> {
 
     // Test 3: Multiple tables
     {
-        let mut db = Database::open("file://test_file_multiple.db")?;
+        let mut db = Database::open("file:///tmp/test_file_multiple.teg")?;
 
         db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")?;
         db.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL)")?;
@@ -128,7 +128,7 @@ fn test_edge_cases() -> Result<()> {
 
     // Test 1: Empty values
     {
-        let mut db = Database::open("file://test_edge_empty.db")?;
+        let mut db = Database::open("file:///tmp/test_edge_empty.teg")?;
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
         db.execute("INSERT INTO test (id, data) VALUES (1, ' ')")?; // Use single space instead of empty string
 
@@ -139,7 +139,7 @@ fn test_edge_cases() -> Result<()> {
 
     // Test 2: Special characters
     {
-        let mut db = Database::open("file://test_edge_special.db")?;
+        let mut db = Database::open("file:///tmp/test_edge_special.teg")?;
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
         db.execute("INSERT INTO test (id, data) VALUES (1, 'Hello World')")?;
 
@@ -150,7 +150,7 @@ fn test_edge_cases() -> Result<()> {
 
     // Test 3: Large numbers
     {
-        let mut db = Database::open("file://test_edge_numbers.db")?;
+        let mut db = Database::open("file:///tmp/test_edge_numbers.teg")?;
         db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, big_num INTEGER, big_real REAL)")?;
         db.execute("INSERT INTO test (id, big_num, big_real) VALUES (1, 999999, 123.456)")?;
 
@@ -167,7 +167,7 @@ fn test_large_data() -> Result<()> {
     println!("\n4. Testing Large Data Handling...");
 
     {
-        let mut db = Database::open("file://test_large_data.db")?;
+        let mut db = Database::open("file:///tmp/test_large_data.teg")?;
         db.execute("CREATE TABLE large_test (id INTEGER PRIMARY KEY, data TEXT(32))")?;
 
         // Insert moderately large data

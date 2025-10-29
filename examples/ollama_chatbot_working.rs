@@ -20,8 +20,9 @@ async fn main() -> Result<()> {
 
     // Setup database (unique temp file each run)
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
-    let mut db = Database::open(format!("file://{}", db_path.display()))?;
+    let mut pb = std::path::PathBuf::from(temp_file.path());
+    pb.set_extension("teg");
+    let mut db = Database::open(format!("file://{}", pb.display()))?;
 
     // Create chat history table
     db.execute(

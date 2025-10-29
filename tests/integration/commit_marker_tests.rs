@@ -99,8 +99,8 @@ fn test_multiple_transactions_with_commit_markers() -> Result<()> {
 #[test]
 fn test_create_and_drop_index() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_create_and_drop_index.db";
-    let _ = std::fs::remove_file("/tmp/test_create_and_drop_index.db");
+    let db_path = "file:///tmp/test_create_and_drop_index.teg";
+    let _ = std::fs::remove_file("/tmp/test_create_and_drop_index.teg");
     let mut db = Database::open(db_path).unwrap();
 
     db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(50))")
@@ -123,14 +123,14 @@ fn test_create_and_drop_index() {
     let mut db = Database::open(db_path).unwrap();
     // Drop after reload
     db.execute("DROP INDEX idx_persist").unwrap();
-    let _ = std::fs::remove_file("/tmp/test_create_and_drop_index.db");
+    let _ = std::fs::remove_file("/tmp/test_create_and_drop_index.teg");
 }
 
 #[test]
 fn test_index_scan_usage() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_index_scan_usage.db";
-    let _ = std::fs::remove_file("/tmp/test_index_scan_usage.db");
+    let db_path = "file:///tmp/test_index_scan_usage.teg";
+    let _ = std::fs::remove_file("/tmp/test_index_scan_usage.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Create table and index
@@ -168,14 +168,14 @@ fn test_index_scan_usage() {
         .unwrap();
     assert_eq!(result.rows().len(), 1); // Should find bob
 
-    let _ = std::fs::remove_file("/tmp/test_index_scan_usage.db");
+    let _ = std::fs::remove_file("/tmp/test_index_scan_usage.teg");
 }
 
 #[test]
 fn test_basic_table_operations() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_basic_table_operations.db";
-    let _ = std::fs::remove_file("/tmp/test_basic_table_operations.db");
+    let db_path = "file:///tmp/test_basic_table_operations.teg";
+    let _ = std::fs::remove_file("/tmp/test_basic_table_operations.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Create table
@@ -198,14 +198,14 @@ fn test_basic_table_operations() {
         .unwrap();
     assert_eq!(result.rows().len(), 1);
 
-    let _ = std::fs::remove_file("/tmp/test_basic_table_operations.db");
+    let _ = std::fs::remove_file("/tmp/test_basic_table_operations.teg");
 }
 
 #[test]
 fn test_integer_only_table() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_integer_only_table.db";
-    let _ = std::fs::remove_file("/tmp/test_integer_only_table.db");
+    let db_path = "file:///tmp/test_integer_only_table.teg";
+    let _ = std::fs::remove_file("/tmp/test_integer_only_table.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Create table with only INTEGER columns
@@ -226,14 +226,14 @@ fn test_integer_only_table() {
     let result = db.query("SELECT * FROM numbers WHERE value = 10").unwrap();
     assert_eq!(result.rows().len(), 1);
 
-    let _ = std::fs::remove_file("/tmp/test_integer_only_table.db");
+    let _ = std::fs::remove_file("/tmp/test_integer_only_table.teg");
 }
 
 #[test]
 fn test_order_by_functionality() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_order_by_functionality.db";
-    let _ = std::fs::remove_file("/tmp/test_order_by_functionality.db");
+    let db_path = "file:///tmp/test_order_by_functionality.teg";
+    let _ = std::fs::remove_file("/tmp/test_order_by_functionality.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Create table
@@ -279,14 +279,14 @@ fn test_order_by_functionality() {
     assert_eq!(rows[1][2], tegdb::parser::SqlValue::Text("b".to_string()));
     assert_eq!(rows[2][2], tegdb::parser::SqlValue::Text("c".to_string()));
 
-    let _ = std::fs::remove_file("/tmp/test_order_by_functionality.db");
+    let _ = std::fs::remove_file("/tmp/test_order_by_functionality.teg");
 }
 
 #[test]
 fn test_vector_basic() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_vector_basic.db";
-    let _ = std::fs::remove_file("/tmp/test_vector_basic.db");
+    let db_path = "file:///tmp/test_vector_basic.teg";
+    let _ = std::fs::remove_file("/tmp/test_vector_basic.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Test 1: Create table with vector column
@@ -327,7 +327,7 @@ fn test_vector_basic() {
         }
     }
 
-    let _ = std::fs::remove_file("/tmp/test_vector_basic.db");
+    let _ = std::fs::remove_file("/tmp/test_vector_basic.teg");
 }
 
 #[test]
@@ -335,8 +335,8 @@ fn test_vector_similarity_functions() {
     use tegdb::parser::{parse_sql, SqlValue, Statement};
     use tegdb::Database;
 
-    let db_path = "file:///tmp/test_vector_similarity_functions.db";
-    let _ = std::fs::remove_file("/tmp/test_vector_similarity_functions.db");
+    let db_path = "file:///tmp/test_vector_similarity_functions.teg";
+    let _ = std::fs::remove_file("/tmp/test_vector_similarity_functions.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Create table with vector column
@@ -440,14 +440,14 @@ fn test_vector_similarity_functions() {
         panic!("Expected Vector value for normalized");
     }
 
-    let _ = std::fs::remove_file("/tmp/test_vector_similarity_functions.db");
+    let _ = std::fs::remove_file("/tmp/test_vector_similarity_functions.teg");
 }
 
 #[test]
 fn test_vector_debug() {
     use tegdb::Database;
-    let db_path = "file:///tmp/test_vector_debug.db";
-    let _ = std::fs::remove_file("/tmp/test_vector_debug.db");
+    let db_path = "file:///tmp/test_vector_debug.teg";
+    let _ = std::fs::remove_file("/tmp/test_vector_debug.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Test 1: Create table with vector column
@@ -486,7 +486,7 @@ fn test_vector_debug() {
         }
     }
 
-    let _ = std::fs::remove_file("/tmp/test_vector_debug.db");
+    let _ = std::fs::remove_file("/tmp/test_vector_debug.teg");
 }
 
 #[test]
@@ -596,8 +596,8 @@ fn test_select_with_where_parsing() {
 
 #[test]
 fn test_vector_search_operations() {
-    let db_path = "file:///tmp/test_vector_search_operations.db";
-    let _ = std::fs::remove_file("/tmp/test_vector_search_operations.db");
+    let db_path = "file:///tmp/test_vector_search_operations.teg";
+    let _ = std::fs::remove_file("/tmp/test_vector_search_operations.teg");
     let mut db = Database::open(db_path).unwrap();
 
     // Create a table for embeddings

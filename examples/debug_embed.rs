@@ -4,7 +4,7 @@ use tegdb::{Database, Result};
 
 fn main() -> Result<()> {
     let temp_dir = tempfile::tempdir().unwrap();
-    let db_path = temp_dir.path().join("debug.db");
+    let db_path = temp_dir.path().join("debug").with_extension("teg");
     let db_file = format!("file://{}", db_path.display());
 
     let mut db = Database::open(&db_file)?;

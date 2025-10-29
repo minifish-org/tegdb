@@ -4,7 +4,7 @@ use tegdb::{Database, Result};
 
 fn main() -> Result<()> {
     let temp_dir = tempfile::tempdir().unwrap();
-    let db_path = temp_dir.path().join("embed_demo.db");
+    let db_path = temp_dir.path().join("embed_demo").with_extension("teg");
     let mut db = Database::open(format!("file://{}", db_path.display()))?;
 
     println!("=== EMBED Function Demo ===\n");

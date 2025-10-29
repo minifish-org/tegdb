@@ -22,7 +22,7 @@ fn create_temp_db() -> (Database, String) {
     };
 
     let path = format!(
-        "/tmp/tegdb_test_{}_{}_{}.db",
+        "/tmp/tegdb_test_{}_{}_{}.teg",
         std::process::id(),
         timestamp,
         counter

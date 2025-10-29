@@ -5,7 +5,7 @@ fn main() -> Result<()> {
     println!("=== TegDB Transaction Planner Integration Demo ===\n");
 
     // Create database and set up test data
-    let mut db = Database::open("file://transaction_planner_demo.db")?;
+    let mut db = Database::open("file:///tmp/transaction_planner_demo.teg")?;
 
     // Clean up any existing test data
     let _ = db.execute("DROP TABLE IF EXISTS users");

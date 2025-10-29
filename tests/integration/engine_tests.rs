@@ -13,7 +13,7 @@ mod test_helpers;
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = env::temp_dir();
     path.push(format!("tegdb_test_{}_{}", prefix, std::process::id()));
-    path
+    path.with_extension("teg")
 }
 
 #[test]

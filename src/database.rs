@@ -195,10 +195,20 @@ impl Database {
             )));
         }
 
-        let path_buf = std::path::Path::new(path_part);
+        let mut path_buf = std::path::PathBuf::from(path_part);
         if !path_buf.is_absolute() {
             return Err(crate::Error::Other(format!(
                 "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
+            )));
+        }
+
+        // Enforce .teg only: append if missing; error if other extension present
+        if path_buf.extension().is_none() {
+            path_buf.set_extension("teg");
+        } else if path_buf.extension().and_then(|s| s.to_str()) != Some("teg") {
+            return Err(crate::Error::Other(format!(
+                "Unsupported database file extension. Expected '.teg': {}",
+                path_buf.display()
             )));
         }
 

@@ -10,7 +10,7 @@ fn main() -> tegdb::Result<()> {
     println!("=== TegDB Streaming API Benefits Demo ===\n");
 
     // Create a test database
-    let mut db = Database::open("file://streaming_demo.db")?;
+    let mut db = Database::open("file:///tmp/streaming_demo.teg")?;
 
     // Create test table
     println!("Creating test table...");
