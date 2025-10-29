@@ -15,7 +15,8 @@ fn writes_header_on_create() {
     {
         // Create database
         let mut db = tegdb::Database::open(&identifier).unwrap();
-        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT(32))").unwrap();
+        db.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT(32))")
+            .unwrap();
     } // drop
 
     let mut f = File::open(&db_path).unwrap();
@@ -32,7 +33,11 @@ fn rejects_missing_or_wrong_magic() {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("bad").with_extension("teg");
     {
-        let mut f = OpenOptions::new().create(true).write(true).open(&db_path).unwrap();
+        let mut f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&db_path)
+            .unwrap();
         // Write bogus header of correct size but wrong magic (6 bytes)
         let mut bogus = vec![0u8; HEADER_SIZE];
         bogus[0..6].copy_from_slice(b"BADDB!");
@@ -54,8 +59,10 @@ fn reads_entries_after_header() {
 
     {
         let mut db = tegdb::Database::open(&identifier).unwrap();
-        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))").unwrap();
-        db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')").unwrap();
+        db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")
+            .unwrap();
+        db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")
+            .unwrap();
     }
 
     {
@@ -98,5 +105,3 @@ fn compaction_preserves_header() {
     f.read_to_end(&mut rest).unwrap();
     assert!(!rest.is_empty());
 }
-
-

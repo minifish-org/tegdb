@@ -25,7 +25,9 @@ async fn main() -> Result<()> {
     println!("================================\n");
 
     // Setup database
-    let db_path = std::env::temp_dir().join("chatbot_memory").with_extension("teg");
+    let db_path = std::env::temp_dir()
+        .join("chatbot_memory")
+        .with_extension("teg");
     let _ = std::fs::remove_file(&db_path);
     let mut db = Database::open(db_path.to_string_lossy())?;
 

@@ -18,12 +18,24 @@ license = "AGPL-3.0"
 fs2 = "0.4.3"  # File locking for native backend
 nom = "8.0.0"   # SQL parser
 fastrand = "2.0.1"  # Fast random number generation for vector indexing
-serde_json = "1.0"  # For Ollama JSON parsing
+serde_json = "1.0"  # For Ollama JSON parsing (also used by cloud-sync)
 
 # CLI dependencies
 clap = { version = "4.0", features = ["derive"] }  # Argument parsing
 rustyline = "14.0"  # REPL functionality
 crossterm = "0.27"  # Terminal I/O
+
+# Cloud sync dependencies (for tegstream)
+aws-sdk-s3 = { version = "1", optional = true }
+aws-config = { version = "1", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+# Note: serde_json is already a dependency above (not optional)
+toml = { version = "0.8", optional = true }
+flate2 = { version = "1.0", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+anyhow = { version = "1.0", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+futures = { version = "0.3", optional = true }
 
 
 [dev-dependencies]
@@ -175,11 +187,28 @@ name = "tg"
 path = "src/bin/tg.rs"
 required-features = ["dev"]
 
+[[bin]]
+name = "tegstream"
+path = "src/bin/tegstream.rs"
+required-features = ["cloud-sync"]
+
 
 
 [features]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []
+# Feature for cloud sync/replication tool (tegstream)
+cloud-sync = [
+    "aws-sdk-s3",
+    "aws-config",
+    "serde",
+    "toml",
+    "flate2",
+    "tokio",
+    "anyhow",
+    "chrono",
+    "futures",
+]
 
 # Enable dev feature for docs.rs documentation
 [package.metadata.docs.rs]
@@ -291,6 +320,21 @@ required-features = ["dev"]
 name = "parser_tests"
 path = "tests/parser_tests.rs"
 required-features = ["dev"]
+
+[[test]]
+name = "tegstream_parser_tests"
+path = "tests/tegstream_parser_tests.rs"
+required-features = ["cloud-sync"]
+
+[[test]]
+name = "tegstream_state_tests"
+path = "tests/tegstream_state_tests.rs"
+required-features = ["cloud-sync"]
+
+[[test]]
+name = "tegstream_integration_minio"
+path = "tests/tegstream_integration_minio.rs"
+required-features = ["cloud-sync"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -82,7 +82,9 @@ async fn main() -> Result<()> {
 }
 
 fn test_embed_function() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_embed").with_extension("teg");
+    let db_path = std::env::temp_dir()
+        .join("test_embed")
+        .with_extension("teg");
     let _ = std::fs::remove_file(&db_path);
     let mut db = Database::open(db_path.to_string_lossy())?;
 
@@ -110,7 +112,9 @@ fn test_embed_function() -> Result<()> {
 }
 
 fn test_vector_search() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_search").with_extension("teg");
+    let db_path = std::env::temp_dir()
+        .join("test_search")
+        .with_extension("teg");
     let _ = std::fs::remove_file(&db_path);
     let mut db = Database::open(db_path.to_string_lossy())?;
 
@@ -214,7 +218,9 @@ async fn test_gemma3_model() -> Result<()> {
 }
 
 async fn test_chatbot_flow() -> Result<()> {
-    let db_path = std::env::temp_dir().join("test_chatbot").with_extension("teg");
+    let db_path = std::env::temp_dir()
+        .join("test_chatbot")
+        .with_extension("teg");
     let _ = std::fs::remove_file(&db_path);
     let mut db = Database::open(db_path.to_string_lossy())?;
 

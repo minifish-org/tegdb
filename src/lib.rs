@@ -64,6 +64,9 @@ pub mod parser;
 #[cfg(not(any(feature = "dev", test)))]
 mod parser;
 
+#[cfg(feature = "cloud-sync")]
+pub mod tegstream;
+
 #[cfg(any(feature = "dev", test))]
 pub mod query_processor;
 #[cfg(not(any(feature = "dev", test)))]

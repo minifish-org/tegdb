@@ -30,7 +30,6 @@ pub const STORAGE_HEADER_SIZE: usize = 64; // leave room for future fields
 /// [16..20) max_val:  u32 BE
 /// [20..21) endian:   u8 (1=BE, 2=LE; we write 1)
 /// [21..64) reserved: zero padding
-
 /// Config options for the log
 #[derive(Debug, Clone)]
 pub struct LogConfig {

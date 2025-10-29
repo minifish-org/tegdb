@@ -272,6 +272,94 @@ tx.set(b"key2", b"value2".to_vec())?;
 tx.commit()?;
 ```
 
+## Cloud Backup & Replication
+
+TegDB includes `tegstream`, a standalone streaming backup tool that continuously replicates your database to cloud storage (S3, MinIO, etc.), similar to Litestream for SQLite.
+
+### Features
+
+- **Incremental Replication**: Tracks file offsets and uploads only committed changes
+- **Base Snapshots**: Periodic full database snapshots for fast recovery
+- **Automatic Rotation Detection**: Handles database compaction/rotation automatically
+- **Point-in-Time Recovery**: Restore to any previous state using base + segments
+- **Retention Policies**: Configurable retention for snapshots and segments
+- **Compression**: Optional gzip compression to reduce storage costs
+
+### Installation
+
+Build tegstream with the `cloud-sync` feature:
+
+```bash
+cargo build --features cloud-sync --bin tegstream
+```
+
+### Quick Start
+
+Create a configuration file `tegstream.toml`:
+
+```toml
+database_path = "/path/to/your/database.teg"
+
+[s3]
+bucket = "my-backup-bucket"
+prefix = "dbs/mydb"
+region = "us-east-1"
+
+[base]
+interval_minutes = 60  # Create new base snapshot every hour
+segment_size_mb = 100   # Or after 100MB of segments
+
+[segment]
+min_bytes = 1024        # Minimum segment size to upload
+debounce_ms = 2000      # Wait 2 seconds before uploading
+
+[retention]
+bases = 3               # Keep last 3 base snapshots
+max_segments_bytes = 107374182400  # 100GB max segments
+
+gzip = true             # Enable compression
+```
+
+### Usage
+
+```bash
+# Run continuous replication
+tegstream run --config tegstream.toml
+
+# Create a one-off snapshot
+tegstream snapshot --config tegstream.toml
+
+# Restore database from backup
+tegstream restore --config tegstream.toml --to /path/to/restored.teg
+
+# List available snapshots
+tegstream list --config tegstream.toml
+
+# Prune old snapshots
+tegstream prune --config tegstream.toml
+```
+
+### Configuration
+
+Tegstream requires AWS credentials (via environment variables, IAM roles, or `~/.aws/credentials`):
+
+```bash
+export AWS_ACCESS_KEY_ID=your-key
+export AWS_SECRET_ACCESS_KEY=your-secret
+export AWS_REGION=us-east-1
+export AWS_ENDPOINT_URL=http://localhost:9000  # For MinIO
+```
+
+### How It Works
+
+1. **Monitoring**: Tegstream monitors your `.teg` file for new committed transactions
+2. **Segment Uploads**: After each commit, new data is uploaded as incremental segments
+3. **Base Snapshots**: Periodically (every N minutes or after N MB of segments), a full snapshot is created
+4. **State Tracking**: Local state file tracks progress, file metadata, and prevents duplicate uploads
+5. **Restore**: Downloads base snapshot + all subsequent segments to reconstruct the database
+
+The tool is designed to be run as a background service alongside your application, providing continuous off-site backup with minimal overhead.
+
 ## Benchmarks
 
 Run performance benchmarks against other embedded databases:
@@ -344,6 +432,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
 - More SQL features (subqueries, aggregation)
 - Compression for large values
 - Streaming for very large result sets
+- Enhanced backup features (multi-DB support, encryption-at-rest)
 
 ## License
 
