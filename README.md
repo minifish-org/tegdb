@@ -4,52 +4,72 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 
 > **Design Philosophy**: TegDB prioritizes simplicity and reliability over complexity. It uses a single-threaded design to eliminate concurrency bugs, reduce memory overhead, and provide predictable performance - making it ideal for embedded systems and applications where resource efficiency matters more than parallel processing.
 
-## Getting Started (2 minutes)
+## Getting Started (CLI + MinIO in 2–3 minutes)
 
-1) Add TegDB to your project
+This walkthrough uses released builds and the CLI tools, no code required.
 
-```toml
-[dependencies]
-tegdb = "0.2"
-```
-
-2) Minimal example
-
-```rust
-use tegdb::Database;
-
-fn main() -> tegdb::Result<()> {
-    let mut db = Database::open("file:///tmp/quickstart.teg")?;
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32))")?;
-    db.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")?;
-    let rows = db.query("SELECT name FROM users")?;
-    println!("rows={}", rows.len());
-    Ok(())
-}
-```
-
-3) Optional: enable cloud backups (S3/MinIO)
+1) Install the CLIs (pin to the latest release)
 
 ```bash
-# Build the streaming backup tool
-cargo build --features cloud-sync --bin tegstream
+cargo install tegdb --version 0.3.0 --features dev --bin tg
+cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
+```
 
-# Create a config (tegstream.toml)
+2) Start MinIO locally and create a bucket
+
+```bash
+# Run MinIO
+docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+  quay.io/minio/minio server /data --console-address :9001
+
+# Create a bucket via mc (optional) or the console at http://localhost:9001
+docker run --rm --network host -e MC_HOST_local=http://minioadmin:minioadmin@127.0.0.1:9000 \
+  quay.io/minio/mc mb local/tegdb-backups || true
+```
+
+3) Configure AWS-compatible env vars for MinIO
+
+```bash
+export AWS_ACCESS_KEY_ID=minioadmin
+export AWS_SECRET_ACCESS_KEY=minioadmin
+export AWS_REGION=us-east-1
+export AWS_ENDPOINT_URL=http://127.0.0.1:9000
+export TEGSTREAM_BUCKET=tegdb-backups
+```
+
+4) Create and query a database with the `tg` CLI
+
+```bash
+# Use an absolute file URL ending with .teg
+DB=file:///$(pwd)/quickstart.teg
+
+# Create table and insert a row
+tg "$DB" --command "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32));"
+tg "$DB" --command "INSERT INTO users (id, name) VALUES (1, 'Alice');"
+
+# Query
+tg "$DB" --command "SELECT * FROM users;"
+```
+
+5) Enable continuous cloud backup to MinIO with `tegstream`
+
+```bash
 cat > tegstream.toml <<'EOF'
-database_path = "/tmp/quickstart.teg"
+database_path = "./quickstart.teg"
 
 [s3]
-bucket = "my-bucket"
+bucket = "tegdb-backups"
 prefix = "dbs/quickstart"
 region = "us-east-1"
 
 [base]
-interval_minutes = 60
-segment_size_mb = 100
+interval_minutes = 15
+segment_size_mb = 50
 
 [segment]
 min_bytes = 1024
-debounce_ms = 2000
+debounce_ms = 1500
 
 [retention]
 bases = 3
@@ -58,8 +78,8 @@ max_segments_bytes = 107374182400
 gzip = true
 EOF
 
-# Run continuous replication
-target/debug/tegstream run --config tegstream.toml
+# Start replication (best run under a supervisor/tmux)
+tegstream run --config tegstream.toml
 ```
 
 ## Architecture Overview
