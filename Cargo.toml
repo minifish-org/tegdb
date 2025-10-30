@@ -185,7 +185,6 @@ required-features = ["dev"]
 [[bin]]
 name = "tg"
 path = "src/bin/tg.rs"
-required-features = ["dev"]
 
 [[bin]]
 name = "tegstream"

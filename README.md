@@ -40,13 +40,32 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 
 This walkthrough uses released builds and the CLI tools, no code required.
 
-1) Install the CLIs (pin to the latest release)
+1) Install the CLIs
 
 ```bash
-cargo install tegdb --version 0.3.0 --features dev --bin tg
-cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
+# Clone the repository
+git clone https://github.com/minifish-org/tegdb.git
+cd tegdb
+
+# Build tg CLI (no features needed)
+cargo build --release --bin tg
+
+# Build tegstream CLI (requires cloud-sync feature)
+cargo build --release --features cloud-sync --bin tegstream
+
+# Copy binaries to PATH (or add target/release to your PATH)
+cp target/release/tg ~/.cargo/bin/
+cp target/release/tegstream ~/.cargo/bin/
+
 # Ensure ~/.cargo/bin is on your PATH
 export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+**Alternative**: If you prefer installing from crates.io (when features are available):
+
+```bash
+cargo install tegdb --version 0.3.0 --bin tg
+cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
 ```
 
 2) Start MinIO locally and create a bucket
