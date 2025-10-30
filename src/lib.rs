@@ -58,19 +58,11 @@ pub mod storage_engine;
 pub mod storage_format;
 pub mod vector_index;
 
-// Make these modules public when dev feature is enabled or when running tests
-#[cfg(any(feature = "dev", test))]
+// Make parser module public since it contains types needed for public API (DataType, ColumnConstraint)
 pub mod parser;
-#[cfg(not(any(feature = "dev", test)))]
-mod parser;
 
-#[cfg(feature = "cloud-sync")]
-pub mod tegstream;
-
-#[cfg(any(feature = "dev", test))]
+// Make query_processor module public since it contains types needed for public API (TableSchema, ColumnInfo)
 pub mod query_processor;
-#[cfg(not(any(feature = "dev", test)))]
-mod query_processor;
 
 // Planner modules are now always available since they're the main execution path
 pub mod planner;
@@ -79,20 +71,27 @@ pub mod planner;
 pub use database::{Database, DatabaseTransaction, PreparedStatement, QueryResult};
 pub use error::{Error, Result};
 
+// Export schema-related types that are needed for public API (get_table_schemas_ref)
+pub use parser::{ColumnConstraint, DataType};
+pub use query_processor::{ColumnInfo, TableSchema};
+
+// Export parse_sql since it's used by the public Database API (prepare method)
+pub use parser::parse_sql;
+
 // Conditionally expose low-level API for development, examples, and benchmarks
 #[cfg(feature = "dev")]
 pub use catalog::Catalog;
 #[cfg(feature = "dev")]
 pub use parser::{
-    debug_parse_sql, parse_sql, parse_sql_with_suggestions, Assignment, ColumnConstraint,
-    ColumnDefinition, ComparisonOperator, Condition, CreateTableStatement, DataType,
+    debug_parse_sql, parse_sql, parse_sql_with_suggestions, Assignment,
+    ColumnDefinition, ComparisonOperator, Condition, CreateTableStatement,
     DeleteStatement, DropTableStatement, Expression, InsertStatement, ParseError, SelectStatement,
     Statement, UpdateStatement, WhereClause,
 };
 #[cfg(feature = "dev")]
 pub use planner::{ExecutionPlan, QueryPlanner};
 #[cfg(feature = "dev")]
-pub use query_processor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
+pub use query_processor::{QueryProcessor, ResultSet};
 #[cfg(feature = "dev")]
 pub use storage_engine::{EngineConfig, StorageEngine, Transaction};
 #[cfg(feature = "dev")]

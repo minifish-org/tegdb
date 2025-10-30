@@ -47,7 +47,7 @@ This walkthrough uses released builds and the CLI tools, no code required.
 git clone https://github.com/minifish-org/tegdb.git
 cd tegdb
 
-# Build tg CLI (no features needed)
+# Build tg CLI
 cargo build --release --bin tg
 
 # Build tegstream CLI (requires cloud-sync feature)
