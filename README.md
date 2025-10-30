@@ -4,7 +4,39 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 
 > **Design Philosophy**: TegDB prioritizes simplicity and reliability over complexity. It uses a single-threaded design to eliminate concurrency bugs, reduce memory overhead, and provide predictable performance - making it ideal for embedded systems and applications where resource efficiency matters more than parallel processing.
 
-## Getting Started (CLI + MinIO in 2–3 minutes)
+## Key Features
+
+### 🚀 **Performance**
+
+- Zero-copy value sharing with Arc<[u8]>
+- Primary key optimized queries (O(log n) lookups)
+- Streaming query processing with early LIMIT termination
+- Efficient binary serialization
+
+### 🔒 **ACID Transactions**
+
+- Atomicity: All-or-nothing transaction execution
+- Consistency: Schema validation and constraint enforcement  
+- Isolation: Write-through with snapshot-like behavior
+- Durability: Write-ahead logging with commit markers
+
+### 🛡️ **Reliability**
+
+- Crash recovery from write-ahead log
+- File locking prevents concurrent access corruption
+- Graceful handling of partial writes and corruption
+- Automatic rollback on transaction drop
+
+### 📦 **Simple Design**
+
+- Single-threaded architecture eliminates race conditions
+- Minimal dependencies (only `fs2` for file locking)
+- Clean separation of concerns across layers
+- Extensive test coverage including ACID compliance
+
+## Getting Started
+
+### Quick Start (CLI + MinIO in 2–3 minutes)
 
 This walkthrough uses released builds and the CLI tools, no code required.
 
@@ -56,8 +88,9 @@ tg "$DB" --command "SELECT * FROM users;"
 5) Enable continuous cloud backup to MinIO with `tegstream`
 
 ```bash
-cat > tegstream.toml <<'EOF'
-database_path = "./quickstart.teg"
+# Create config file (use absolute path - replace /path/to with your actual path)
+cat > tegstream.toml <<EOF
+database_path = "$(pwd)/quickstart.teg"
 
 [s3]
 bucket = "tegdb-backups"
@@ -81,94 +114,19 @@ EOF
 
 # Start replication (best run under a supervisor/tmux)
 tegstream run --config tegstream.toml
+
+# In another terminal, verify backup is working:
+tegstream list --config tegstream.toml
+# You should see base snapshots appearing every 15 minutes
 ```
 
-## Architecture Overview
-
-TegDB implements a clean layered architecture with four distinct layers:
-
-```mermaid
-flowchart TB
-    A[Database API\nSQLite-like interface\nwith schema caching]
-    B[SQL Executor\nQuery optimization\n+ execution]
-    C[SQL Parser\nnom-based AST]
-    D[Storage Engine\nKV + WAL + TX]
-
-    A --> B --> C --> D
-```
-
-### Core Components
-
-- **Storage Engine**: BTreeMap-based in-memory storage with append-only log persistence
-- **Transaction System**: Write-through transactions with undo logging and commit markers
-- **SQL Support**: Full SQL parser and executor supporting DDL and DML operations
-- **Index-Organized Tables**: Primary key optimization with direct key lookups
-- **Schema Caching**: Database-level schema caching for improved performance
-- **Crash Recovery**: WAL-based recovery using transaction commit markers
-
-## Key Features
-
-### 🚀 **Performance**
-- Zero-copy value sharing with Arc<[u8]>
-- Primary key optimized queries (O(log n) lookups)
-- Streaming query processing with early LIMIT termination
-- Efficient binary serialization
-
-### 🔒 **ACID Transactions**
-- Atomicity: All-or-nothing transaction execution
-- Consistency: Schema validation and constraint enforcement  
-- Isolation: Write-through with snapshot-like behavior
-- Durability: Write-ahead logging with commit markers
-
-### 🛡️ **Reliability**
-- Crash recovery from write-ahead log
-- File locking prevents concurrent access corruption
-- Graceful handling of partial writes and corruption
-- Automatic rollback on transaction drop
-
-### 📦 **Simple Design**
-- Single-threaded architecture eliminates race conditions
-- Minimal dependencies (only `fs2` for file locking)
-- Clean separation of concerns across layers
-- Extensive test coverage including ACID compliance
-
-## Development
-
-### Code Quality
-
-Use the following commands to keep the tree clean:
-
-```bash
-# Format source code
-cargo fmt --all
-
-# Run Clippy with the same settings as CI
-cargo clippy --all-targets --all-features -- -D warnings
-
-# Run the full CI-equivalent precheck suite
-./ci_precheck.sh
-```
-
-### Running Tests
-
-```bash
-# Run the full native test suite
-./run_all_tests.sh
-
-# Run with verbose output
-./run_all_tests.sh --verbose
-
-# CI-friendly run (preserves test output)
-./run_all_tests.sh --ci
-```
-
-## Quick Start
+## Using TegDB as a Library
 
 Add TegDB to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tegdb = "0.2.0"
+tegdb = "0.3.0"
 ```
 
 ### Basic Usage
@@ -177,11 +135,11 @@ tegdb = "0.2.0"
 use tegdb::Database;
 
 fn main() -> tegdb::Result<()> {
-    // Open or create a database (no configuration needed!)
-    let mut db = Database::open("my_app.db")?;
+    // Open or create a database (must use absolute file:// path ending in .teg)
+    let mut db = Database::open("file:///tmp/my_app.teg")?;
     
     // Create a table
-    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")?;
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32), age INTEGER)")?;
     
     // Insert data
     db.execute("INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")?;
@@ -192,7 +150,7 @@ fn main() -> tegdb::Result<()> {
     
     println!("Found {} users:", result.len());
     for row in result.rows() {
-        if let (Some(name), Some(age)) = (row.first()), row.get(1)) {
+        if let (Some(name), Some(age)) = (row.first(), row.get(1)) {
             println!("User: {:?}, Age: {:?}", name, age);
         }
     }
@@ -207,10 +165,10 @@ fn main() -> tegdb::Result<()> {
 use tegdb::Database;
 
 fn main() -> tegdb::Result<()> {
-    let mut db = Database::open("bank.db")?;
+    let mut db = Database::open("file:///tmp/bank.teg")?;
     
     // Create accounts table
-    db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance INTEGER)")?;
+    db.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT(32), balance INTEGER)")?;
     db.execute("INSERT INTO accounts (id, name, balance) VALUES (1, 'Alice', 1000)")?;
     db.execute("INSERT INTO accounts (id, name, balance) VALUES (2, 'Bob', 500)")?;
     
@@ -236,6 +194,7 @@ fn main() -> tegdb::Result<()> {
 TegDB supports a comprehensive subset of SQL:
 
 ### Data Definition Language (DDL)
+
 ```sql
 -- Create tables with constraints
 CREATE TABLE products (
@@ -250,6 +209,7 @@ DROP TABLE IF EXISTS old_table;
 ```
 
 ### Data Manipulation Language (DML)
+
 ```sql
 -- Insert single or multiple rows
 INSERT INTO products (id, name, price) VALUES (1, 'Widget', 19.99);
@@ -270,6 +230,7 @@ LIMIT 10;
 ```
 
 ### Transaction Control
+
 ```sql
 BEGIN;
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
@@ -279,6 +240,7 @@ COMMIT;
 ```
 
 ### Supported Data Types
+
 - `INTEGER` - 64-bit signed integers
 - `REAL` - 64-bit floating point numbers  
 - `TEXT` - UTF-8 strings (requires length specification, e.g., TEXT(100))
@@ -287,83 +249,28 @@ COMMIT;
 ## Performance Characteristics
 
 ### Time Complexity
+
 - **Primary key lookups**: O(log n)
 - **Range scans**: O(log n + k) where k = result size
 - **Inserts/Updates/Deletes**: O(log n)
 - **Schema operations**: O(1) with caching
 
 ### Memory Usage
+
 - **In-memory index**: BTreeMap with Arc-shared values
 - **Zero-copy reads**: Multiple references share same memory
 - **Lazy allocation**: Undo logs only allocated when needed
 - **Streaming queries**: LIMIT processed without loading full result
 
 ### Storage Format
+
 - **Fixed header**: 64-byte header with magic `TEGDB\0`, version (1), limits, flags
 - **Append-only log**: Fast writes after the header, no seek overhead
 - **Binary serialization**: Compact data representation
 - **Automatic compaction**: Reclaims space from old entries while preserving header
 - **Crash recovery**: Replay from last commit marker
 
-### Cloud Backup (tegstream) - High Level
-
-```mermaid
-flowchart LR
-    subgraph App
-        TG[tg CLI / App]
-    end
-    DB[(.teg file)]
-    TS[tegstream]
-    S3[(S3/MinIO Bucket)]
-
-    TG -- SQL --> DB
-    TS -- monitor commits --> DB
-    TS -- base snapshots --> S3
-    TS -- incremental segments --> S3
-    S3 -- base+segments --> Restore[tegstream restore]
-```
-
-## Configuration
-
-```rust
-use tegdb::EngineConfig;
-
-let config = EngineConfig {
-    max_key_size: 1024,        // 1KB max key size
-    max_value_size: 256 * 1024, // 256KB max value size  
-    auto_compact: true,         // Auto-compact on open
-};
-
-// Note: Custom config requires dev feature and low-level API
-```
-
-## Advanced Usage
-
-### Low-Level Engine API
-
-For advanced use cases, enable the `dev` feature to access low-level APIs:
-
-```toml
-[dependencies]
-tegdb = { version = "0.2", features = ["dev"] }
-```
-
-```rust
-use tegdb::{Engine, EngineConfig};
-
-// Direct key-value operations
-let mut engine = Engine::new("data.db".into())?;
-engine.set(b"key", b"value".to_vec())?;
-let value = engine.get(b"key");
-
-// Transaction control
-let mut tx = engine.begin_transaction();
-tx.set(b"key1", b"value1".to_vec())?;
-tx.set(b"key2", b"value2".to_vec())?;
-tx.commit()?;
-```
-
-## Cloud Backup & Replication
+## Cloud Backup & Replication (tegstream)
 
 TegDB includes `tegstream`, a standalone streaming backup tool that continuously replicates your database to cloud storage (S3, MinIO, etc.), similar to Litestream for SQLite.
 
@@ -378,18 +285,18 @@ TegDB includes `tegstream`, a standalone streaming backup tool that continuously
 
 ### Installation
 
-Build tegstream with the `cloud-sync` feature:
+Install from crates.io with the `cloud-sync` feature:
 
 ```bash
-cargo build --features cloud-sync --bin tegstream
+cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
 ```
 
-### Quick Start
+### Configuration
 
 Create a configuration file `tegstream.toml`:
 
 ```toml
-database_path = "/path/to/your/database.teg"
+database_path = "/absolute/path/to/your/database.teg"
 
 [s3]
 bucket = "my-backup-bucket"
@@ -411,7 +318,16 @@ max_segments_bytes = 107374182400  # 100GB max segments
 gzip = true             # Enable compression
 ```
 
-### Usage
+Tegstream requires AWS credentials (via environment variables, IAM roles, or `~/.aws/credentials`):
+
+```bash
+export AWS_ACCESS_KEY_ID=your-key
+export AWS_SECRET_ACCESS_KEY=your-secret
+export AWS_REGION=us-east-1
+export AWS_ENDPOINT_URL=http://localhost:9000  # For MinIO
+```
+
+### Commands
 
 ```bash
 # Run continuous replication
@@ -430,17 +346,6 @@ tegstream list --config tegstream.toml
 tegstream prune --config tegstream.toml
 ```
 
-### Configuration
-
-Tegstream requires AWS credentials (via environment variables, IAM roles, or `~/.aws/credentials`):
-
-```bash
-export AWS_ACCESS_KEY_ID=your-key
-export AWS_SECRET_ACCESS_KEY=your-secret
-export AWS_REGION=us-east-1
-export AWS_ENDPOINT_URL=http://localhost:9000  # For MinIO
-```
-
 ### How It Works
 
 1. **Monitoring**: Tegstream monitors your `.teg` file for new committed transactions
@@ -451,22 +356,96 @@ export AWS_ENDPOINT_URL=http://localhost:9000  # For MinIO
 
 The tool is designed to be run as a background service alongside your application, providing continuous off-site backup with minimal overhead.
 
-## Benchmarks
+```mermaid
+flowchart LR
+    subgraph App
+        TG[tg CLI / App]
+    end
+    DB[(.teg file)]
+    TS[tegstream]
+    S3[(S3/MinIO Bucket)]
 
-Run performance benchmarks against other embedded databases:
-
-```bash
-cargo bench --features dev
+    TG -- SQL --> DB
+    TS -- monitor commits --> DB
+    TS -- base snapshots --> S3
+    TS -- incremental segments --> S3
+    S3 -- base+segments --> Restore[tegstream restore]
 ```
 
-Included benchmarks compare against:
-- SQLite
-- sled  
-- redb
+## Architecture Overview
+
+TegDB implements a clean layered architecture with four distinct layers:
+
+```mermaid
+flowchart TB
+    A[Database API\nSQLite-like interface\nwith schema caching]
+    B[SQL Executor\nQuery optimization\n+ execution]
+    C[SQL Parser\nnom-based AST]
+    D[Storage Engine\nKV + WAL + TX]
+
+    A --> B --> C --> D
+```
+
+### Core Components
+
+- **Storage Engine**: BTreeMap-based in-memory storage with append-only log persistence
+- **Transaction System**: Write-through transactions with undo logging and commit markers
+- **SQL Support**: Full SQL parser and executor supporting DDL and DML operations
+- **Index-Organized Tables**: Primary key optimization with direct key lookups
+- **Schema Caching**: Database-level schema caching for improved performance
+- **Crash Recovery**: WAL-based recovery using transaction commit markers
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
+
+- Layer-by-layer implementation details
+- Storage format and recovery mechanisms  
+- Memory management and performance optimizations
+- Transaction system and ACID guarantees
+- Query optimization and execution strategies
+
+## Advanced Usage
+
+### Engine Configuration
+
+```rust
+use tegdb::EngineConfig;
+
+let config = EngineConfig {
+    max_key_size: 1024,        // 1KB max key size
+    max_value_size: 256 * 1024, // 256KB max value size  
+    auto_compact: true,         // Auto-compact on open
+};
+
+// Note: Custom config requires dev feature and low-level API
+```
+
+### Low-Level Engine API
+
+For advanced use cases, enable the `dev` feature to access low-level APIs:
+
+```toml
+[dependencies]
+tegdb = { version = "0.3.0", features = ["dev"] }
+```
+
+```rust
+use tegdb::{StorageEngine, EngineConfig};
+
+// Direct key-value operations (requires absolute PathBuf)
+let mut engine = StorageEngine::new(std::path::PathBuf::from("/tmp/data.teg"))?;
+engine.set(b"key", b"value".to_vec())?;
+let value = engine.get(b"key");
+
+// Transaction control
+let mut tx = engine.begin_transaction();
+tx.set(b"key1", b"value1".to_vec())?;
+tx.set(b"key2", b"value2".to_vec())?;
+tx.commit()?;
+```
 
 ## Development
 
-### Building
+### Building from Source
 
 ```bash
 # Standard build
@@ -485,11 +464,52 @@ cargo bench --features dev
 ### Testing
 
 TegDB includes comprehensive tests covering:
+
 - ACID transaction properties
 - Crash recovery scenarios  
 - SQL parsing and execution
 - Performance benchmarks
 - Edge cases and error conditions
+
+```bash
+# Run the full native test suite
+./run_all_tests.sh
+
+# Run with verbose output
+./run_all_tests.sh --verbose
+
+# CI-friendly run (preserves test output)
+./run_all_tests.sh --ci
+```
+
+### Code Quality
+
+Use the following commands to keep the tree clean:
+
+```bash
+# Format source code
+cargo fmt --all
+
+# Run Clippy with the same settings as CI
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Run the full CI-equivalent precheck suite
+./ci_precheck.sh
+```
+
+### Benchmarks
+
+Run performance benchmarks against other embedded databases:
+
+```bash
+cargo bench --features dev
+```
+
+Included benchmarks compare against:
+
+- SQLite
+- sled  
+- redb
 
 ## Design Principles
 
@@ -499,18 +519,10 @@ TegDB includes comprehensive tests covering:
 4. **Single Threaded**: Eliminate concurrency complexity and bugs
 5. **Resource Efficient**: Optimize for memory and CPU usage
 
-## Architecture Details
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
-- Layer-by-layer implementation details
-- Storage format and recovery mechanisms  
-- Memory management and performance optimizations
-- Transaction system and ACID guarantees
-- Query optimization and execution strategies
-
 ## Limitations
 
 ### Current Limitations
+
 - **Single-threaded**: No concurrent access support
 - **No secondary indexes**: Only primary key optimization
 - **Limited SQL**: Subset of full SQL standard
@@ -518,6 +530,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
 - **No joins**: Single table queries only
 
 ### Future Enhancements
+
 - Secondary index support
 - JOIN operation support  
 - More SQL features (subqueries, aggregation)
