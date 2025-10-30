@@ -13,6 +13,8 @@ This walkthrough uses released builds and the CLI tools, no code required.
 ```bash
 cargo install tegdb --version 0.3.0 --features dev --bin tg
 cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
+# Ensure ~/.cargo/bin is on your PATH
+export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
 2) Start MinIO locally and create a bucket
@@ -23,9 +25,8 @@ docker run -d --name minio -p 9000:9000 -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
   quay.io/minio/minio server /data --console-address :9001
 
-# Create a bucket via mc (optional) or the console at http://localhost:9001
-docker run --rm --network host -e MC_HOST_local=http://minioadmin:minioadmin@127.0.0.1:9000 \
-  quay.io/minio/mc mb local/tegdb-backups || true
+# Create a bucket using the MinIO Console at http://localhost:9001 (Login: minioadmin/minioadmin)
+# In the Console: Buckets → Create Bucket → Name: tegdb-backups
 ```
 
 3) Configure AWS-compatible env vars for MinIO
