@@ -308,10 +308,12 @@ TegDB includes `tegstream`, a standalone streaming backup tool that continuously
 
 ### Installation
 
-Install from crates.io with the `cloud-sync` feature:
+Install from crates.io:
 
 ```bash
-cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
+cargo install tegdb --version 0.3.0 --bin tegstream
+# Or install both binaries:
+cargo install tegdb --version 0.3.0 --bin tg --bin tegstream
 ```
 
 ### Configuration

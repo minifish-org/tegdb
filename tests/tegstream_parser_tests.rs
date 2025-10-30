@@ -1,5 +1,3 @@
-#![cfg(feature = "cloud-sync")]
-
 use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 

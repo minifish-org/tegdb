@@ -1,5 +1,3 @@
-#![cfg(feature = "cloud-sync")]
-
 use std::fs;
 
 use tegdb::tegstream::state::ReplicationState;

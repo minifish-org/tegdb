@@ -1,5 +1,3 @@
-#![cfg(feature = "cloud-sync")]
-
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tegdb::tegstream::{Config, Restore, Result, S3Backend, Tailer};

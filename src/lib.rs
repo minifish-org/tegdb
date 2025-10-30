@@ -67,8 +67,7 @@ pub mod query_processor;
 // Planner modules are now always available since they're the main execution path
 pub mod planner;
 
-// Cloud sync module (tegstream) - only available with cloud-sync feature
-#[cfg(feature = "cloud-sync")]
+// Cloud sync module (tegstream)
 pub mod tegstream;
 
 // Only export the high-level Database API and essential error types
