@@ -86,20 +86,14 @@ tegstream run --config tegstream.toml
 
 TegDB implements a clean layered architecture with four distinct layers:
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                    Database API                             │
-│        (SQLite-like interface with schema caching)         │
-├─────────────────────────────────────────────────────────────┤
-│                    SQL Executor                            │
-│    (Query optimization and statement execution)            │
-├─────────────────────────────────────────────────────────────┤
-│                    SQL Parser                              │
-│         (nom-based SQL parsing to AST)                     │
-├─────────────────────────────────────────────────────────────┤
-│                    Storage Engine                          │
-│  (Key-value store with WAL and transaction support)        │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A[Database API\nSQLite-like interface\nwith schema caching]
+    B[SQL Executor\nQuery optimization\n+ execution]
+    C[SQL Parser\nnom-based AST]
+    D[Storage Engine\nKV + WAL + TX]
+
+    A --> B --> C --> D
 ```
 
 ### Core Components
@@ -309,6 +303,24 @@ COMMIT;
 - **Binary serialization**: Compact data representation
 - **Automatic compaction**: Reclaims space from old entries while preserving header
 - **Crash recovery**: Replay from last commit marker
+
+### Cloud Backup (tegstream) - High Level
+
+```mermaid
+flowchart LR
+    subgraph App
+        TG[tg CLI / App]
+    end
+    DB[(.teg file)]
+    TS[tegstream]
+    S3[(S3/MinIO Bucket)]
+
+    TG -- SQL --> DB
+    TS -- monitor commits --> DB
+    TS -- base snapshots --> S3
+    TS -- incremental segments --> S3
+    S3 -- base+segments --> Restore[tegstream restore]
+```
 
 ## Configuration
 
