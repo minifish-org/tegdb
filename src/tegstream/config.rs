@@ -7,7 +7,8 @@ pub struct Config {
     /// Path to TegDB database file
     pub database_path: PathBuf,
 
-    #[serde(flatten)]
+    /// S3 configuration
+    #[serde(rename = "s3")]
     pub s3: S3Config,
 
     /// Retention policy
@@ -15,11 +16,11 @@ pub struct Config {
     pub retention: RetentionConfig,
 
     /// Base snapshot creation policy
-    #[serde(default)]
+    #[serde(rename = "base", default)]
     pub base: BaseConfig,
 
     /// Segment upload policy
-    #[serde(default)]
+    #[serde(rename = "segment", default)]
     pub segment: SegmentConfig,
 
     /// Enable gzip compression for segments
@@ -35,6 +36,15 @@ pub struct S3Config {
     pub prefix: String,
     /// AWS region
     pub region: String,
+    /// Custom endpoint URL (e.g., "http://localhost:9000" for MinIO)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    /// Access key ID (for MinIO or AWS)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_key_id: Option<String>,
+    /// Secret access key (for MinIO or AWS)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret_access_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +188,9 @@ mod tests {
                 bucket: "my-bucket".to_string(),
                 prefix: "dbs".to_string(),
                 region: "us-east-1".to_string(),
+                endpoint: None,
+                access_key_id: None,
+                secret_access_key: None,
             },
             retention: RetentionConfig::default(),
             base: BaseConfig::default(),

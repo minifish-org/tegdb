@@ -116,6 +116,9 @@ database_path = "$(pwd)/quickstart.teg"
 bucket = "tegdb-backups"
 prefix = "dbs/quickstart"
 region = "us-east-1"
+endpoint = "http://127.0.0.1:9000"
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"
 
 [base]
 interval_minutes = 15
@@ -322,6 +325,10 @@ database_path = "/absolute/path/to/your/database.teg"
 bucket = "my-backup-bucket"
 prefix = "dbs/mydb"
 region = "us-east-1"
+# Optional: For MinIO or custom S3-compatible storage
+endpoint = "http://localhost:9000"  # MinIO endpoint
+access_key_id = "minioadmin"        # MinIO access key
+secret_access_key = "minioadmin"     # MinIO secret key
 
 [base]
 interval_minutes = 60  # Create new base snapshot every hour
@@ -338,13 +345,12 @@ max_segments_bytes = 107374182400  # 100GB max segments
 gzip = true             # Enable compression
 ```
 
-Tegstream requires AWS credentials (via environment variables, IAM roles, or `~/.aws/credentials`):
+For AWS S3, you can omit `endpoint`, `access_key_id`, and `secret_access_key` and use environment variables or IAM roles instead:
 
 ```bash
 export AWS_ACCESS_KEY_ID=your-key
 export AWS_SECRET_ACCESS_KEY=your-secret
 export AWS_REGION=us-east-1
-export AWS_ENDPOINT_URL=http://localhost:9000  # For MinIO
 ```
 
 ### Commands

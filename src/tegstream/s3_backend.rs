@@ -17,8 +17,30 @@ impl S3Backend {
     #[allow(deprecated)]
     pub async fn new(config: &S3Config) -> Result<Self> {
         let region = Region::new(config.region.clone());
-        let aws_config = aws_config::from_env().region(region).load().await;
 
+        // Build base config from environment
+        let mut env_config = aws_config::from_env().region(region);
+
+        // Set custom endpoint if provided (for MinIO)
+        if let Some(endpoint) = &config.endpoint {
+            env_config = env_config.endpoint_url(endpoint);
+        }
+
+        // Override credentials if provided (for MinIO or explicit AWS credentials)
+        if let (Some(access_key), Some(secret_key)) =
+            (&config.access_key_id, &config.secret_access_key)
+        {
+            let credentials = aws_sdk_s3::config::Credentials::new(
+                access_key,
+                secret_key,
+                None,
+                None,
+                "tegstream",
+            );
+            env_config = env_config.credentials_provider(credentials);
+        }
+
+        let aws_config = env_config.load().await;
         let client = Client::new(&aws_config);
 
         Ok(Self {
