@@ -194,6 +194,7 @@ required-features = ["cloud-sync"]
 
 
 [features]
+default = ["cloud-sync"]
 # Feature to expose low-level API for examples, benchmarks, and advanced users
 dev = []
 # Feature for cloud sync/replication tool (tegstream)

@@ -47,11 +47,12 @@ This walkthrough uses released builds and the CLI tools, no code required.
 git clone https://github.com/minifish-org/tegdb.git
 cd tegdb
 
-# Build tg CLI
-cargo build --release --bin tg
+# Build both CLI tools (tg and tegstream)
+cargo build --release
 
-# Build tegstream CLI (requires cloud-sync feature)
-cargo build --release --features cloud-sync --bin tegstream
+# Or build individually:
+# cargo build --release --bin tg
+# cargo build --release --bin tegstream
 
 # Copy binaries to PATH (or add target/release to your PATH)
 cp target/release/tg ~/.cargo/bin/
@@ -61,11 +62,11 @@ cp target/release/tegstream ~/.cargo/bin/
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
-**Alternative**: If you prefer installing from crates.io (when features are available):
+**Alternative**: If you prefer installing from crates.io:
 
 ```bash
 cargo install tegdb --version 0.3.0 --bin tg
-cargo install tegdb --version 0.3.0 --features cloud-sync --bin tegstream
+cargo install tegdb --version 0.3.0 --bin tegstream
 ```
 
 2) Start MinIO locally and create a bucket
