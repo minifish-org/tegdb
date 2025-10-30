@@ -8,7 +8,7 @@ use tegdb::{Database, Result};
 fn main() -> Result<()> {
     // Create a temporary database
     let temp_dir = std::env::temp_dir();
-    let db_path = temp_dir.join("iot_demo.db");
+    let db_path = temp_dir.join("iot_demo.teg");
 
     // Clean up any existing file
     let _ = std::fs::remove_file(&db_path);

@@ -11,7 +11,7 @@ use tegdb::{Database, SqlValue};
 fn main() -> tegdb::Result<()> {
     println!("=== TegDB Arithmetic Expressions Example ===\n");
 
-    let db_path = std::env::temp_dir().join("arithmetic_example.db");
+    let db_path = std::env::temp_dir().join("arithmetic_example.teg");
     if db_path.exists() {
         let _ = std::fs::remove_file(&db_path);
     }

@@ -1,11 +1,10 @@
 // examples/sqlite_like_usage.rs
 use tegdb::{Database, Result, SqlValue};
-use tempfile::NamedTempFile;
 
 fn main() -> Result<()> {
-    // Create a temporary database file that will be automatically cleaned up
-    let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    let db_path = temp_file.path();
+    // Use a temporary path with .teg extension
+    let db_path = std::env::temp_dir().join("sqlite_like_usage.teg");
+    let _ = std::fs::remove_file(&db_path);
 
     // Create/open database, similar to SQLite
     let mut db = Database::open(format!("file://{}", db_path.display()))?;
@@ -59,6 +58,7 @@ fn main() -> Result<()> {
     let result2 = db.query("SELECT id, name, age FROM users").unwrap();
     println!("After transaction - Found {} rows", result2.rows().len());
 
-    // Database file is automatically cleaned up when temp_file goes out of scope
+    // Clean up
+    let _ = std::fs::remove_file(&db_path);
     Ok(())
 }

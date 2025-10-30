@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use tegdb::{Database, Result};
 
 fn planner_demo_db_path() -> PathBuf {
-    std::env::temp_dir().join("planner_demo.db")
+    std::env::temp_dir().join("planner_demo.teg")
 }
 
 fn main() -> Result<()> {
