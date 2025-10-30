@@ -87,10 +87,9 @@ pub use parser::parse_sql;
 pub use catalog::Catalog;
 #[cfg(feature = "dev")]
 pub use parser::{
-    debug_parse_sql, parse_sql, parse_sql_with_suggestions, Assignment,
-    ColumnDefinition, ComparisonOperator, Condition, CreateTableStatement,
-    DeleteStatement, DropTableStatement, Expression, InsertStatement, ParseError, SelectStatement,
-    Statement, UpdateStatement, WhereClause,
+    debug_parse_sql, parse_sql_with_suggestions, Assignment, ColumnDefinition, ComparisonOperator,
+    Condition, CreateTableStatement, DeleteStatement, DropTableStatement, Expression,
+    InsertStatement, ParseError, SelectStatement, Statement, UpdateStatement, WhereClause,
 };
 #[cfg(feature = "dev")]
 pub use planner::{ExecutionPlan, QueryPlanner};
