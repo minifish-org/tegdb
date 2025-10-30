@@ -1,7 +1,6 @@
 #![cfg(feature = "cloud-sync")]
 
 use std::fs;
-use std::path::PathBuf;
 
 use tegdb::tegstream::state::ReplicationState;
 

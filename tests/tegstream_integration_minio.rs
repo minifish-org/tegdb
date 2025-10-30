@@ -1,9 +1,8 @@
 #![cfg(feature = "cloud-sync")]
 
 use std::env;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
-use std::path::PathBuf;
 
 use tegdb::log::{STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE, STORAGE_MAGIC, TX_COMMIT_MARKER};
 use tegdb::tegstream::config::{Config, S3Config};
@@ -51,6 +50,7 @@ async fn test_minio_snapshot_segment_restore() {
     let db_path = dir.path().join("it_minio.teg");
     let mut f = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .read(true)
         .write(true)
         .open(&db_path)

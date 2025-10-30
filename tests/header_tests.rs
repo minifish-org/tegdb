@@ -35,6 +35,7 @@ fn rejects_missing_or_wrong_magic() {
     {
         let mut f = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&db_path)
             .unwrap();

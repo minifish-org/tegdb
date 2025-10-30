@@ -36,6 +36,7 @@ fn test_find_last_commit_offset_simple() {
     let path = dir.path().join("parser_test.teg");
     let mut f = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .read(true)
         .write(true)
         .open(&path)
