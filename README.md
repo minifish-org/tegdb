@@ -121,7 +121,7 @@ access_key_id = "minioadmin"
 secret_access_key = "minioadmin"
 
 [base]
-interval_minutes = 15
+interval_minutes = 1
 segment_size_mb = 50
 
 [segment]

@@ -1,12 +1,15 @@
-database_path = "/Users/yusp/work/tegdb/quickstart.teg"
+database_path = "/Users/yusp/work/tegdb/quickstart_cli.teg"
 
 [s3]
 bucket = "tegdb-backups"
 prefix = "dbs/quickstart"
 region = "us-east-1"
+endpoint = "http://127.0.0.1:9000"
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"
 
 [base]
-interval_minutes = 15
+interval_minutes = 1
 segment_size_mb = 50
 
 [segment]
