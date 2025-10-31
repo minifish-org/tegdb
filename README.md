@@ -143,6 +143,32 @@ tegstream list --config tegstream.toml
 # You should see base snapshots appearing every 15 minutes
 ```
 
+6) Restore database from backup
+
+```bash
+# List available backups
+tegstream list --config tegstream.toml
+
+# Restore to latest state
+tegstream restore --config tegstream.toml --to $(pwd)/restored.teg
+
+# Verify restored data
+tg "file:///$(pwd)/restored.teg" --command "SELECT * FROM users;"
+# Should show: Alice
+```
+
+**Example restore scenario**: If your original database gets corrupted or deleted, you can restore it from MinIO:
+```bash
+# Original database is lost/corrupted
+rm quickstart.teg
+
+# Restore from backup
+tegstream restore --config tegstream.toml --to $(pwd)/quickstart.teg
+
+# Continue using the restored database
+tg "file:///$(pwd)/quickstart.teg" --command "SELECT * FROM users;"
+```
+
 ## Using TegDB as a Library
 
 Add TegDB to your `Cargo.toml`:
