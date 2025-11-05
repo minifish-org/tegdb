@@ -23,8 +23,8 @@ fn writes_header_on_create() {
     let mut header = vec![0u8; HEADER_SIZE];
     f.read_exact(&mut header).unwrap();
     assert_eq!(&header[0..MAGIC.len()], MAGIC);
-    // version == 1
-    assert_eq!(u16::from_be_bytes([header[6], header[7]]), 1);
+    // version == 2
+    assert_eq!(u16::from_be_bytes([header[6], header[7]]), 2);
     assert_eq!(header.len(), HEADER_SIZE);
 }
 
@@ -98,7 +98,7 @@ fn compaction_preserves_header() {
     let mut header = vec![0u8; HEADER_SIZE];
     f.read_exact(&mut header).unwrap();
     assert_eq!(&header[0..MAGIC.len()], MAGIC);
-    assert_eq!(u16::from_be_bytes([header[6], header[7]]), 1);
+    assert_eq!(u16::from_be_bytes([header[6], header[7]]), 2);
 
     // Also ensure remaining data starts after header
     f.seek(SeekFrom::Start(HEADER_SIZE as u64)).unwrap();

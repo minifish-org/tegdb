@@ -18,7 +18,7 @@ pub const LENGTH_FIELD_BYTES: usize = 4;
 
 /// Storage file magic header and format
 pub const STORAGE_MAGIC: &[u8; 6] = b"TEGDB\0"; // 6 bytes
-pub const STORAGE_FORMAT_VERSION: u16 = 1; // big-endian on disk
+pub const STORAGE_FORMAT_VERSION: u16 = 2; // big-endian on disk
 /// Total header size in bytes (fixed)
 pub const STORAGE_HEADER_SIZE: usize = 64; // leave room for future fields
 
@@ -29,7 +29,8 @@ pub const STORAGE_HEADER_SIZE: usize = 64; // leave room for future fields
 /// [12..16) max_key:  u32 BE
 /// [16..20) max_val:  u32 BE
 /// [20..21) endian:   u8 (1=BE, 2=LE; we write 1)
-/// [21..64) reserved: zero padding
+/// [21..29) valid_data_end: u64 BE (version >= 2, tracks actual data boundary)
+/// [29..64) reserved: zero padding
 /// Config options for the log
 #[derive(Debug, Clone)]
 pub struct LogConfig {
@@ -37,6 +38,10 @@ pub struct LogConfig {
     pub max_key_size: usize,
     /// Maximum value size in bytes
     pub max_value_size: usize,
+    /// Initial capacity for BTreeMap (memory preallocation)
+    pub initial_capacity: Option<usize>,
+    /// Preallocate disk space in bytes
+    pub preallocate_size: Option<u64>,
 }
 
 /// Trait for different log storage backends (file-based).

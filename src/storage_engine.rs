@@ -16,6 +16,10 @@ pub struct EngineConfig {
     pub max_value_size: usize,
     /// Whether to automatically compact on open (default: true)
     pub auto_compact: bool,
+    /// Initial capacity for BTreeMap (memory preallocation)
+    pub initial_capacity: Option<usize>,
+    /// Preallocate disk space in bytes
+    pub preallocate_size: Option<u64>,
 }
 
 impl Default for EngineConfig {
@@ -24,6 +28,8 @@ impl Default for EngineConfig {
             max_key_size: crate::log::DEFAULT_MAX_KEY_SIZE,
             max_value_size: crate::log::DEFAULT_MAX_VALUE_SIZE,
             auto_compact: true,
+            initial_capacity: None,
+            preallocate_size: None,
         }
     }
 }
@@ -58,6 +64,8 @@ impl StorageEngine {
         let log_config = LogConfig {
             max_key_size: config.max_key_size,
             max_value_size: config.max_value_size,
+            initial_capacity: config.initial_capacity,
+            preallocate_size: config.preallocate_size,
         };
         let mut log = Log::new(identifier.clone(), &log_config)?;
         let key_map = log.build_key_map(&log_config)?;
@@ -185,6 +193,8 @@ impl StorageEngine {
         let log_config = LogConfig {
             max_key_size: self.config.max_key_size,
             max_value_size: self.config.max_value_size,
+            initial_capacity: self.config.initial_capacity,
+            preallocate_size: self.config.preallocate_size,
         };
         let mut new_log = Log::new(identifier, &log_config)?;
         // New logs now include a header; ensure we don't truncate it away

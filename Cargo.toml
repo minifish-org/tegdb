@@ -319,6 +319,26 @@ path = "tests/tegstream_state_tests.rs"
 name = "tegstream_integration_minio"
 path = "tests/tegstream_integration_minio.rs"
 
+[[test]]
+name = "preallocate_memory_test"
+path = "tests/integration/preallocate_memory_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "preallocate_disk_test"
+path = "tests/integration/preallocate_disk_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "header_version_test"
+path = "tests/integration/header_version_test.rs"
+required-features = ["dev"]
+
+[[test]]
+name = "tegstream_preallocate_test"
+path = "tests/tegstream_preallocate_test.rs"
+required-features = ["dev"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

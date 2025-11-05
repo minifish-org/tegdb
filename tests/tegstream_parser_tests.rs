@@ -7,7 +7,7 @@ use tegdb::log::{
 };
 use tegdb::tegstream::parser::find_last_commit_offset;
 
-fn write_header(file: &mut std::fs::File) {
+fn write_header(file: &mut std::fs::File, valid_data_end: u64) {
     let mut header = vec![0u8; STORAGE_HEADER_SIZE];
     header[0..STORAGE_MAGIC.len()].copy_from_slice(STORAGE_MAGIC);
     header[6..8].copy_from_slice(&STORAGE_FORMAT_VERSION.to_be_bytes());
@@ -16,6 +16,10 @@ fn write_header(file: &mut std::fs::File) {
     header[12..16].copy_from_slice(&(1024u32).to_be_bytes());
     header[16..20].copy_from_slice(&(256 * 1024u32).to_be_bytes());
     header[20] = 1u8; // BE
+                      // For version 2+, set valid_data_end [21..29)
+    if STORAGE_FORMAT_VERSION >= 2 {
+        header[21..29].copy_from_slice(&valid_data_end.to_be_bytes());
+    }
     file.write_all(&header).unwrap();
 }
 
@@ -40,7 +44,8 @@ fn test_find_last_commit_offset_simple() {
         .open(&path)
         .unwrap();
 
-    write_header(&mut f);
+    // Write placeholder header first
+    write_header(&mut f, STORAGE_HEADER_SIZE as u64);
 
     // Entry 1
     write_record(&mut f, b"k1", b"v1");
@@ -48,9 +53,18 @@ fn test_find_last_commit_offset_simple() {
     write_record(&mut f, TX_COMMIT_MARKER, b"");
     // Entry 2 (after commit)
     write_record(&mut f, b"k2", b"v2");
-    // Incomplete trailing record (key_len only) – should be ignored
+
+    // Get current position as valid_data_end
+    let valid_data_end = f.stream_position().unwrap();
+
+    // Incomplete trailing record (key_len only) – should be ignored (outside valid_data_end)
     f.write_all(&(4u32.to_be_bytes())).unwrap();
 
+    f.flush().unwrap();
+
+    // Update header with correct valid_data_end
+    f.seek(SeekFrom::Start(0)).unwrap();
+    write_header(&mut f, valid_data_end);
     f.flush().unwrap();
 
     let mut rf = OpenOptions::new().read(true).open(&path).unwrap();

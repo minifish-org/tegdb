@@ -1,5 +1,5 @@
 use super::error::{Error, Result};
-use crate::log::{LENGTH_FIELD_BYTES, STORAGE_HEADER_SIZE, TX_COMMIT_MARKER};
+use crate::log::{LENGTH_FIELD_BYTES, STORAGE_HEADER_SIZE, STORAGE_MAGIC, TX_COMMIT_MARKER};
 
 /// Maximum key and value sizes to prevent parsing huge records
 const MAX_KEY_SIZE: usize = 1024 * 10; // 10KB
@@ -33,13 +33,16 @@ impl RecordParser {
             return Ok(STORAGE_HEADER_SIZE as u64);
         }
 
+        // Read header to get valid_data_end (for version 2+)
+        let scan_end = Self::read_valid_data_end(file)?;
+
         file.seek(SeekFrom::Start(STORAGE_HEADER_SIZE as u64))?;
 
         let mut pos = STORAGE_HEADER_SIZE as u64;
         let mut len_buf = [0u8; LENGTH_FIELD_BYTES];
         let mut last_commit_offset = STORAGE_HEADER_SIZE as u64;
 
-        while pos < file_size {
+        while pos < scan_end {
             // Read key length
             if file.read_exact(&mut len_buf).is_err() {
                 break; // End of valid data
@@ -173,6 +176,36 @@ impl RecordParser {
         }
 
         Ok(end_offset)
+    }
+
+    /// Read valid_data_end from header (for version 2+)
+    /// Returns the end of valid data or file size for version 1
+    pub fn read_valid_data_end(file: &mut std::fs::File) -> Result<u64> {
+        use std::io::{Read, Seek, SeekFrom};
+
+        file.seek(SeekFrom::Start(0))?;
+        let mut header = vec![0u8; STORAGE_HEADER_SIZE];
+        file.read_exact(&mut header)?;
+
+        // Check magic
+        if &header[0..STORAGE_MAGIC.len()] != STORAGE_MAGIC {
+            return Err(Error::Parse("Invalid magic in header".to_string()));
+        }
+
+        // Read version
+        let version = u16::from_be_bytes([header[6], header[7]]);
+
+        if version >= 2 {
+            // Read valid_data_end from [21..29)
+            let valid_data_end = u64::from_be_bytes([
+                header[21], header[22], header[23], header[24], header[25], header[26], header[27],
+                header[28],
+            ]);
+            Ok(valid_data_end)
+        } else {
+            // Version 1: use file size
+            Ok(file.metadata()?.len())
+        }
     }
 }
 

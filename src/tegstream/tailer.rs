@@ -1,6 +1,6 @@
 use super::config::Config;
 use super::error::{Error, Result};
-use super::parser::find_last_commit_offset;
+use super::parser::{find_last_commit_offset, RecordParser};
 use super::s3_backend::S3Backend;
 use super::state::ReplicationState;
 use chrono::Utc;
@@ -107,11 +107,21 @@ impl Tailer {
             .read(true)
             .open(&self.config.database_path)?;
 
-        // Copy file to temp location for upload
+        // Get valid_data_end from header (only copy valid data, not preallocated space)
+        let valid_data_end = RecordParser::read_valid_data_end(&mut file)?;
+
+        // Copy only valid data to temp location for upload
         let temp_path = self.config.database_path.with_extension("snapshot.tmp");
         let mut temp_file = std::fs::File::create(&temp_path)?;
-        std::io::copy(&mut file, &mut temp_file)?;
+        file.seek(SeekFrom::Start(0))?;
+        let mut limited_reader = file.take(valid_data_end);
+        std::io::copy(&mut limited_reader, &mut temp_file)?;
         drop(temp_file);
+
+        // Re-open file for finding commit offset
+        let mut file = OpenOptions::new()
+            .read(true)
+            .open(&self.config.database_path)?;
 
         // Compress if enabled
         let upload_path = if self.config.gzip {
