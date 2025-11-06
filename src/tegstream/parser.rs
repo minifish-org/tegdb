@@ -1,5 +1,8 @@
 use super::error::{Error, Result};
-use crate::log::{LENGTH_FIELD_BYTES, STORAGE_HEADER_SIZE, STORAGE_MAGIC, TX_COMMIT_MARKER};
+use crate::log::{
+    LENGTH_FIELD_BYTES, STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE, STORAGE_MAGIC,
+    TX_COMMIT_MARKER,
+};
 
 /// Maximum key and value sizes to prevent parsing huge records
 const MAX_KEY_SIZE: usize = 1024 * 10; // 10KB
@@ -178,8 +181,7 @@ impl RecordParser {
         Ok(end_offset)
     }
 
-    /// Read valid_data_end from header (for version 2+)
-    /// Returns the end of valid data or file size for version 1
+    /// Read valid_data_end from header (current storage format only)
     pub fn read_valid_data_end(file: &mut std::fs::File) -> Result<u64> {
         use std::io::{Read, Seek, SeekFrom};
 
@@ -195,17 +197,18 @@ impl RecordParser {
         // Read version
         let version = u16::from_be_bytes([header[6], header[7]]);
 
-        if version >= 2 {
-            // Read valid_data_end from [21..29)
-            let valid_data_end = u64::from_be_bytes([
-                header[21], header[22], header[23], header[24], header[25], header[26], header[27],
-                header[28],
-            ]);
-            Ok(valid_data_end)
-        } else {
-            // Version 1: use file size
-            Ok(file.metadata()?.len())
+        if version != STORAGE_FORMAT_VERSION {
+            return Err(Error::Parse(format!(
+                "Unsupported storage version {} (expected {})",
+                version, STORAGE_FORMAT_VERSION
+            )));
         }
+
+        let valid_data_end = u64::from_be_bytes([
+            header[21], header[22], header[23], header[24], header[25], header[26], header[27],
+            header[28],
+        ]);
+        Ok(valid_data_end)
     }
 }
 

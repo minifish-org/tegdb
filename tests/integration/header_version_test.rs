@@ -44,9 +44,9 @@ fn test_version_2_header_read() {
     assert_eq!(value.as_ref(), b"value1");
 }
 
-/// Simulate a version 1 file and verify it can be read
+/// Simulate a version 1 file and verify it is rejected
 #[test]
-fn test_version_1_compatibility() {
+fn test_version_1_rejected() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test_v1.teg");
 
@@ -89,11 +89,9 @@ fn test_version_1_compatibility() {
     file.sync_all().unwrap();
     drop(file);
 
-    // Try to open with current version (should handle v1)
-    let engine = StorageEngine::new(db_path.clone()).unwrap();
-    let retrieved_value = engine.get(b"test_key").unwrap();
-    assert_eq!(retrieved_value.as_ref(), b"test_value");
-    drop(engine);
+    // Opening should now fail
+    let result = StorageEngine::new(db_path);
+    assert!(result.is_err(), "Version 1 files should be rejected");
 }
 
 /// Test that header magic is validated

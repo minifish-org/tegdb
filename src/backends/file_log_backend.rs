@@ -12,12 +12,52 @@ use std::rc::Rc;
 
 type ChangeRecord = (Vec<u8>, Option<Rc<[u8]>>);
 
+struct KeyBufferPool {
+    buffers: Vec<Vec<u8>>,
+    max_key_size: usize,
+}
+
+impl KeyBufferPool {
+    fn new(capacity: usize, max_key_size: usize) -> Self {
+        let mut buffers = Vec::with_capacity(capacity);
+        for _ in 0..capacity {
+            buffers.push(Vec::with_capacity(max_key_size));
+        }
+        Self {
+            buffers,
+            max_key_size,
+        }
+    }
+
+    fn take(&mut self, min_len: usize) -> Vec<u8> {
+        let mut buf = self
+            .buffers
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(self.max_key_size.max(min_len)));
+        if buf.capacity() < min_len {
+            buf.reserve(min_len - buf.capacity());
+        }
+        buf.clear();
+        buf
+    }
+
+    fn clone_from(&mut self, data: &[u8]) -> Vec<u8> {
+        let mut buf = self.take(data.len());
+        buf.extend_from_slice(data);
+        buf
+    }
+
+    fn recycle(&mut self, mut buf: Vec<u8>) {
+        buf.clear();
+        self.buffers.push(buf);
+    }
+}
+
 /// File-based storage backend for native platforms
 pub struct FileLogBackend {
     path: std::path::PathBuf,
     file: std::fs::File,
     valid_data_end: u64, // Track the end of valid data (for preallocation)
-    file_version: u16,   // Track file format version
 }
 
 impl LogBackend for FileLogBackend {
@@ -55,7 +95,6 @@ impl LogBackend for FileLogBackend {
             path,
             file,
             valid_data_end: STORAGE_HEADER_SIZE as u64,
-            file_version: STORAGE_FORMAT_VERSION,
         };
 
         // Initialize or validate header
@@ -79,20 +118,10 @@ impl LogBackend for FileLogBackend {
     }
 
     fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
-        // Preallocate memory for BTreeMap if requested
-        let mut key_map = if let Some(capacity) = config.initial_capacity {
-            let mut temp_map = KeyMap::new();
-            // Pre-warm the BTreeMap by inserting dummy entries
-            for i in 0..capacity {
-                let key = vec![((i / 256) % 256) as u8, (i % 256) as u8];
-                temp_map.insert(key, Rc::from(vec![0u8]));
-            }
-            temp_map.clear();
-            temp_map
-        } else {
-            KeyMap::new()
-        };
-        let mut uncommitted_changes: Vec<ChangeRecord> = Vec::new();
+        let initial_capacity = config.initial_capacity.unwrap_or(0);
+        let mut key_map = KeyMap::new();
+        let mut key_pool = KeyBufferPool::new(initial_capacity, config.max_key_size);
+        let mut uncommitted_changes: Vec<ChangeRecord> = Vec::with_capacity(initial_capacity);
         // Fall back to the physical file length so crash-written data is still discovered.
         let header_valid_data_end = self.valid_data_end;
         let scan_end = self.file.metadata()?.len();
@@ -101,16 +130,14 @@ impl LogBackend for FileLogBackend {
         let mut pos = reader.seek(SeekFrom::Start(STORAGE_HEADER_SIZE as u64))?;
         let mut last_good_pos = pos;
         let mut len_buf = [0u8; LENGTH_FIELD_BYTES];
-        let mut committed = false;
+        let mut commit_marker_seen = false;
 
         while pos < scan_end {
-            // Read key length
             if reader.read_exact(&mut len_buf).is_err() {
                 break; // Corrupted entry
             }
             let key_len = u32::from_be_bytes(len_buf);
 
-            // Read value length
             if reader.read_exact(&mut len_buf).is_err() {
                 break; // Corrupted
             }
@@ -120,37 +147,60 @@ impl LogBackend for FileLogBackend {
                 break; // Likely unwritten preallocated region
             }
 
-            // Basic validation
             if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size
             {
                 break; // Invalid entry, treat as corruption
             }
 
-            // Read key
-            let mut key = vec![0; key_len as usize];
-            if reader.read_exact(&mut key).is_err() {
+            let key_len_usize = key_len as usize;
+            let mut key_vec = key_pool.take(key_len_usize);
+            key_vec.resize(key_len_usize, 0);
+            if reader.read_exact(&mut key_vec).is_err() {
+                key_pool.recycle(key_vec);
                 break; // Corrupted
             }
 
-            // Check for commit marker
-            if key == TX_COMMIT_MARKER {
+            if key_vec.as_slice() == TX_COMMIT_MARKER {
                 uncommitted_changes.clear();
-                committed = true;
-                reader.seek(SeekFrom::Current(value_len as i64))?;
+                commit_marker_seen = true;
+                if reader.seek(SeekFrom::Current(value_len as i64)).is_err() {
+                    key_pool.recycle(key_vec);
+                    break;
+                }
+                key_pool.recycle(key_vec);
+                pos = reader.stream_position()?;
+                last_good_pos = pos;
+                continue;
+            }
+
+            let key_for_map = key_vec;
+            let key_for_undo = key_pool.clone_from(&key_for_map);
+            let mut old_value: Option<Rc<[u8]>> = None;
+
+            if value_len == 0 {
+                if let Some((old_key, old_val)) = key_map.remove_entry(key_for_map.as_slice()) {
+                    key_pool.recycle(old_key);
+                    old_value = Some(old_val);
+                }
+                key_pool.recycle(key_for_map);
             } else {
-                // Read value
-                let mut value = vec![0; value_len as usize];
-                if reader.read_exact(&mut value).is_err() {
+                let mut value_buf = vec![0; value_len as usize];
+                if reader.read_exact(&mut value_buf).is_err() {
+                    key_pool.recycle(key_for_map);
+                    key_pool.recycle(key_for_undo);
                     break; // Corrupted
                 }
 
-                let old_value = if value.is_empty() {
-                    key_map.remove(&key)
-                } else {
-                    key_map.insert(key.clone(), Rc::from(value.into_boxed_slice()))
-                };
-                uncommitted_changes.push((key, old_value));
+                if let Some((old_key, old_val)) = key_map.remove_entry(key_for_map.as_slice()) {
+                    key_pool.recycle(old_key);
+                    old_value = Some(old_val);
+                }
+
+                let value_rc = Rc::from(value_buf.into_boxed_slice());
+                key_map.insert(key_for_map, value_rc);
             }
+
+            uncommitted_changes.push((key_for_undo, old_value));
 
             let new_pos = reader.stream_position()?;
             last_good_pos = new_pos;
@@ -160,12 +210,11 @@ impl LogBackend for FileLogBackend {
         self.valid_data_end = last_good_pos;
         drop(reader);
 
-        if self.file_version >= 2 && self.valid_data_end != header_valid_data_end {
+        if self.valid_data_end != header_valid_data_end {
             self.update_valid_data_end_in_header()?;
         }
 
-        // Rollback uncommitted changes if any commit marker was seen
-        if committed {
+        if commit_marker_seen {
             for (key, old_value) in uncommitted_changes.into_iter().rev() {
                 if let Some(value) = old_value {
                     key_map.insert(key, value);
@@ -212,10 +261,8 @@ impl LogBackend for FileLogBackend {
         // Update valid_data_end
         self.valid_data_end += len as u64;
 
-        // Update header with new valid_data_end (only for version 2+)
-        if self.file_version >= 2 {
-            self.update_valid_data_end_in_header()?;
-        }
+        // Update header with new valid_data_end
+        self.update_valid_data_end_in_header()?;
 
         Ok(())
     }
@@ -273,10 +320,7 @@ impl FileLogBackend {
         }
         // version
         let version = u16::from_be_bytes([header[6], header[7]]);
-        self.file_version = version;
-
-        // Support both version 1 and 2
-        if version != 1 && version != 2 {
+        if version != STORAGE_FORMAT_VERSION {
             return Err(Error::UnsupportedVersion(version));
         }
 
@@ -285,21 +329,15 @@ impl FileLogBackend {
             return Err(Error::CorruptHeader("unsupported endianness"));
         }
 
-        // Read valid_data_end for version 2+
-        if version >= 2 {
-            self.valid_data_end = u64::from_be_bytes([
-                header[21], header[22], header[23], header[24], header[25], header[26], header[27],
-                header[28],
-            ]);
-        } else {
-            // Version 1: use file length as valid_data_end
-            self.valid_data_end = self.file.metadata()?.len();
-        }
+        self.valid_data_end = u64::from_be_bytes([
+            header[21], header[22], header[23], header[24], header[25], header[26], header[27],
+            header[28],
+        ]);
 
         Ok(())
     }
 
-    /// Update valid_data_end field in header (version 2+ only)
+    /// Update valid_data_end field in the header
     fn update_valid_data_end_in_header(&mut self) -> Result<()> {
         // Seek to valid_data_end field [21..29)
         self.file.seek(SeekFrom::Start(21))?;

@@ -88,7 +88,7 @@ fn test_parser_read_valid_data_end() {
 }
 
 #[test]
-fn test_parser_version_1_fallback() {
+fn test_parser_version_1_rejected() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test_v1.teg");
 
@@ -122,17 +122,14 @@ fn test_parser_version_1_fallback() {
     file.write_all(value).unwrap();
     file.sync_all().unwrap();
 
-    let file_size = file.metadata().unwrap().len();
     drop(file);
 
-    // Read valid_data_end (should fall back to file size for v1)
+    // Read valid_data_end (should now fail for unsupported version)
     let mut file = File::open(&db_path).unwrap();
-    let valid_data_end = RecordParser::read_valid_data_end(&mut file).unwrap();
-
-    // For version 1, valid_data_end should equal file size
-    assert_eq!(
-        valid_data_end, file_size,
-        "Version 1 should use file size as valid_data_end"
+    let result = RecordParser::read_valid_data_end(&mut file);
+    assert!(
+        result.is_err(),
+        "Version 1 files should be rejected by the parser"
     );
 }
 
