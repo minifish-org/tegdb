@@ -14,7 +14,11 @@ fn main() -> tegdb::Result<()> {
     println!("Test 1: Without preallocation");
     let start = Instant::now();
     {
-        let config = EngineConfig::default();
+        let config = EngineConfig {
+            initial_capacity: None,
+            preallocate_size: None,
+            ..Default::default()
+        };
         let mut engine = StorageEngine::with_config("demo_no_prealloc.teg".into(), config)?;
 
         for i in 0..1000 {
@@ -37,6 +41,7 @@ fn main() -> tegdb::Result<()> {
     {
         let config = EngineConfig {
             initial_capacity: Some(2000),
+            preallocate_size: None,
             ..Default::default()
         };
         let mut engine = StorageEngine::with_config("demo_mem_prealloc.teg".into(), config)?;
@@ -61,6 +66,7 @@ fn main() -> tegdb::Result<()> {
     {
         let config = EngineConfig {
             preallocate_size: Some(10 * 1024 * 1024), // 10MB
+            initial_capacity: None,
             ..Default::default()
         };
         let mut engine = StorageEngine::with_config("demo_disk_prealloc.teg".into(), config)?;

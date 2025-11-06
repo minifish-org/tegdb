@@ -7,6 +7,19 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
+const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
+const DEFAULT_INITIAL_CAPACITY_KEYS: usize = {
+    const FIVE_MB: usize = 5 * 1024 * 1024;
+    let max_keys_for_5mb = FIVE_MB / crate::log::DEFAULT_MAX_KEY_SIZE;
+    if max_keys_for_5mb == 0 {
+        1
+    } else if max_keys_for_5mb > 100_000 {
+        100_000
+    } else {
+        max_keys_for_5mb
+    }
+};
+
 /// Config options for the database engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -16,9 +29,10 @@ pub struct EngineConfig {
     pub max_value_size: usize,
     /// Whether to automatically compact on open (default: true)
     pub auto_compact: bool,
-    /// Initial capacity for BTreeMap (memory preallocation)
+    /// Initial capacity for BTreeMap (memory preallocation).
+    /// Defaults to ~5 MiB of key buffers (capped at 100k keys).
     pub initial_capacity: Option<usize>,
-    /// Preallocate disk space in bytes
+    /// Preallocate disk space in bytes. Defaults to 10 MiB.
     pub preallocate_size: Option<u64>,
 }
 
@@ -28,8 +42,8 @@ impl Default for EngineConfig {
             max_key_size: crate::log::DEFAULT_MAX_KEY_SIZE,
             max_value_size: crate::log::DEFAULT_MAX_VALUE_SIZE,
             auto_compact: true,
-            initial_capacity: None,
-            preallocate_size: None,
+            initial_capacity: Some(DEFAULT_INITIAL_CAPACITY_KEYS),
+            preallocate_size: Some(DEFAULT_PREALLOCATE_SIZE_BYTES),
         }
     }
 }
