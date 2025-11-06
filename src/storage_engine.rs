@@ -7,18 +7,8 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
-const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
-const DEFAULT_INITIAL_CAPACITY_KEYS: usize = {
-    const FIVE_MB: usize = 5 * 1024 * 1024;
-    let max_keys_for_5mb = FIVE_MB / crate::log::DEFAULT_MAX_KEY_SIZE;
-    if max_keys_for_5mb == 0 {
-        1
-    } else if max_keys_for_5mb > 100_000 {
-        100_000
-    } else {
-        max_keys_for_5mb
-    }
-};
+const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1 * 1024 * 1024; // 1 MiB
+const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 10_000;
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
