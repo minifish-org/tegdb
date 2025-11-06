@@ -1,28 +1,32 @@
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use tegdb::log::STORAGE_FORMAT_VERSION;
 use tegdb::StorageEngine;
 use tempfile::TempDir;
 
-/// Test that version 2 headers can be read correctly
+/// Test that current storage headers can be read correctly
 #[test]
-fn test_version_2_header_read() {
+fn test_current_header_version() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.teg");
 
-    // Create a new database (should be version 2)
+    // Create a new database (should use the current storage version)
     let mut engine = StorageEngine::new(db_path.clone()).unwrap();
     engine.set(b"key1", b"value1".to_vec()).unwrap();
     engine.flush().unwrap();
     drop(engine);
 
-    // Read header and verify version is 2
+    // Read header and verify the version matches the constant
     let mut file = File::open(&db_path).unwrap();
     let mut header = vec![0u8; 64];
     file.read_exact(&mut header).unwrap();
 
     // Check version bytes [6..8)
     let version = u16::from_be_bytes([header[6], header[7]]);
-    assert_eq!(version, 2, "New databases should use version 2");
+    assert_eq!(
+        version, STORAGE_FORMAT_VERSION,
+        "New databases should use the current storage version"
+    );
 
     // Check valid_data_end is present [21..29)
     let valid_data_end = u64::from_be_bytes([

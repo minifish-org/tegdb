@@ -29,7 +29,7 @@ pub const STORAGE_HEADER_SIZE: usize = 64; // leave room for future fields
 /// [12..16) max_key:  u32 BE
 /// [16..20) max_val:  u32 BE
 /// [20..21) endian:   u8 (1=BE, 2=LE; we write 1)
-/// [21..29) valid_data_end: u64 BE (version >= 2, tracks actual data boundary)
+/// [21..29) valid_data_end: u64 BE (tracks actual data boundary)
 /// [29..64) reserved: zero padding
 /// Config options for the log
 #[derive(Debug, Clone)]

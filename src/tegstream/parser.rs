@@ -36,7 +36,7 @@ impl RecordParser {
             return Ok(STORAGE_HEADER_SIZE as u64);
         }
 
-        // Read header to get valid_data_end (for version 2+)
+        // Read header to get valid_data_end
         let scan_end = Self::read_valid_data_end(file)?;
 
         file.seek(SeekFrom::Start(STORAGE_HEADER_SIZE as u64))?;

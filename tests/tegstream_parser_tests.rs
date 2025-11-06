@@ -16,10 +16,8 @@ fn write_header(file: &mut std::fs::File, valid_data_end: u64) {
     header[12..16].copy_from_slice(&(1024u32).to_be_bytes());
     header[16..20].copy_from_slice(&(256 * 1024u32).to_be_bytes());
     header[20] = 1u8; // BE
-    if STORAGE_FORMAT_VERSION >= 2 {
-        // For version 2+, set valid_data_end [21..29)
-        header[21..29].copy_from_slice(&valid_data_end.to_be_bytes());
-    }
+                      // Record valid_data_end [21..29)
+    header[21..29].copy_from_slice(&valid_data_end.to_be_bytes());
     file.write_all(&header).unwrap();
 }
 
