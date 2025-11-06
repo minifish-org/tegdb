@@ -20,9 +20,11 @@ pub struct EngineConfig {
     /// Whether to automatically compact on open (default: true)
     pub auto_compact: bool,
     /// Initial capacity for BTreeMap (memory preallocation).
-    /// Defaults to ~5 MiB of key buffers (capped at 100k keys).
+    /// Also acts as a hard cap on the number of resident keys.
+    /// Defaults to 10 000 keys.
     pub initial_capacity: Option<usize>,
-    /// Preallocate disk space in bytes. Defaults to 10 MiB.
+    /// Preallocate disk space in bytes.
+    /// Acts as a hard cap on the WAL-backed log size. Defaults to 1 MiB.
     pub preallocate_size: Option<u64>,
 }
 
@@ -74,6 +76,12 @@ impl StorageEngine {
         let mut log = Log::new(identifier.clone(), &log_config)?;
         let key_map = log.build_key_map(&log_config)?;
 
+        if let Some(cap) = config.initial_capacity {
+            if key_map.len() > cap {
+                return Err(Error::OutOfMemoryQuota { max_keys: cap });
+            }
+        }
+
         let mut engine = Self {
             log,
             key_map,
@@ -115,6 +123,15 @@ impl StorageEngine {
 
         if value.is_empty() {
             return self.del(key);
+        }
+
+        let is_new_key = !self.key_map.contains_key(key);
+        if is_new_key {
+            if let Some(cap) = self.config.initial_capacity {
+                if self.key_map.len() >= cap {
+                    return Err(Error::OutOfMemoryQuota { max_keys: cap });
+                }
+            }
         }
 
         // Skip writing if the value hasn't changed
@@ -307,9 +324,13 @@ impl Transaction<'_> {
         self.record_undo(key);
 
         // Write-through: directly modify engine state
-        self.engine.set(key, value)?;
-
-        Ok(())
+        let result = self.engine.set(key, value);
+        if result.is_err() {
+            if let Some(ref mut log) = self.undo_log {
+                log.pop();
+            }
+        }
+        result
     }
 
     /// Deletes a key directly in the engine with undo logging
@@ -323,9 +344,13 @@ impl Transaction<'_> {
         self.record_undo(key);
 
         // Write-through: directly modify engine state
-        self.engine.del(key)?;
-
-        Ok(())
+        let result = self.engine.del(key);
+        if result.is_err() {
+            if let Some(ref mut log) = self.undo_log {
+                log.pop();
+            }
+        }
+        result
     }
 
     /// Retrieves a value directly from the engine (no transaction-local state)

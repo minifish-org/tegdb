@@ -57,11 +57,12 @@ impl KeyBufferPool {
 pub struct FileLogBackend {
     path: std::path::PathBuf,
     file: std::fs::File,
-    valid_data_end: u64, // Track the end of valid data (for preallocation)
+    valid_data_end: u64,       // Track the end of valid data (for preallocation)
+    max_file_len: Option<u64>, // Optional hard limit for on-disk size
 }
 
 impl LogBackend for FileLogBackend {
-    fn new(identifier: String, _config: &LogConfig) -> Result<Self> {
+    fn new(identifier: String, config: &LogConfig) -> Result<Self> {
         // Parse protocol and extract file path
         let (protocol, path_str) = parse_storage_identifier(&identifier);
 
@@ -91,27 +92,50 @@ impl LogBackend for FileLogBackend {
         file.try_lock_exclusive()
             .map_err(|e| Error::FileLocked(e.to_string()))?;
 
+        let max_file_len = if let Some(size) = config.preallocate_size {
+            if size < STORAGE_HEADER_SIZE as u64 {
+                return Err(Error::Other(format!(
+                    "preallocate_size ({size}) must be at least {} bytes",
+                    STORAGE_HEADER_SIZE
+                )));
+            }
+            Some(size)
+        } else {
+            None
+        };
+
         let mut backend = Self {
             path,
             file,
             valid_data_end: STORAGE_HEADER_SIZE as u64,
+            max_file_len,
         };
 
         // Initialize or validate header
         let len = backend.file.metadata()?.len();
+        if let Some(limit) = backend.max_file_len {
+            if len > limit {
+                return Err(Error::OutOfStorageQuota { bytes: limit });
+            }
+        }
+
         if len == 0 {
             // Fresh file: write header with provided limits
-            backend.write_header(_config)?;
+            backend.write_header(config)?;
 
             // Preallocate disk space if requested
-            if let Some(preallocate_size) = _config.preallocate_size {
-                if preallocate_size > STORAGE_HEADER_SIZE as u64 {
-                    backend.file.set_len(preallocate_size)?;
-                }
+            if let Some(preallocate_size) = backend.max_file_len {
+                backend.file.set_len(preallocate_size)?;
             }
         } else {
             // Existing file: validate header and read valid_data_end
             backend.read_header()?;
+
+            if let Some(limit) = backend.max_file_len {
+                if backend.valid_data_end > limit {
+                    return Err(Error::OutOfStorageQuota { bytes: limit });
+                }
+            }
         }
 
         Ok(backend)
@@ -125,6 +149,16 @@ impl LogBackend for FileLogBackend {
         // Fall back to the physical file length so crash-written data is still discovered.
         let header_valid_data_end = self.valid_data_end;
         let scan_end = self.file.metadata()?.len();
+
+        if let Some(limit) = self.max_file_len {
+            if scan_end > limit {
+                return Err(Error::OutOfStorageQuota { bytes: limit });
+            }
+            if header_valid_data_end > limit {
+                return Err(Error::OutOfStorageQuota { bytes: limit });
+            }
+        }
+
         let mut reader = std::io::BufReader::new(&mut self.file);
         // Start scanning after fixed header
         let mut pos = reader.seek(SeekFrom::Start(STORAGE_HEADER_SIZE as u64))?;
@@ -211,6 +245,11 @@ impl LogBackend for FileLogBackend {
         drop(reader);
 
         if self.valid_data_end != header_valid_data_end {
+            if let Some(limit) = self.max_file_len {
+                if self.valid_data_end > limit {
+                    return Err(Error::OutOfStorageQuota { bytes: limit });
+                }
+            }
             self.update_valid_data_end_in_header()?;
         }
 
@@ -251,6 +290,15 @@ impl LogBackend for FileLogBackend {
         buffer.extend_from_slice(value);
 
         // Write to file at valid_data_end position
+        let new_end = self
+            .valid_data_end
+            .checked_add(len as u64)
+            .ok_or_else(|| Error::Other("Log size would overflow u64".into()))?;
+        if let Some(limit) = self.max_file_len {
+            if new_end > limit {
+                return Err(Error::OutOfStorageQuota { bytes: limit });
+            }
+        }
         self.file.seek(SeekFrom::Start(self.valid_data_end))?;
         {
             let mut writer = std::io::BufWriter::with_capacity(len as usize, &mut self.file);
@@ -259,7 +307,7 @@ impl LogBackend for FileLogBackend {
         }
 
         // Update valid_data_end
-        self.valid_data_end += len as u64;
+        self.valid_data_end = new_end;
 
         // Update header with new valid_data_end
         self.update_valid_data_end_in_header()?;
@@ -272,7 +320,22 @@ impl LogBackend for FileLogBackend {
     }
 
     fn set_len(&mut self, size: u64) -> Result<()> {
-        self.file.set_len(size).map_err(Error::from)
+        if size < STORAGE_HEADER_SIZE as u64 {
+            return Err(Error::Other(format!(
+                "Cannot shrink log smaller than header (requested {size} bytes)"
+            )));
+        }
+        if let Some(limit) = self.max_file_len {
+            if size > limit {
+                return Err(Error::OutOfStorageQuota { bytes: limit });
+            }
+        }
+        self.file.set_len(size)?;
+        if self.valid_data_end > size {
+            self.valid_data_end = size;
+            self.update_valid_data_end_in_header()?;
+        }
+        Ok(())
     }
 
     fn rename_to(&mut self, new_identifier: String) -> Result<()> {
@@ -333,6 +396,12 @@ impl FileLogBackend {
             header[21], header[22], header[23], header[24], header[25], header[26], header[27],
             header[28],
         ]);
+
+        if let Some(limit) = self.max_file_len {
+            if self.valid_data_end > limit {
+                return Err(Error::OutOfStorageQuota { bytes: limit });
+            }
+        }
 
         Ok(())
     }

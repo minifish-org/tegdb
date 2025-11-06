@@ -1,4 +1,4 @@
-use tegdb::{EngineConfig, StorageEngine};
+use tegdb::{EngineConfig, Error, StorageEngine};
 use tempfile::TempDir;
 
 #[test]
@@ -76,4 +76,31 @@ fn test_memory_preallocation_large_capacity() {
 
     // Just verify it can be created and is empty
     assert_eq!(engine.len(), 0);
+}
+
+#[test]
+fn test_memory_preallocation_limit_enforced() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("limit.teg");
+
+    let config = EngineConfig {
+        initial_capacity: Some(2),
+        preallocate_size: Some(1 * 1024 * 1024),
+        ..Default::default()
+    };
+
+    let mut engine = StorageEngine::with_config(db_path, config).unwrap();
+
+    engine.set(b"a", b"1".to_vec()).unwrap();
+    engine.set(b"b", b"2".to_vec()).unwrap();
+
+    let err = engine.set(b"c", b"3".to_vec()).unwrap_err();
+    match err {
+        Error::OutOfMemoryQuota { max_keys } => assert_eq!(max_keys, 2),
+        other => panic!("expected OutOfMemoryQuota error, got {other:?}"),
+    }
+
+    engine.del(b"a").unwrap();
+    engine.set(b"c", b"3".to_vec()).unwrap();
+    assert_eq!(engine.len(), 2);
 }

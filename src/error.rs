@@ -30,6 +30,10 @@ pub enum Error {
     TableNotFound(String),
     /// Column not found
     ColumnNotFound(String),
+    /// Exceeded configured in-memory quota (too many keys)
+    OutOfMemoryQuota { max_keys: usize },
+    /// Exceeded configured on-disk quota (log file would exceed limit)
+    OutOfStorageQuota { bytes: u64 },
     /// Other database errors
     Other(String),
 }
@@ -50,6 +54,12 @@ impl fmt::Display for Error {
             Error::PlanError(msg) => write!(f, "Query planning error: {msg}"),
             Error::TableNotFound(table) => write!(f, "Table '{table}' not found"),
             Error::ColumnNotFound(column) => write!(f, "Column '{column}' not found"),
+            Error::OutOfMemoryQuota { max_keys } => {
+                write!(f, "In-memory quota exceeded (max {max_keys} keys)")
+            }
+            Error::OutOfStorageQuota { bytes } => {
+                write!(f, "Storage quota exceeded (max {bytes} bytes)")
+            }
             Error::Other(msg) => write!(f, "Database error: {msg}"),
         }
     }

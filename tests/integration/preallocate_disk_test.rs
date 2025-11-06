@@ -1,5 +1,6 @@
 use std::fs;
-use tegdb::{EngineConfig, StorageEngine};
+use tegdb::log::{LENGTH_FIELD_BYTES, STORAGE_HEADER_SIZE};
+use tegdb::{EngineConfig, Error, StorageEngine};
 use tempfile::TempDir;
 
 #[test]
@@ -130,4 +131,34 @@ fn test_valid_data_end_tracking() {
     let engine = StorageEngine::new(db_path).unwrap();
     let value = engine.get(b"test_key").unwrap();
     assert_eq!(value.as_ref(), b"test_value");
+}
+
+#[test]
+fn test_disk_preallocation_limit_enforced() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("disk_limit.teg");
+
+    let key = b"k1";
+    let value = vec![b'x'; 32];
+    let entry_size = (2 * LENGTH_FIELD_BYTES + key.len() + value.len()) as u64;
+    let limit = STORAGE_HEADER_SIZE as u64 + entry_size;
+
+    let config = EngineConfig {
+        preallocate_size: Some(limit),
+        initial_capacity: Some(10),
+        ..Default::default()
+    };
+
+    let mut engine = StorageEngine::with_config(db_path.clone(), config).unwrap();
+    engine.set(key, value.clone()).unwrap();
+
+    let err = engine.set(b"k2", value.clone()).unwrap_err();
+    match err {
+        Error::OutOfStorageQuota { bytes } => assert_eq!(bytes, limit),
+        other => panic!("expected OutOfStorageQuota error, got {other:?}"),
+    }
+
+    // Updates to existing keys remain allowed.
+    engine.set(key, value.clone()).unwrap();
+    assert_eq!(std::fs::metadata(&db_path).unwrap().len(), limit);
 }
