@@ -93,11 +93,13 @@ impl LogBackend for FileLogBackend {
             KeyMap::new()
         };
         let mut uncommitted_changes: Vec<ChangeRecord> = Vec::new();
-        // Use valid_data_end instead of file_len for scanning
-        let scan_end = self.valid_data_end;
+        // Fall back to the physical file length so crash-written data is still discovered.
+        let header_valid_data_end = self.valid_data_end;
+        let scan_end = self.file.metadata()?.len();
         let mut reader = std::io::BufReader::new(&mut self.file);
         // Start scanning after fixed header
         let mut pos = reader.seek(SeekFrom::Start(STORAGE_HEADER_SIZE as u64))?;
+        let mut last_good_pos = pos;
         let mut len_buf = [0u8; LENGTH_FIELD_BYTES];
         let mut committed = false;
 
@@ -113,6 +115,10 @@ impl LogBackend for FileLogBackend {
                 break; // Corrupted
             }
             let value_len = u32::from_be_bytes(len_buf);
+
+            if pos >= header_valid_data_end && key_len == 0 && value_len == 0 {
+                break; // Likely unwritten preallocated region
+            }
 
             // Basic validation
             if key_len as usize > config.max_key_size || value_len as usize > config.max_value_size
@@ -146,7 +152,16 @@ impl LogBackend for FileLogBackend {
                 uncommitted_changes.push((key, old_value));
             }
 
-            pos = reader.stream_position()?;
+            let new_pos = reader.stream_position()?;
+            last_good_pos = new_pos;
+            pos = new_pos;
+        }
+
+        self.valid_data_end = last_good_pos;
+        drop(reader);
+
+        if self.file_version >= 2 && self.valid_data_end != header_valid_data_end {
+            self.update_valid_data_end_in_header()?;
         }
 
         // Rollback uncommitted changes if any commit marker was seen
