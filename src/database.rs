@@ -8,7 +8,7 @@ use crate::parser::Expression;
 use crate::parser::{parse_sql, SqlValue, Statement};
 use crate::planner::QueryPlanner;
 use crate::query_processor::{QueryProcessor, QuerySchema, TableSchema};
-use crate::storage_engine::StorageEngine;
+use crate::storage_engine::{EngineConfig, StorageEngine};
 use crate::Result;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -186,6 +186,11 @@ impl Database {
     /// - ❌ relative/path (missing protocol)
     /// - ❌ file://relative/path (relative path with protocol)
     pub fn open<P: AsRef<str>>(path: P) -> Result<Self> {
+        Self::open_with_config(path, EngineConfig::default())
+    }
+
+    /// Create or open a database with a custom engine configuration.
+    pub fn open_with_config<P: AsRef<str>>(path: P, config: EngineConfig) -> Result<Self> {
         let path_str = path.as_ref();
         let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
 
@@ -212,7 +217,7 @@ impl Database {
             )));
         }
 
-        let storage = StorageEngine::new(path_buf.to_path_buf())?;
+        let storage = StorageEngine::with_config(path_buf.to_path_buf(), config)?;
 
         let catalog = Catalog::load_from_storage(&storage)?;
 

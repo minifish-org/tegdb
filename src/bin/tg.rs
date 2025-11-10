@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process;
+use tegdb::storage_engine::EngineConfig;
 use tegdb::{Database, QueryResult, SqlValue};
 
 fn format_sql_value(value: &SqlValue) -> String {
@@ -213,6 +214,14 @@ struct Cli {
     /// Output format (table, csv, json)
     #[arg(long, default_value = "table")]
     mode: String,
+
+    /// Maximum number of keys to keep in memory (0 disables the cap)
+    #[arg(long, value_name = "KEYS")]
+    max_keys: Option<usize>,
+
+    /// Maximum on-disk log size in bytes (0 disables the cap)
+    #[arg(long, value_name = "BYTES")]
+    max_log_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -232,8 +241,8 @@ struct CliState {
 }
 
 impl CliState {
-    fn new(db_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let db = Database::open(db_path)?;
+    fn new(db_path: &str, config: EngineConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        let db = Database::open_with_config(db_path, config)?;
         Ok(CliState {
             db,
             timer_enabled: false,
@@ -580,6 +589,18 @@ impl CliState {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    let mut engine_config = EngineConfig::default();
+    if let Some(max_keys) = cli.max_keys {
+        engine_config.initial_capacity = if max_keys == 0 { None } else { Some(max_keys) };
+    }
+    if let Some(max_bytes) = cli.max_log_bytes {
+        engine_config.preallocate_size = if max_bytes == 0 {
+            None
+        } else {
+            Some(max_bytes)
+        };
+    }
+
     // Normalize DB identifier to always use file:// protocol expected by Database::open
     let db_path = if tegdb::protocol_utils::has_protocol(&cli.db_path, "file") {
         // Already a file:// identifier; require .teg strictly
@@ -620,7 +641,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize CLI state
-    let mut state = CliState::new(&db_path)?;
+    let mut state = CliState::new(&db_path, engine_config)?;
 
     // Apply command line options
     if let Some(timer) = cli.timer {
