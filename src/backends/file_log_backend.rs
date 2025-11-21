@@ -141,7 +141,7 @@ impl LogBackend for FileLogBackend {
         Ok(backend)
     }
 
-    fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
+    fn build_key_map(&mut self, config: &LogConfig) -> Result<(KeyMap, u64)> {
         let initial_capacity = config.initial_capacity.unwrap_or(0);
         let mut key_map = KeyMap::new();
         let mut key_pool = KeyBufferPool::new(initial_capacity, config.max_key_size);
@@ -263,7 +263,16 @@ impl LogBackend for FileLogBackend {
             }
         }
 
-        Ok(key_map)
+        // Calculate active data size
+        let mut active_data_size: u64 = 0;
+        for (key, value) in &key_map {
+            // Overhead: key_len (4) + value_len (4)
+            active_data_size += (LENGTH_FIELD_BYTES * 2) as u64;
+            active_data_size += key.len() as u64;
+            active_data_size += value.len() as u64;
+        }
+
+        Ok((key_map, active_data_size))
     }
 
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
@@ -343,6 +352,10 @@ impl LogBackend for FileLogBackend {
         std::fs::rename(&self.path, &new_path)?;
         self.path = new_path;
         Ok(())
+    }
+
+    fn current_size(&self) -> Result<u64> {
+        Ok(self.valid_data_end)
     }
 }
 

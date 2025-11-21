@@ -52,7 +52,8 @@ pub trait LogBackend {
         Self: Sized;
 
     /// Build key map from stored data (load existing database)
-    fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap>;
+    /// Returns the KeyMap and the total size of active data (in bytes)
+    fn build_key_map(&mut self, config: &LogConfig) -> Result<(KeyMap, u64)>;
 
     /// Write an entry to storage
     fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()>;
@@ -65,6 +66,9 @@ pub trait LogBackend {
 
     /// Rename/move storage to new identifier
     fn rename_to(&mut self, new_identifier: String) -> Result<()>;
+
+    /// Get current size of the log in bytes
+    fn current_size(&self) -> Result<u64>;
 }
 
 /// Universal log structure that works with different storage backends
@@ -78,7 +82,7 @@ impl Log {
         Ok(Self { backend })
     }
 
-    pub fn build_key_map(&mut self, config: &LogConfig) -> Result<KeyMap> {
+    pub fn build_key_map(&mut self, config: &LogConfig) -> Result<(KeyMap, u64)> {
         self.backend.build_key_map(config)
     }
 
@@ -97,5 +101,10 @@ impl Log {
     /// Atomically rename this log to a new identifier
     pub fn rename_to(&mut self, new_identifier: String) -> Result<()> {
         self.backend.rename_to(new_identifier)
+    }
+
+    /// Get current size of the log in bytes
+    pub fn current_size(&self) -> Result<u64> {
+        self.backend.current_size()
     }
 }

@@ -7,8 +7,8 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
-const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1 * 1024 * 1024; // 1 MiB
-const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 10_000;
+const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 100_000;
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -26,6 +26,10 @@ pub struct EngineConfig {
     /// Preallocate disk space in bytes.
     /// Acts as a hard cap on the WAL-backed log size. Defaults to 1 MiB.
     pub preallocate_size: Option<u64>,
+    /// Threshold in bytes to trigger compaction (default: 10MB)
+    pub compaction_threshold_bytes: u64,
+    /// Ratio of log size to active data size to trigger compaction (default: 2.0)
+    pub compaction_ratio: f64,
 }
 
 impl Default for EngineConfig {
@@ -36,6 +40,8 @@ impl Default for EngineConfig {
             auto_compact: true,
             initial_capacity: Some(DEFAULT_INITIAL_CAPACITY_KEYS),
             preallocate_size: Some(DEFAULT_PREALLOCATE_SIZE_BYTES),
+            compaction_threshold_bytes: 10 * 1024 * 1024, // 10 MB
+            compaction_ratio: 2.0,
         }
     }
 }
@@ -46,6 +52,7 @@ pub struct StorageEngine {
     key_map: KeyMap,
     config: EngineConfig,
     identifier: String, // Store the database identifier
+    active_data_size: u64,
 }
 
 // Type alias for scan result (returns keys and shared buffer Rcs for values)
@@ -74,7 +81,7 @@ impl StorageEngine {
             preallocate_size: config.preallocate_size,
         };
         let mut log = Log::new(identifier.clone(), &log_config)?;
-        let key_map = log.build_key_map(&log_config)?;
+        let (key_map, active_data_size) = log.build_key_map(&log_config)?;
 
         if let Some(cap) = config.initial_capacity {
             if key_map.len() > cap {
@@ -87,6 +94,7 @@ impl StorageEngine {
             key_map,
             config,
             identifier,
+            active_data_size,
         };
 
         if engine.config.auto_compact {
@@ -142,10 +150,28 @@ impl StorageEngine {
         }
 
         // write to log, then store shared buffer
+        // write to log, then store shared buffer
         self.log.write_entry(key, &value)?;
+        
+        let value_len = value.len() as u64;
         // store as shared buffer for cheap cloning on get
         let shared = Rc::from(value.into_boxed_slice());
-        self.key_map.insert(key.to_vec(), shared);
+        
+        // Update active data size
+        if let Some(old_val) = self.key_map.insert(key.to_vec(), shared) {
+            // Subtract old value size
+            self.active_data_size -= old_val.len() as u64;
+            // Key size doesn't change
+        } else {
+            // New key: add key size + overhead
+            self.active_data_size += key.len() as u64;
+            self.active_data_size += (crate::log::LENGTH_FIELD_BYTES * 2) as u64;
+        }
+        // Add new value size
+        self.active_data_size += value_len;
+
+        // Check for compaction
+        self.check_compaction_trigger()?;
 
         Ok(())
     }
@@ -157,7 +183,19 @@ impl StorageEngine {
         }
 
         self.log.write_entry(key, &[])?;
-        self.key_map.remove(key);
+        
+        // Update active data size
+        if let Some(old_val) = self.key_map.remove(key) {
+            // Subtract old value size
+            self.active_data_size -= old_val.len() as u64;
+            // Subtract key size
+            self.active_data_size -= key.len() as u64;
+            // Subtract overhead
+            self.active_data_size -= (crate::log::LENGTH_FIELD_BYTES * 2) as u64;
+        }
+
+        // Check for compaction
+        self.check_compaction_trigger()?;
 
         Ok(())
     }
@@ -187,8 +225,46 @@ impl StorageEngine {
         // Rename the new log to replace the current one
         new_log.rename_to(self.current_identifier())?;
 
+        // Update active data size to reflect the compacted state
+        // The new log size should be very close to active_data_size
+        // But let's be precise and use the new log's size
+        let new_size = new_log.current_size()?;
+        
         self.log = new_log;
         self.key_map = new_key_map;
+        self.active_data_size = new_size;
+
+        Ok(())
+    }
+
+    /// Check if compaction should be triggered
+    fn check_compaction_trigger(&mut self) -> Result<()> {
+        if !self.config.auto_compact {
+            return Ok(());
+        }
+
+        let log_size = self.log.current_size()?;
+        
+        // Check thresholds
+        // 1. Log size must be greater than absolute threshold
+        if log_size <= self.config.compaction_threshold_bytes {
+            return Ok(());
+        }
+
+        // 2. Log size must be significantly larger than active data size (fragmentation)
+        // Avoid division by zero
+        if self.active_data_size == 0 {
+            // If empty but log is large, compact
+            if log_size > self.config.compaction_threshold_bytes {
+                return self.compact();
+            }
+            return Ok(());
+        }
+
+        let ratio = log_size as f64 / self.active_data_size as f64;
+        if ratio > self.config.compaction_ratio {
+            self.compact()?;
+        }
 
         Ok(())
     }

@@ -92,13 +92,14 @@ fn test_disk_preallocation_small() {
         ..Default::default()
     };
 
-    let engine = StorageEngine::with_config(db_path.clone(), config).unwrap();
-
-    // File size should be header size
-    let metadata = fs::metadata(&db_path).unwrap();
-    assert_eq!(metadata.len(), 64);
-
-    drop(engine);
+    let result = StorageEngine::with_config(db_path.clone(), config);
+    assert!(result.is_err());
+    
+    // Verify error message
+    match result {
+        Err(Error::Other(msg)) => assert!(msg.contains("must be at least 64 bytes")),
+        _ => panic!("Expected Error::Other"),
+    }
 }
 
 #[test]
