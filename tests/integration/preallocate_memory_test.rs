@@ -85,7 +85,7 @@ fn test_memory_preallocation_limit_enforced() {
 
     let config = EngineConfig {
         initial_capacity: Some(2),
-        preallocate_size: Some(1 * 1024 * 1024),
+        preallocate_size: Some(1024 * 1024),
         ..Default::default()
     };
 

@@ -97,7 +97,7 @@ fn test_disk_preallocation_small() {
 
     let result = StorageEngine::with_config(db_path.clone(), config);
     assert!(result.is_err());
-    
+
     // Verify error message
     match result {
         Err(Error::Other(msg)) => assert!(msg.contains("must be at least 64 bytes")),

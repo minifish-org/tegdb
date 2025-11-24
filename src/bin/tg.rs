@@ -239,13 +239,159 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Default)]
+struct SqlChunker {
+    buffer: String,
+    in_single_quote: bool,
+    in_double_quote: bool,
+    escape_next: bool,
+}
+
+impl SqlChunker {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn clear(&mut self) {
+        self.buffer.clear();
+        self.in_single_quote = false;
+        self.in_double_quote = false;
+        self.escape_next = false;
+    }
+
+    fn in_quote(&self) -> bool {
+        self.in_single_quote || self.in_double_quote
+    }
+
+    fn has_pending(&self) -> bool {
+        self.in_quote() || !self.buffer.trim().is_empty()
+    }
+
+    fn feed_line(&mut self, line: &str) -> Vec<String> {
+        let mut statements = Vec::new();
+        let normalized = line.trim_end_matches('\r');
+        let trimmed = normalized.trim_start();
+
+        if !self.in_quote() && trimmed.starts_with("--") {
+            if let Some(statement) = self.take_pending_statement() {
+                statements.push(statement);
+            }
+            return statements;
+        }
+
+        let mut chars = normalized.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if !self.in_quote() && ch == '-' && matches!(chars.peek(), Some('-')) {
+                chars.next();
+                if let Some(statement) = self.take_pending_statement() {
+                    statements.push(statement);
+                }
+                break;
+            }
+
+            self.buffer.push(ch);
+
+            if self.in_single_quote {
+                if self.escape_next {
+                    self.escape_next = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => {
+                        self.escape_next = true;
+                    }
+                    '\'' => {
+                        if matches!(chars.peek(), Some('\'')) {
+                            self.buffer.push('\'');
+                            chars.next();
+                        } else {
+                            self.in_single_quote = false;
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
+            if self.in_double_quote {
+                if self.escape_next {
+                    self.escape_next = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => {
+                        self.escape_next = true;
+                    }
+                    '"' => {
+                        if matches!(chars.peek(), Some('"')) {
+                            self.buffer.push('"');
+                            chars.next();
+                        } else {
+                            self.in_double_quote = false;
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
+            match ch {
+                '\'' => {
+                    self.in_single_quote = true;
+                    self.escape_next = false;
+                }
+                '"' => {
+                    self.in_double_quote = true;
+                    self.escape_next = false;
+                }
+                ';' => {
+                    let statement = self.buffer.trim().to_string();
+                    if !statement.is_empty() {
+                        statements.push(statement);
+                    }
+                    self.buffer.clear();
+                }
+                _ => {}
+            }
+        }
+
+        if self.has_pending() {
+            self.buffer.push('\n');
+        }
+
+        statements
+    }
+
+    fn feed_text(&mut self, text: &str) -> Vec<String> {
+        let mut statements = Vec::new();
+        for line in text.split('\n') {
+            statements.extend(self.feed_line(line));
+        }
+        statements
+    }
+
+    fn take_pending_statement(&mut self) -> Option<String> {
+        if self.in_quote() {
+            return None;
+        }
+        let trimmed = self.buffer.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let statement = trimmed.to_string();
+        self.buffer.clear();
+        Some(statement)
+    }
+}
+
 struct CliState {
     db: Database,
     timer_enabled: bool,
     echo_enabled: bool,
     output_file: Option<String>,
     output_format: OutputFormat,
-    sql_buffer: String, // Buffer for multi-line SQL
+    sql_chunker: SqlChunker,
 }
 
 impl CliState {
@@ -257,7 +403,7 @@ impl CliState {
             echo_enabled: false,
             output_file: None,
             output_format: OutputFormat::Table,
-            sql_buffer: String::new(),
+            sql_chunker: SqlChunker::new(),
         })
     }
 
@@ -300,27 +446,25 @@ impl CliState {
         Ok(())
     }
 
-    fn handle_sql_input(&mut self, input: &str) -> Result<bool, Box<dyn std::error::Error>> {
-        // Add input to buffer
-        if !self.sql_buffer.is_empty() {
-            self.sql_buffer.push(' ');
+    fn execute_script(&mut self, script: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut chunker = SqlChunker::new();
+        for statement in chunker.feed_text(script) {
+            self.execute_sql(&statement)?;
         }
-        self.sql_buffer.push_str(input.trim());
-
-        // Check if SQL is complete (ends with semicolon)
-        if self.sql_buffer.trim().ends_with(';') {
-            // Execute exactly one statement (single or multi-line) as entered
-            let sql = self.sql_buffer.trim().to_string();
-            if !sql.is_empty() {
-                self.execute_sql(&sql)?;
-            }
-            // Clear buffer
-            self.sql_buffer.clear();
-            return Ok(false); // Continue REPL
+        if chunker.in_quote() {
+            return Err("Incomplete SQL statement: unclosed quote".into());
         }
+        if let Some(pending) = chunker.take_pending_statement() {
+            self.execute_sql(&pending)?;
+        }
+        Ok(())
+    }
 
-        // SQL is incomplete, continue reading
-        Ok(false)
+    fn handle_sql_input(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
+        for statement in self.sql_chunker.feed_text(input) {
+            self.execute_sql(&statement)?;
+        }
+        Ok(())
     }
 
     fn handle_copy_command(&mut self, sql: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -492,12 +636,7 @@ impl CliState {
             ".read" => {
                 if let Some(file) = parts.get(1) {
                     let content = fs::read_to_string(file)?;
-                    for line in content.lines() {
-                        let trimmed = line.trim();
-                        if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                            self.execute_sql(trimmed)?;
-                        }
-                    }
+                    self.execute_script(&content)?;
                 } else {
                     println!("Usage: .read <file>");
                 }
@@ -580,7 +719,7 @@ impl CliState {
                 println!("  Total indexes: {total_indexes}");
             }
             ".clear" | ".c" => {
-                self.sql_buffer.clear();
+                self.sql_chunker.clear();
                 println!("SQL buffer cleared");
             }
             _ => {
@@ -687,7 +826,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !cli.quiet {
             eprintln!("Executing: {command}");
         }
-        if let Err(e) = state.execute_sql(&command) {
+        if let Err(e) = state.execute_script(command.as_str()) {
             eprintln!("Error: {e}");
             process::exit(1);
         }
@@ -700,14 +839,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Reading script: {file}");
         }
         let content = fs::read_to_string(&file)?;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                if let Err(e) = state.execute_sql(trimmed) {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                }
-            }
+        if let Err(e) = state.execute_script(&content) {
+            eprintln!("Error: {e}");
+            process::exit(1);
         }
         return Ok(());
     }
@@ -725,10 +859,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         // Show different prompt based on whether we're in multi-line mode
-        let prompt = if state.sql_buffer.is_empty() {
-            "tg> "
-        } else {
+        let prompt = if state.sql_chunker.has_pending() {
             "  -> "
+        } else {
+            "tg> "
         };
 
         let readline = rl.readline(prompt);
@@ -755,17 +889,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 } else {
                     // Add SQL command to history when complete (ends with semicolon)
-                    if trimmed.ends_with(';') || state.sql_buffer.is_empty() {
+                    if trimmed.ends_with(';') || !state.sql_chunker.has_pending() {
                         if let Err(e) = rl.add_history_entry(&line) {
                             eprintln!("Warning: Could not add to history: {e}");
                         }
                     }
 
                     // Handle SQL input (supports multi-line)
-                    if let Err(e) = state.handle_sql_input(trimmed) {
+                    if let Err(e) = state.handle_sql_input(&line) {
                         eprintln!("Error: {e}");
                         // Clear buffer on error
-                        state.sql_buffer.clear();
+                        state.sql_chunker.clear();
                     }
                 }
             }
@@ -785,4 +919,96 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SqlChunker;
+
+    #[test]
+    fn splits_multiple_statements_on_single_line() {
+        let mut chunker = SqlChunker::new();
+        let statements = chunker.feed_line("SELECT 1; SELECT 2;");
+        assert_eq!(statements, vec!["SELECT 1;", "SELECT 2;"]);
+    }
+
+    #[test]
+    fn preserves_multiline_statements() {
+        let mut chunker = SqlChunker::new();
+        assert!(chunker.feed_line("SELECT 1").is_empty());
+        let statements = chunker.feed_line("FROM numbers;");
+        assert_eq!(statements, vec!["SELECT 1\nFROM numbers;"]);
+    }
+
+    #[test]
+    fn ignores_comments_and_semicolons_in_quotes() {
+        let mut chunker = SqlChunker::new();
+        assert!(chunker.feed_line("-- just a comment").is_empty());
+
+        let statements = chunker.feed_line("SELECT '-- comment' AS note;");
+        assert_eq!(statements, vec!["SELECT '-- comment' AS note;"]);
+    }
+
+    #[test]
+    fn pending_statement_without_semicolon_executes_once_finished() {
+        let mut chunker = SqlChunker::new();
+        assert!(chunker.feed_line("SELECT 1").is_empty());
+        assert!(chunker.feed_line("FROM dual").is_empty());
+        assert!(!chunker.in_quote());
+        assert_eq!(
+            chunker.take_pending_statement(),
+            Some("SELECT 1\nFROM dual".to_string())
+        );
+        assert!(chunker.take_pending_statement().is_none());
+    }
+
+    #[test]
+    fn pending_statement_not_available_when_in_quotes() {
+        let mut chunker = SqlChunker::new();
+        assert!(chunker.feed_line("SELECT 'unterminated").is_empty());
+        assert!(chunker.in_quote());
+        assert!(chunker.take_pending_statement().is_none());
+    }
+
+    #[test]
+    fn supports_backslash_and_double_quote_escape_sequences() {
+        let mut chunker = SqlChunker::new();
+        let statements = chunker.feed_line("INSERT INTO t VALUES ('Charlie\\'s Name');");
+        assert_eq!(
+            statements,
+            vec!["INSERT INTO t VALUES ('Charlie\\'s Name');"]
+        );
+
+        let statements = chunker.feed_line("SELECT \"He said \"\"hi\"\"\";");
+        assert_eq!(statements, vec!["SELECT \"He said \"\"hi\"\"\";"]);
+    }
+
+    #[test]
+    fn comment_line_flushed_pending_statement() {
+        let mut chunker = SqlChunker::new();
+        assert!(chunker.feed_line("SELECT 42").is_empty());
+        let statements = chunker.feed_line("-- comment");
+        assert_eq!(statements, vec!["SELECT 42"]);
+        assert!(!chunker.has_pending());
+    }
+
+    #[test]
+    fn inline_comment_flushed_pending_statement() {
+        let mut chunker = SqlChunker::new();
+        let statements = chunker.feed_line("SELECT 1 -- comment");
+        assert_eq!(statements, vec!["SELECT 1"]);
+        assert!(!chunker.has_pending());
+    }
+
+    #[test]
+    fn multiline_chunk_with_comment_and_sql() {
+        let mut chunker = SqlChunker::new();
+        let statements = chunker.feed_text(
+            "-- heading line\n\nCREATE TABLE t (id INTEGER);\nINSERT INTO t VALUES (1);\n",
+        );
+        assert_eq!(
+            statements,
+            vec!["CREATE TABLE t (id INTEGER);", "INSERT INTO t VALUES (1);"]
+        );
+    }
 }

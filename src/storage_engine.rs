@@ -7,7 +7,7 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
-const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1 * 1024 * 1024; // 1 MiB
+const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1024 * 1024; // 1 MiB
 const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 1_000;
 
 /// Config options for the database engine
@@ -152,11 +152,11 @@ impl StorageEngine {
         // write to log, then store shared buffer
         // write to log, then store shared buffer
         self.log.write_entry(key, &value)?;
-        
+
         let value_len = value.len() as u64;
         // store as shared buffer for cheap cloning on get
         let shared = Rc::from(value.into_boxed_slice());
-        
+
         // Update active data size
         if let Some(old_val) = self.key_map.insert(key.to_vec(), shared) {
             // Subtract old value size
@@ -183,7 +183,7 @@ impl StorageEngine {
         }
 
         self.log.write_entry(key, &[])?;
-        
+
         // Update active data size
         if let Some(old_val) = self.key_map.remove(key) {
             // Subtract old value size
@@ -229,7 +229,7 @@ impl StorageEngine {
         // The new log size should be very close to active_data_size
         // But let's be precise and use the new log's size
         let new_size = new_log.current_size()?;
-        
+
         self.log = new_log;
         self.key_map = new_key_map;
         self.active_data_size = new_size;
@@ -244,7 +244,7 @@ impl StorageEngine {
         }
 
         let log_size = self.log.current_size()?;
-        
+
         // Check thresholds
         // 1. Log size must be greater than absolute threshold
         if log_size <= self.config.compaction_threshold_bytes {
