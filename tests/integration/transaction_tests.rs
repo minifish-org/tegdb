@@ -266,7 +266,11 @@ fn test_large_transaction_memory_usage() -> Result<()> {
     if path.exists() {
         fs::remove_file(&path)?;
     }
-    let mut engine = StorageEngine::new(path.clone())?;
+    let config = tegdb::storage_engine::EngineConfig {
+        initial_capacity: None,
+        ..Default::default()
+    };
+    let mut engine = StorageEngine::with_config(path.clone(), config)?;
     {
         let mut tx = engine.begin_transaction();
         for i in 0..5000 {

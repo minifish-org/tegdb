@@ -7,8 +7,8 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
-const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
-const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 100_000;
+const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1 * 1024 * 1024; // 1 MiB
+const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 1_000;
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -21,7 +21,7 @@ pub struct EngineConfig {
     pub auto_compact: bool,
     /// Initial capacity for BTreeMap (memory preallocation).
     /// Also acts as a hard cap on the number of resident keys.
-    /// Defaults to 10 000 keys.
+    /// Defaults to 1 000 keys.
     pub initial_capacity: Option<usize>,
     /// Preallocate disk space in bytes.
     /// Acts as a hard cap on the WAL-backed log size. Defaults to 1 MiB.

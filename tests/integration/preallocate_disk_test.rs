@@ -41,8 +41,11 @@ fn test_disk_preallocation_basic() {
 
     drop(engine);
 
-    // Re-open database and verify data persists
-    let config = EngineConfig::default();
+    // Re-open database and verify data persists (use same preallocate_size)
+    let config = EngineConfig {
+        preallocate_size: Some(preallocate_size),
+        ..Default::default()
+    };
     let engine = StorageEngine::with_config(db_path, config).unwrap();
 
     for i in 0..10 {

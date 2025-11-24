@@ -111,7 +111,13 @@ impl SqlExecutionMetrics {
 fn create_test_db() -> Result<Database> {
     let temp_file = NamedTempFile::new().expect("Failed to create temp file");
     let db_path = format!("file://{}", temp_file.path().display());
-    Database::open(&db_path)
+    // Use unlimited capacity for performance tests
+    let config = tegdb::storage_engine::EngineConfig {
+        initial_capacity: None,
+        preallocate_size: None,
+        ..Default::default()
+    };
+    Database::open_with_config(&db_path, config)
 }
 
 /// Setup a test table with sample data
