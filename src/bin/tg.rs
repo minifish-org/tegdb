@@ -222,6 +222,14 @@ struct Cli {
     /// Maximum on-disk log size in bytes (0 disables the cap)
     #[arg(long, value_name = "BYTES")]
     max_log_bytes: Option<u64>,
+
+    /// Compaction threshold in bytes (default: 10MB)
+    #[arg(long, value_name = "BYTES")]
+    compaction_threshold: Option<u64>,
+
+    /// Compaction ratio threshold (default: 2.0)
+    #[arg(long, value_name = "RATIO")]
+    compaction_ratio: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -599,6 +607,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             Some(max_bytes)
         };
+    }
+    if let Some(threshold) = cli.compaction_threshold {
+        engine_config.compaction_threshold_bytes = threshold;
+    }
+    if let Some(ratio) = cli.compaction_ratio {
+        engine_config.compaction_ratio = ratio;
     }
 
     // Normalize DB identifier to always use file:// protocol expected by Database::open
