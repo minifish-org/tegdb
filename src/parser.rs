@@ -5,8 +5,8 @@
 
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case},
-    character::complete::{alpha1, alphanumeric1, char, digit1, multispace0, multispace1},
+    bytes::complete::{tag, tag_no_case, take_till, take_until},
+    character::complete::{alpha1, alphanumeric1, char, digit1, multispace1},
     combinator::{map, map_res, opt, peek, recognize},
     multi::{many0, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded},
@@ -211,19 +211,64 @@ fn generate_suggestions(input: &str, error: &ParseError) -> Vec<String> {
     suggestions
 }
 
+fn parse_line_comment(input: &str) -> IResult<&str, ()> {
+    let (input, _) = tag("--").parse(input)?;
+    let (input, _) = take_till(|c| c == '\n').parse(input)?;
+    let (input, _) = opt(char('\n')).parse(input)?;
+    Ok((input, ()))
+}
+
+fn parse_block_comment(input: &str) -> IResult<&str, ()> {
+    let (input, _) = tag("/*").parse(input)?;
+    let (input, _) = take_until("*/").parse(input)?;
+    let (input, _) = tag("*/").parse(input)?;
+    Ok((input, ()))
+}
+
+fn parse_comment(input: &str) -> IResult<&str, ()> {
+    alt((parse_line_comment, parse_block_comment)).parse(input)
+}
+
+fn parse_whitespace_or_comment(input: &str) -> IResult<&str, ()> {
+    let mut current = input;
+    loop {
+        let mut advanced = false;
+
+        if let Ok((next, _)) = multispace1::<_, nom::error::Error<&str>>(current) {
+            current = next;
+            advanced = true;
+        }
+
+        if let Ok((next, _)) = parse_comment(current) {
+            current = next;
+            advanced = true;
+        }
+
+        if !advanced {
+            break;
+        }
+    }
+
+    Ok((current, ()))
+}
+
 fn parse_identifier_optimized(input: &str) -> IResult<&str, &str> {
     recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))).parse(input)
 }
 
 fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<Expression>> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     // Handle the special case of "*" (all columns)
     if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<&str>>("*").parse(input) {
         return Ok((input, vec![Expression::Column("*".to_string())]));
     }
     // Parse comma-separated list of expressions
     separated_list1(
-        delimited(multispace0, char(','), multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            char(','),
+            parse_whitespace_or_comment,
+        ),
         parse_expression,
     )
     .parse(input)
@@ -231,11 +276,11 @@ fn parse_column_list_optimized(input: &str) -> IResult<&str, Vec<Expression>> {
 
 // Parse aggregate function: COUNT(*), SUM(column), etc.
 fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, func_name) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char('(').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     // Only treat these as aggregate functions
     let is_aggregate = matches!(
@@ -254,7 +299,7 @@ fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
     // Handle COUNT(*) specially
     if func_name.to_uppercase() == "COUNT" {
         if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<&str>>("*").parse(input) {
-            let (input, _) = multispace0.parse(input)?;
+            let (input, _) = parse_whitespace_or_comment.parse(input)?;
             let (input, _) = char(')').parse(input)?;
             return Ok((
                 input,
@@ -268,7 +313,7 @@ fn parse_aggregate_function(input: &str) -> IResult<&str, Expression> {
 
     // Parse the argument as an expression
     let (input, arg) = parse_expression.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char(')').parse(input)?;
 
     Ok((
@@ -883,10 +928,29 @@ pub fn parse_sql(input: &str) -> Result<Statement, ParseError> {
         .parse(&normalized)
         .map_err(|e| convert_nom_error(input, e))?;
 
-    // Allow trailing whitespace and optional semicolon(s)
-    let remaining = remaining.trim_start();
-    let remaining = remaining.strip_prefix(';').unwrap_or(remaining);
-    if !remaining.trim().is_empty() {
+    // Allow trailing whitespace, comments, and optional semicolon(s)
+    let mut remaining = remaining;
+    loop {
+        let mut progressed = false;
+
+        if let Ok((next, ())) = parse_whitespace_or_comment(remaining) {
+            if next.len() != remaining.len() {
+                remaining = next;
+                progressed = true;
+            }
+        }
+
+        if let Some(stripped) = remaining.strip_prefix(';') {
+            remaining = stripped;
+            continue;
+        }
+
+        if !progressed {
+            break;
+        }
+    }
+
+    if !remaining.is_empty() {
         let (line, column) = calculate_position(input, input.len() - remaining.len());
         let context = extract_context(input, input.len() - remaining.len(), 20);
 
@@ -905,7 +969,7 @@ pub fn parse_sql(input: &str) -> Result<Statement, ParseError> {
 
 /// Parse a single SQL statement
 fn parse_statement(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     // Guard each branch with a non-consuming peek on the leading keyword(s)
     alt((
@@ -959,20 +1023,38 @@ fn parse_sql_value(input: &str) -> IResult<&str, SqlValue> {
 
 // Parse CREATE TABLE statement with improved multi-line support
 fn parse_create_table(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("CREATE"), multispace1).parse(input)?;
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("CREATE"),
+        multispace1,
+    )
+    .parse(input)?;
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     // Parse column definitions with better multi-line support
     let (input, _) = char('(').parse(input)?;
     let (input, columns) = separated_list0(
-        delimited(multispace0, char(','), multispace0),
-        delimited(multispace0, parse_column_definition, multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            char(','),
+            parse_whitespace_or_comment,
+        ),
+        delimited(
+            parse_whitespace_or_comment,
+            parse_column_definition,
+            parse_whitespace_or_comment,
+        ),
     )
     .parse(input)?;
-    let (input, _) = delimited(multispace0, char(')'), multispace0).parse(input)?;
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        char(')'),
+        parse_whitespace_or_comment,
+    )
+    .parse(input)?;
 
     Ok((
         input,
@@ -985,23 +1067,36 @@ fn parse_create_table(input: &str) -> IResult<&str, Statement> {
 
 // Parse INSERT statement with improved multi-line support
 fn parse_insert(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("INSERT"), multispace1).parse(input)?;
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("INSERT"),
+        multispace1,
+    )
+    .parse(input)?;
     let (input, _) = tag_no_case("INTO").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     // Parse optional column list
     let (input, columns) =
         if let Ok((input, _)) = char::<&str, nom::error::Error<&str>>('(').parse(input) {
             let (input, columns_expr) = separated_list0(
-                delimited(multispace0, char(','), multispace0),
-                delimited(multispace0, parse_identifier_optimized, multispace0),
+                delimited(
+                    parse_whitespace_or_comment,
+                    char(','),
+                    parse_whitespace_or_comment,
+                ),
+                delimited(
+                    parse_whitespace_or_comment,
+                    parse_identifier_optimized,
+                    parse_whitespace_or_comment,
+                ),
             )
             .parse(input)?;
 
             let (input, _) = char(')').parse(input)?;
-            let (input, _) = multispace0.parse(input)?;
+            let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
             let columns: Vec<String> = columns_expr.into_iter().map(|s| s.to_string()).collect();
             (input, columns)
@@ -1011,18 +1106,34 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
 
     // Parse VALUES keyword with better whitespace handling
     let (input, _) = tag_no_case("VALUES").parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     // Parse one or more value tuples with improved multi-line support
     let (input, values) = separated_list1(
-        delimited(multispace0, char(','), multispace0),
         delimited(
-            delimited(multispace0, char('('), multispace0),
+            parse_whitespace_or_comment,
+            char(','),
+            parse_whitespace_or_comment,
+        ),
+        delimited(
+            delimited(
+                parse_whitespace_or_comment,
+                char('('),
+                parse_whitespace_or_comment,
+            ),
             separated_list0(
-                delimited(multispace0, char(','), multispace0),
+                delimited(
+                    parse_whitespace_or_comment,
+                    char(','),
+                    parse_whitespace_or_comment,
+                ),
                 parse_primary_expression,
             ),
-            delimited(multispace0, char(')'), multispace0),
+            delimited(
+                parse_whitespace_or_comment,
+                char(')'),
+                parse_whitespace_or_comment,
+            ),
         ),
     )
     .parse(input)?;
@@ -1039,19 +1150,24 @@ fn parse_insert(input: &str) -> IResult<&str, Statement> {
 
 // Parse SELECT statement with improved multi-line support
 fn parse_select(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("SELECT"), multispace1).parse(input)?;
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("SELECT"),
+        multispace1,
+    )
+    .parse(input)?;
     let (input, columns) = parse_column_list_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, order_by) = opt(parse_order_by_clause).parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, limit) = opt(parse_limit_with_parameter).parse(input)?;
 
     Ok((
@@ -1071,7 +1187,7 @@ fn parse_update(input: &str) -> IResult<&str, Statement> {
     let (input, _) = tag_no_case("UPDATE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("SET").parse(input)?;
     let mut input = input; // Create a mutable input for the loop
     let mut assignments = Vec::new();
@@ -1086,7 +1202,7 @@ fn parse_update(input: &str) -> IResult<&str, Statement> {
         assignments.push(assignment);
         input = next_input;
         // Try to parse comma, but allow trailing comma
-        let (next_input, _) = multispace0.parse(input)?;
+        let (next_input, _) = parse_whitespace_or_comment.parse(input)?;
         if let Ok((after_comma, _)) = char::<&str, nom::error::Error<&str>>(',').parse(next_input) {
             input = after_comma;
         } else {
@@ -1095,16 +1211,16 @@ fn parse_update(input: &str) -> IResult<&str, Statement> {
             break;
         }
     }
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     // Try to parse WHERE clause if present (with leading whitespace)
     let (input, where_clause) = if let Ok((input, clause)) = parse_where_clause(input) {
         (input, Some(clause))
     } else {
         (input, None)
     };
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = opt(char(';')).parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     Ok((
         input,
@@ -1123,7 +1239,7 @@ fn parse_delete(input: &str) -> IResult<&str, Statement> {
     let (input, _) = tag_no_case("FROM").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, where_clause) = opt(parse_where_clause).parse(input)?;
 
     Ok((
@@ -1142,7 +1258,7 @@ fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
     let (input, _) = tag_no_case("TABLE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, if_exists) = opt(tag_no_case("IF EXISTS")).parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, table) = parse_identifier_optimized.parse(input)?;
 
     Ok((
@@ -1156,23 +1272,32 @@ fn parse_drop_table(input: &str) -> IResult<&str, Statement> {
 
 // Parse CREATE INDEX statement
 fn parse_create_index(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("CREATE"), multispace1).parse(input)?;
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("CREATE"),
+        multispace1,
+    )
+    .parse(input)?;
     let (input, _) = tag_no_case("INDEX").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, index_name) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("ON").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, table_name) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char('(').parse(input)?;
     let (input, column_name) = parse_identifier_optimized.parse(input)?;
     let (input, _) = char(')').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, unique) = opt(tag_no_case("UNIQUE")).parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, index_type_opt) = opt(preceded(
-        delimited(multispace0, tag_no_case("USING"), multispace1),
+        delimited(
+            parse_whitespace_or_comment,
+            tag_no_case("USING"),
+            multispace1,
+        ),
         map_res(parse_identifier_optimized, |ty: &str| {
             match ty.to_uppercase().as_str() {
                 "BTREE" => Ok(IndexType::BTree),
@@ -1184,7 +1309,7 @@ fn parse_create_index(input: &str) -> IResult<&str, Statement> {
         }),
     ))
     .parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
 
     Ok((
         input,
@@ -1200,11 +1325,16 @@ fn parse_create_index(input: &str) -> IResult<&str, Statement> {
 
 // Parse DROP INDEX statement
 fn parse_drop_index(input: &str) -> IResult<&str, Statement> {
-    let (input, _) = delimited(multispace0, tag_no_case("DROP"), multispace1).parse(input)?;
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("DROP"),
+        multispace1,
+    )
+    .parse(input)?;
     let (input, _) = tag_no_case("INDEX").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, index_name) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, if_exists) = opt(tag_no_case("IF EXISTS")).parse(input)?;
 
     Ok((
@@ -1226,7 +1356,7 @@ fn parse_begin_transaction(input: &str) -> IResult<&str, Statement> {
                 opt(delimited(
                     multispace1,
                     tag_no_case("TRANSACTION"),
-                    multispace0,
+                    parse_whitespace_or_comment,
                 )),
             ),
             |_| Statement::Begin,
@@ -1235,7 +1365,11 @@ fn parse_begin_transaction(input: &str) -> IResult<&str, Statement> {
         map(
             pair(
                 tag_no_case("START"),
-                delimited(multispace1, tag_no_case("TRANSACTION"), multispace0),
+                delimited(
+                    multispace1,
+                    tag_no_case("TRANSACTION"),
+                    parse_whitespace_or_comment,
+                ),
             ),
             |_| Statement::Begin,
         ),
@@ -1257,7 +1391,7 @@ fn parse_rollback(input: &str) -> IResult<&str, Statement> {
 
 // Parse WHERE clause
 fn parse_where_clause(input: &str) -> IResult<&str, WhereClause> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("WHERE").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, condition) = parse_condition.parse(input)?;
@@ -1273,7 +1407,11 @@ fn parse_condition(input: &str) -> IResult<&str, Condition> {
 fn parse_or_condition(input: &str) -> IResult<&str, Condition> {
     let (input, left) = parse_and_condition.parse(input)?;
     let (input, rights) = many0((
-        delimited(multispace0, tag_no_case("OR"), multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            tag_no_case("OR"),
+            parse_whitespace_or_comment,
+        ),
         parse_and_condition,
     ))
     .parse(input)?;
@@ -1290,7 +1428,11 @@ fn parse_or_condition(input: &str) -> IResult<&str, Condition> {
 fn parse_and_condition(input: &str) -> IResult<&str, Condition> {
     let (input, left) = parse_primary_condition.parse(input)?;
     let (input, rights) = many0((
-        delimited(multispace0, tag_no_case("AND"), multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            tag_no_case("AND"),
+            parse_whitespace_or_comment,
+        ),
         parse_primary_condition,
     ))
     .parse(input)?;
@@ -1310,7 +1452,11 @@ fn parse_primary_condition(input: &str) -> IResult<&str, Condition> {
         parse_between,
         delimited(
             char('('),
-            delimited(multispace0, parse_condition, multispace0),
+            delimited(
+                parse_whitespace_or_comment,
+                parse_condition,
+                parse_whitespace_or_comment,
+            ),
             char(')'),
         ),
         parse_comparison,
@@ -1321,13 +1467,13 @@ fn parse_primary_condition(input: &str) -> IResult<&str, Condition> {
 // Parse BETWEEN condition: <column> BETWEEN <low> AND <high>
 fn parse_between(input: &str) -> IResult<&str, Condition> {
     let (input, left_expr) = parse_expression.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("BETWEEN").parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, low) = parse_sql_value.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("AND").parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, high) = parse_sql_value.parse(input)?;
     // Only allow column name on left
     let column = match left_expr {
@@ -1345,9 +1491,9 @@ fn parse_between(input: &str) -> IResult<&str, Condition> {
 // Parse comparison
 fn parse_comparison(input: &str) -> IResult<&str, Condition> {
     let (input, left_expr) = parse_expression.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, operator) = parse_comparison_operator.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, right) = parse_sql_value.parse(input)?;
 
     Ok((
@@ -1377,13 +1523,17 @@ fn parse_comparison_operator(input: &str) -> IResult<&str, ComparisonOperator> {
 
 // Parse ORDER BY clause
 fn parse_order_by_clause(input: &str) -> IResult<&str, OrderByClause> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("ORDER").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, _) = tag_no_case("BY").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
     let (input, items) = separated_list0(
-        delimited(multispace0, char(','), multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            char(','),
+            parse_whitespace_or_comment,
+        ),
         parse_order_by_item,
     )
     .parse(input)?;
@@ -1394,7 +1544,7 @@ fn parse_order_by_clause(input: &str) -> IResult<&str, OrderByClause> {
 // Parse ORDER BY item
 fn parse_order_by_item(input: &str) -> IResult<&str, OrderByItem> {
     let (input, expression) = parse_expression.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, direction) = opt(parse_order_direction).parse(input)?;
     let direction = direction.unwrap_or(OrderDirection::Asc);
 
@@ -1418,7 +1568,7 @@ fn parse_order_direction(input: &str) -> IResult<&str, OrderDirection> {
 
 // Parse LIMIT clause with parameter support
 fn parse_limit_with_parameter(input: &str) -> IResult<&str, Option<u64>> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = tag_no_case("LIMIT").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
 
@@ -1439,11 +1589,11 @@ fn parse_limit_with_parameter(input: &str) -> IResult<&str, Option<u64>> {
 
 // Parse assignment
 fn parse_assignment(input: &str) -> IResult<&str, Assignment> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, column) = parse_identifier_optimized.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char('=').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, value) = parse_expression.parse(input)?;
 
     Ok((
@@ -1496,11 +1646,11 @@ fn parse_data_type(input: &str) -> IResult<&str, DataType> {
 
 // Parse length specification: (10)
 fn parse_length_specification(input: &str) -> IResult<&str, usize> {
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char('(').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, length_str) = digit1.parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char(')').parse(input)?;
 
     let length = length_str
@@ -1601,10 +1751,17 @@ fn parse_real(input: &str) -> IResult<&str, f64> {
 // Parse vector literal: [1.0, 2.0, 3.0]
 fn parse_vector_literal(input: &str) -> IResult<&str, Vec<f64>> {
     let (input, _) = char('[').parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
-    let (input, values) =
-        separated_list0(delimited(multispace0, char(','), multispace0), parse_real).parse(input)?;
-    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
+    let (input, values) = separated_list0(
+        delimited(
+            parse_whitespace_or_comment,
+            char(','),
+            parse_whitespace_or_comment,
+        ),
+        parse_real,
+    )
+    .parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
     let (input, _) = char(']').parse(input)?;
     Ok((input, values))
 }
@@ -1618,7 +1775,11 @@ fn parse_expression(input: &str) -> IResult<&str, Expression> {
 fn parse_additive_expression(input: &str) -> IResult<&str, Expression> {
     let (input, left) = parse_multiplicative_expression.parse(input)?;
     let (input, rights) = many0((
-        delimited(multispace0, parse_additive_operator, multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            parse_additive_operator,
+            parse_whitespace_or_comment,
+        ),
         parse_multiplicative_expression,
     ))
     .parse(input)?;
@@ -1639,7 +1800,11 @@ fn parse_additive_expression(input: &str) -> IResult<&str, Expression> {
 fn parse_multiplicative_expression(input: &str) -> IResult<&str, Expression> {
     let (input, left) = parse_primary_expression.parse(input)?;
     let (input, rights) = many0((
-        delimited(multispace0, parse_multiplicative_operator, multispace0),
+        delimited(
+            parse_whitespace_or_comment,
+            parse_multiplicative_operator,
+            parse_whitespace_or_comment,
+        ),
         parse_primary_expression,
     ))
     .parse(input)?;
@@ -1668,7 +1833,11 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
                 delimited(
                     char('('),
                     separated_list0(
-                        delimited(multispace0, char(','), multispace0),
+                        delimited(
+                            parse_whitespace_or_comment,
+                            char(','),
+                            parse_whitespace_or_comment,
+                        ),
                         parse_expression,
                     ),
                     char(')'),
@@ -1682,7 +1851,11 @@ fn parse_primary_expression(input: &str) -> IResult<&str, Expression> {
         // Parenthesized expressions
         delimited(
             char('('),
-            delimited(multispace0, parse_expression, multispace0),
+            delimited(
+                parse_whitespace_or_comment,
+                parse_expression,
+                parse_whitespace_or_comment,
+            ),
             char(')'),
         ),
         // Literal values (try before identifiers to handle NULL correctly)

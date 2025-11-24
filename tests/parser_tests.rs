@@ -573,3 +573,41 @@ fn test_parse_create_table_vector_with_dimension_ok() {
     let res = parse_sql(sql);
     assert!(res.is_ok(), "Expected VECTOR(128) to parse successfully");
 }
+
+#[test]
+fn test_parse_select_with_line_comments() {
+    let sql = "-- leading comment
+SELECT * FROM users -- trailing comment";
+    let result = parse_sql(sql);
+    assert!(
+        matches!(result, Ok(Statement::Select(_))),
+        "Expected SELECT to parse with surrounding line comments"
+    );
+}
+
+#[test]
+fn test_parse_insert_with_inline_block_comments() {
+    let sql = "INSERT INTO users (id, /* comment */ name) VALUES (1, /* comment */ 'Alice')";
+    let result = parse_sql(sql);
+    assert!(
+        result.is_ok(),
+        "Expected INSERT with inline block comments to parse"
+    );
+
+    if let Ok(Statement::Insert(insert)) = result {
+        assert_eq!(insert.columns, vec!["id", "name"]);
+        assert_eq!(insert.values.len(), 1);
+    } else {
+        panic!("Expected Insert statement");
+    }
+}
+
+#[test]
+fn test_parse_trailing_block_comment_after_semicolon() {
+    let sql = "SELECT * FROM users; /* finished */";
+    let result = parse_sql(sql);
+    assert!(
+        result.is_ok(),
+        "Expected trailing block comment after semicolon to be ignored"
+    );
+}
