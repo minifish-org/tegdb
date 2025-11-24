@@ -18,3 +18,5 @@ Cargo.lock
 
 flamegraph.svg
 
+.teg
+*.gz
