@@ -1,6 +1,5 @@
 //! Test edge cases and error handling for arithmetic expressions
 
-#[allow(clippy::duplicate_mod)]
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 use test_helpers::run_with_both_backends;

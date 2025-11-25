@@ -3,7 +3,6 @@
 //! This module provides comprehensive performance tests for the Database interface,
 //! focusing on real-world usage patterns and identifying performance bottlenecks.
 
-#[allow(clippy::duplicate_mod)]
 #[path = "../helpers/test_helpers.rs"]
 mod test_helpers;
 

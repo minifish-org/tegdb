@@ -19,6 +19,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Use +stable to match CI exactly (CI uses 'stable' toolchain)
+# This ensures we catch the same errors CI would catch, even if your default toolchain differs
+# The +stable syntax will automatically install stable if not available
+CARGO_CMD="cargo +stable"
+
 run_step() {
     local description="$1"
     shift
@@ -50,23 +55,33 @@ echo -e "${YELLOW}🔧 Auto-fixing issues first...${NC}"
 
 # Auto-fix issues first (these don't break CI, just improve code)
 echo -e "${GREEN}==>${NC} Auto-fixing formatting"
-cargo fmt --all 2>&1 | grep -E "(Diff at|Formatting|reformatted)" || echo -e "${GREEN}✓${NC} No formatting changes needed"
+${CARGO_CMD} fmt --all 2>&1 | grep -E "(Diff at|Formatting|reformatted)" || echo -e "${GREEN}✓${NC} No formatting changes needed"
 
 echo -e "${GREEN}==>${NC} Auto-fixing clippy suggestions"
-if cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged 2>&1 | grep -E "(warning|error|Fixed)"; then
-    echo -e "${GREEN}✓${NC} Clippy auto-fixes applied (see output above for details)"
+# Run clippy fix, but don't fail if it can't fix everything (some errors can't be auto-fixed)
+if output=$(${CARGO_CMD} clippy --all-targets --all-features --fix --allow-dirty --allow-staged 2>&1); then
+    if echo "$output" | grep -qE "(Fixed|warning|error)"; then
+        echo "$output" | grep -E "(Fixed|warning|error)" | head -20
+        echo -e "${GREEN}✓${NC} Clippy auto-fixes applied (see output above for details)"
+    else
+        echo -e "${GREEN}✓${NC} No clippy auto-fixes needed"
+    fi
 else
-    echo -e "${GREEN}✓${NC} No clippy auto-fixes needed"
+    # Clippy fix failed - this might indicate errors that can't be auto-fixed
+    # Show the errors but don't fail yet - the verification step will catch them
+    echo "$output" | grep -E "(error|warning)" | head -20 || echo "$output" | tail -20
+    echo -e "${YELLOW}⚠${NC}  Clippy auto-fix encountered issues (will be verified in next step)"
 fi
 
 echo -e "\n${YELLOW}🔍 Verifying CI-critical checks (will fail fast)...${NC}"
 
 # Critical checks that would break CI - fail immediately
-run_step "Verifying formatting is clean" cargo fmt --all -- --check
-run_step_show_warnings "Verifying clippy is clean" cargo clippy --all-targets --all-features -- -D warnings
-run_step "Building with all features" cargo build --all-features
-run_step "Building documentation" cargo doc --no-deps --document-private-items
-run_step "Running doc tests" cargo test --doc
+# Use +stable to match CI exactly
+run_step "Verifying formatting is clean" ${CARGO_CMD} fmt --all -- --check
+run_step_show_warnings "Verifying clippy is clean" ${CARGO_CMD} clippy --all-targets --all-features -- -D warnings
+run_step "Building with all features" ${CARGO_CMD} build --all-features
+run_step "Building documentation" ${CARGO_CMD} doc --no-deps --document-private-items
+run_step "Running doc tests" ${CARGO_CMD} test --doc
 
 echo -e "\n${YELLOW}🧪 Running comprehensive test suite...${NC}"
 run_step "Running full test suite" ./run_all_tests.sh --ci
@@ -83,7 +98,7 @@ examples=(
 )
 
 for example in "${examples[@]}"; do
-    run_step "Running example: ${example}" cargo run --example "${example}"
+    run_step "Running example: ${example}" ${CARGO_CMD} run --example "${example}"
 done
 
 echo -e "\n${GREEN}🎉 All pre-push checks completed successfully!${NC}"
