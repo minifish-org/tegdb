@@ -1,5 +1,0 @@
-device = 16777231
-inode = 111563653
-db_path = "/Users/yusp/work/tegdb/quickstart.teg"
-last_committed_offset = 64
-last_seen_size = 188

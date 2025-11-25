@@ -173,16 +173,6 @@ harness = false
 required-features = ["dev"]
 
 [[bin]]
-name = "test_aggregate"
-path = "test_aggregate.rs"
-required-features = ["dev"]
-
-[[bin]]
-name = "test_aggregate_execution"
-path = "test_aggregate_execution.rs"
-required-features = ["dev"]
-
-[[bin]]
 name = "tg"
 path = "src/bin/tg.rs"
 
