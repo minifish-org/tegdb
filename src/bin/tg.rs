@@ -1,11 +1,15 @@
 use clap::Parser;
+use const_format::formatcp;
 use rustyline::error::ReadlineError;
 use rustyline::{Config, Editor};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process;
-use tegdb::storage_engine::EngineConfig;
+use tegdb::storage_engine::{
+    EngineConfig, DEFAULT_COMPACTION_RATIO_STR, DEFAULT_COMPACTION_THRESHOLD_RATIO_STR,
+    DEFAULT_INITIAL_CAPACITY_KEYS, DEFAULT_PREALLOCATE_SIZE_MB,
+};
 use tegdb::{Database, QueryResult, SqlValue};
 
 fn format_sql_value(value: &SqlValue) -> String {
@@ -216,19 +220,47 @@ struct Cli {
     mode: String,
 
     /// Maximum number of keys to keep in memory (0 disables the cap)
-    #[arg(long, value_name = "KEYS")]
+    #[arg(
+        long,
+        value_name = "KEYS",
+        help = formatcp!(
+            "Maximum number of keys to keep in memory (0 disables the cap, default: {})",
+            DEFAULT_INITIAL_CAPACITY_KEYS
+        )
+    )]
     max_keys: Option<usize>,
 
     /// Maximum on-disk log size in bytes (0 disables the cap)
-    #[arg(long, value_name = "BYTES")]
+    #[arg(
+        long,
+        value_name = "BYTES",
+        help = formatcp!(
+            "Maximum on-disk log size (0 disables the cap, default: {}MB)",
+            DEFAULT_PREALLOCATE_SIZE_MB
+        )
+    )]
     max_log_bytes: Option<u64>,
 
-    /// Compaction threshold in bytes (default: 10MB)
-    #[arg(long, value_name = "BYTES")]
-    compaction_threshold: Option<u64>,
+    /// Compaction threshold ratio relative to the preallocated log size
+    #[arg(
+        long,
+        value_name = "RATIO",
+        help = formatcp!(
+            "Compaction threshold ratio relative to preallocated size (default: {})",
+            DEFAULT_COMPACTION_THRESHOLD_RATIO_STR
+        )
+    )]
+    compaction_threshold: Option<f64>,
 
-    /// Compaction ratio threshold (default: 2.0)
-    #[arg(long, value_name = "RATIO")]
+    /// Compaction ratio threshold
+    #[arg(
+        long,
+        value_name = "RATIO",
+        help = formatcp!(
+            "Compaction ratio threshold (default: {})",
+            DEFAULT_COMPACTION_RATIO_STR
+        )
+    )]
     compaction_ratio: Option<f64>,
 }
 
@@ -747,8 +779,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(max_bytes)
         };
     }
-    if let Some(threshold) = cli.compaction_threshold {
-        engine_config.compaction_threshold_bytes = threshold;
+    if let Some(threshold_ratio) = cli.compaction_threshold {
+        engine_config.compaction_threshold_ratio = threshold_ratio;
     }
     if let Some(ratio) = cli.compaction_ratio {
         engine_config.compaction_ratio = ratio;

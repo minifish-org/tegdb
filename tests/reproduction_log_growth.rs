@@ -7,8 +7,8 @@ fn test_log_growth_indefinitely() {
     let db_path_str = format!("file://{}", db_path.to_string_lossy());
 
     let config = tegdb::storage_engine::EngineConfig {
-        preallocate_size: None,
-        compaction_threshold_bytes: 1024 * 5, // 5 KB threshold
+        preallocate_size: Some(1024 * 1024), // 1 MB, ratio below yields ~5 KB
+        compaction_threshold_ratio: 0.005,
         compaction_ratio: 1.5,
         ..Default::default()
     };

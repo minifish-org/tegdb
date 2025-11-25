@@ -7,8 +7,20 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
-const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1024 * 1024; // 1 MiB
-const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 1_000;
+pub const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1024 * 1024; // 1 MiB
+pub const DEFAULT_PREALLOCATE_SIZE_MB: u64 = 1;
+pub const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 1_000;
+
+/// Default minimum compaction threshold in bytes when no preallocation is set (10 MB)
+pub const DEFAULT_COMPACTION_THRESHOLD_BYTES: u64 = 10 * 1024 * 1024;
+/// Default compaction threshold ratio relative to the preallocated size (50%)
+pub const DEFAULT_COMPACTION_THRESHOLD_RATIO: f64 = 0.5;
+/// Stringified default compaction threshold ratio (for CLI help text)
+pub const DEFAULT_COMPACTION_THRESHOLD_RATIO_STR: &str = "0.5";
+/// Default compaction ratio (log size vs active data)
+pub const DEFAULT_COMPACTION_RATIO: f64 = 2.0;
+/// Stringified default compaction ratio
+pub const DEFAULT_COMPACTION_RATIO_STR: &str = "2.0";
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -26,8 +38,8 @@ pub struct EngineConfig {
     /// Preallocate disk space in bytes.
     /// Acts as a hard cap on the WAL-backed log size. Defaults to 1 MiB.
     pub preallocate_size: Option<u64>,
-    /// Threshold in bytes to trigger compaction (default: 10MB)
-    pub compaction_threshold_bytes: u64,
+    /// Ratio of preallocated log space that must be used before compaction can start
+    pub compaction_threshold_ratio: f64,
     /// Ratio of log size to active data size to trigger compaction (default: 2.0)
     pub compaction_ratio: f64,
 }
@@ -40,8 +52,8 @@ impl Default for EngineConfig {
             auto_compact: true,
             initial_capacity: Some(DEFAULT_INITIAL_CAPACITY_KEYS),
             preallocate_size: Some(DEFAULT_PREALLOCATE_SIZE_BYTES),
-            compaction_threshold_bytes: 10 * 1024 * 1024, // 10 MB
-            compaction_ratio: 2.0,
+            compaction_threshold_ratio: DEFAULT_COMPACTION_THRESHOLD_RATIO,
+            compaction_ratio: DEFAULT_COMPACTION_RATIO,
         }
     }
 }
@@ -244,10 +256,11 @@ impl StorageEngine {
         }
 
         let log_size = self.log.current_size()?;
+        let threshold_bytes = self.effective_compaction_threshold_bytes();
 
         // Check thresholds
-        // 1. Log size must be greater than absolute threshold
-        if log_size <= self.config.compaction_threshold_bytes {
+        // 1. Log size must be greater than configured threshold
+        if log_size <= threshold_bytes {
             return Ok(());
         }
 
@@ -255,7 +268,7 @@ impl StorageEngine {
         // Avoid division by zero
         if self.active_data_size == 0 {
             // If empty but log is large, compact
-            if log_size > self.config.compaction_threshold_bytes {
+            if log_size > threshold_bytes {
                 return self.compact();
             }
             return Ok(());
@@ -267,6 +280,19 @@ impl StorageEngine {
         }
 
         Ok(())
+    }
+
+    fn effective_compaction_threshold_bytes(&self) -> u64 {
+        if let Some(prealloc) = self.config.preallocate_size {
+            let ratio = if self.config.compaction_threshold_ratio <= 0.0 {
+                DEFAULT_COMPACTION_THRESHOLD_RATIO
+            } else {
+                self.config.compaction_threshold_ratio
+            };
+            let computed = (prealloc as f64 * ratio).round() as u64;
+            return computed.max(1);
+        }
+        DEFAULT_COMPACTION_THRESHOLD_BYTES
     }
 
     /// Get the current log identifier

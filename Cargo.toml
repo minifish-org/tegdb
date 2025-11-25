@@ -24,6 +24,7 @@ serde_json = "1.0"  # For Ollama JSON parsing (also used by tegstream)
 clap = { version = "4.0", features = ["derive"] }  # Argument parsing
 rustyline = "14.0"  # REPL functionality
 crossterm = "0.27"  # Terminal I/O
+const_format = "0.2"  # Compile-time string formatting for help messages
 
 # Cloud sync dependencies (for tegstream)
 aws-sdk-s3 = { version = "1" }
