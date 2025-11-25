@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.execute("CREATE INDEX idx_hnsw ON embeddings(embedding) USING HNSW")?;
 
     // Sample documents
-    let documents = vec![
+    let documents = [
         ("Introduction to Rust", "Rust is a systems programming language that focuses on safety, speed, and concurrency. It prevents segfaults and guarantees thread safety."),
         ("Machine Learning Basics", "Machine learning is a subset of artificial intelligence that enables computers to learn and make decisions from data without being explicitly programmed."),
         ("Web Development with React", "React is a JavaScript library for building user interfaces. It uses a virtual DOM and component-based architecture for efficient rendering."),
