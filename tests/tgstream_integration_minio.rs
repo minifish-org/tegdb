@@ -3,10 +3,10 @@ use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 
 use tegdb::log::{STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE, STORAGE_MAGIC, TX_COMMIT_MARKER};
-use tegdb::tegstream::config::{Config, S3Config};
-use tegdb::tegstream::parser::find_last_commit_offset;
-use tegdb::tegstream::restore::Restore;
-use tegdb::tegstream::tailer::Tailer;
+use tegdb::tgstream::config::{Config, S3Config};
+use tegdb::tgstream::parser::find_last_commit_offset;
+use tegdb::tgstream::restore::Restore;
+use tegdb::tgstream::tailer::Tailer;
 
 fn write_header(file: &mut std::fs::File) {
     let mut header = vec![0u8; STORAGE_HEADER_SIZE];
@@ -31,7 +31,7 @@ fn write_record(file: &mut std::fs::File, key: &[u8], value: &[u8]) {
 #[tokio::test]
 async fn test_minio_snapshot_segment_restore() {
     // Only run when explicitly enabled and credentials provided
-    if env::var("TEGSTREAM_IT").unwrap_or_default() != "1" {
+    if env::var("TGSTREAM_IT").unwrap_or_default() != "1" {
         return;
     }
     if env::var("AWS_ACCESS_KEY_ID").is_err() {
@@ -59,8 +59,8 @@ async fn test_minio_snapshot_segment_restore() {
     write_record(&mut f, TX_COMMIT_MARKER, b"");
     f.flush().unwrap();
 
-    let bucket = env::var("TEGSTREAM_BUCKET").unwrap_or_else(|_| "tegstream-test".to_string());
-    let prefix = format!("tegstream/{:?}", std::process::id());
+    let bucket = env::var("TGSTREAM_BUCKET").unwrap_or_else(|_| "tgstream-test".to_string());
+    let prefix = format!("tgstream/{:?}", std::process::id());
     let region = env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
 
     let cfg = Config {

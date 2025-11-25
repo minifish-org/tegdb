@@ -31,11 +31,7 @@ impl S3Backend {
             (&config.access_key_id, &config.secret_access_key)
         {
             let credentials = aws_sdk_s3::config::Credentials::new(
-                access_key,
-                secret_key,
-                None,
-                None,
-                "tegstream",
+                access_key, secret_key, None, None, "tgstream",
             );
             env_config = env_config.credentials_provider(credentials);
         }

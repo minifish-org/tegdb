@@ -5,7 +5,7 @@ use tegdb::log::{
     LENGTH_FIELD_BYTES, STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE, STORAGE_MAGIC,
     TX_COMMIT_MARKER,
 };
-use tegdb::tegstream::parser::find_last_commit_offset;
+use tegdb::tgstream::parser::find_last_commit_offset;
 
 fn write_header(file: &mut std::fs::File, valid_data_end: u64) {
     let mut header = vec![0u8; STORAGE_HEADER_SIZE];

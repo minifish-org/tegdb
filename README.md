@@ -47,16 +47,16 @@ This walkthrough uses released builds and the CLI tools, no code required.
 git clone https://github.com/minifish-org/tegdb.git
 cd tegdb
 
-# Build both CLI tools (tg and tegstream)
+# Build both CLI tools (tg and tgstream)
 cargo build --release
 
 # Or build individually:
 # cargo build --release --bin tg
-# cargo build --release --bin tegstream
+# cargo build --release --bin tgstream
 
 # Copy binaries to PATH (or add target/release to your PATH)
 cp target/release/tg ~/.cargo/bin/
-cp target/release/tegstream ~/.cargo/bin/
+cp target/release/tgstream ~/.cargo/bin/
 
 # Ensure ~/.cargo/bin is on your PATH
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -66,7 +66,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 ```bash
 cargo install tegdb --version 0.3.0 --bin tg
-cargo install tegdb --version 0.3.0 --bin tegstream
+cargo install tegdb --version 0.3.0 --bin tgstream
 ```
 
 2) Start MinIO locally and create a bucket
@@ -88,7 +88,7 @@ export AWS_ACCESS_KEY_ID=minioadmin
 export AWS_SECRET_ACCESS_KEY=minioadmin
 export AWS_REGION=us-east-1
 export AWS_ENDPOINT_URL=http://127.0.0.1:9000
-export TEGSTREAM_BUCKET=tegdb-backups
+export TGSTREAM_BUCKET=tegdb-backups
 ```
 
 4) Create and query a database with the `tg` CLI
@@ -105,11 +105,11 @@ tg "$DB" --command "INSERT INTO users (id, name) VALUES (1, 'Alice');"
 tg "$DB" --command "SELECT * FROM users;"
 ```
 
-5) Enable continuous cloud backup to MinIO with `tegstream`
+5) Enable continuous cloud backup to MinIO with `tgstream`
 
 ```bash
 # Create config file (use absolute path - replace /path/to with your actual path)
-cat > tegstream.toml <<EOF
+cat > tgstream.toml <<EOF
 database_path = "$(pwd)/quickstart.teg"
 
 [s3]
@@ -136,10 +136,10 @@ gzip = true
 EOF
 
 # Start replication (best run under a supervisor/tmux)
-tegstream run --config tegstream.toml
+tgstream run --config tgstream.toml
 
 # In another terminal, verify backup is working:
-tegstream list --config tegstream.toml
+tgstream list --config tgstream.toml
 # You should see base snapshots appearing every 15 minutes
 ```
 
@@ -147,10 +147,10 @@ tegstream list --config tegstream.toml
 
 ```bash
 # List available backups
-tegstream list --config tegstream.toml
+tgstream list --config tgstream.toml
 
 # Restore to latest state
-tegstream restore --config tegstream.toml --to $(pwd)/restored.teg
+tgstream restore --config tgstream.toml --to $(pwd)/restored.teg
 
 # Verify restored data
 tg "file:///$(pwd)/restored.teg" --command "SELECT * FROM users;"
@@ -163,7 +163,7 @@ tg "file:///$(pwd)/restored.teg" --command "SELECT * FROM users;"
 rm quickstart.teg
 
 # Restore from backup
-tegstream restore --config tegstream.toml --to $(pwd)/quickstart.teg
+tgstream restore --config tgstream.toml --to $(pwd)/quickstart.teg
 
 # Continue using the restored database
 tg "file:///$(pwd)/quickstart.teg" --command "SELECT * FROM users;"
@@ -319,9 +319,9 @@ COMMIT;
 - **Automatic compaction**: Reclaims space from old entries while preserving header
 - **Crash recovery**: Replay from last commit marker
 
-## Cloud Backup & Replication (tegstream)
+## Cloud Backup & Replication (tgstream)
 
-TegDB includes `tegstream`, a standalone streaming backup tool that continuously replicates your database to cloud storage (S3, MinIO, etc.), similar to Litestream for SQLite.
+TegDB includes `tgstream`, a standalone streaming backup tool that continuously replicates your database to cloud storage (S3, MinIO, etc.), similar to Litestream for SQLite.
 
 ### Features
 
@@ -337,14 +337,14 @@ TegDB includes `tegstream`, a standalone streaming backup tool that continuously
 Install from crates.io:
 
 ```bash
-cargo install tegdb --version 0.3.0 --bin tegstream
+cargo install tegdb --version 0.3.0 --bin tgstream
 # Or install both binaries:
-cargo install tegdb --version 0.3.0 --bin tg --bin tegstream
+cargo install tegdb --version 0.3.0 --bin tg --bin tgstream
 ```
 
 ### Configuration
 
-Create a configuration file `tegstream.toml`:
+Create a configuration file `tgstream.toml`:
 
 ```toml
 database_path = "/absolute/path/to/your/database.teg"
@@ -385,19 +385,19 @@ export AWS_REGION=us-east-1
 
 ```bash
 # Run continuous replication
-tegstream run --config tegstream.toml
+tgstream run --config tgstream.toml
 
 # Create a one-off snapshot
-tegstream snapshot --config tegstream.toml
+tgstream snapshot --config tgstream.toml
 
 # Restore database from backup
-tegstream restore --config tegstream.toml --to /path/to/restored.teg
+tgstream restore --config tgstream.toml --to /path/to/restored.teg
 
 # List available snapshots
-tegstream list --config tegstream.toml
+tgstream list --config tgstream.toml
 
 # Prune old snapshots
-tegstream prune --config tegstream.toml
+tgstream prune --config tgstream.toml
 ```
 
 ### How It Works
@@ -416,14 +416,14 @@ flowchart LR
         TG[tg CLI / App]
     end
     DB[(.teg file)]
-    TS[tegstream]
+    TS[tgstream]
     S3[(S3/MinIO Bucket)]
 
     TG -- SQL --> DB
     TS -- monitor commits --> DB
     TS -- base snapshots --> S3
     TS -- incremental segments --> S3
-    S3 -- base+segments --> Restore[tegstream restore]
+    S3 -- base+segments --> Restore[tgstream restore]
 ```
 
 ## Architecture Overview

@@ -1,6 +1,6 @@
 use std::fs;
 
-use tegdb::tegstream::state::ReplicationState;
+use tegdb::tgstream::state::ReplicationState;
 
 #[test]
 fn test_state_roundtrip_and_rotation() {

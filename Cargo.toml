@@ -18,7 +18,7 @@ license = "AGPL-3.0"
 fs2 = "0.4.3"  # File locking for native backend
 nom = "8.0.0"   # SQL parser
 fastrand = "2.0.1"  # Fast random number generation for vector indexing
-serde_json = "1.0"  # For Ollama JSON parsing (also used by tegstream)
+serde_json = "1.0"  # For Ollama JSON parsing (also used by tgstream)
 
 # CLI dependencies
 clap = { version = "4.0", features = ["derive"] }  # Argument parsing
@@ -26,7 +26,7 @@ rustyline = "14.0"  # REPL functionality
 crossterm = "0.27"  # Terminal I/O
 const_format = "0.2"  # Compile-time string formatting for help messages
 
-# Cloud sync dependencies (for tegstream)
+# Cloud sync dependencies (for tgstream)
 aws-sdk-s3 = { version = "1" }
 aws-config = { version = "1" }
 serde = { version = "1.0", features = ["derive"] }
@@ -178,8 +178,8 @@ name = "tg"
 path = "src/bin/tg.rs"
 
 [[bin]]
-name = "tegstream"
-path = "src/bin/tegstream.rs"
+name = "tgstream"
+path = "src/bin/tgstream.rs"
 
 
 
@@ -299,16 +299,16 @@ path = "tests/parser_tests.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "tegstream_parser_tests"
-path = "tests/tegstream_parser_tests.rs"
+name = "tgstream_parser_tests"
+path = "tests/tgstream_parser_tests.rs"
 
 [[test]]
-name = "tegstream_state_tests"
-path = "tests/tegstream_state_tests.rs"
+name = "tgstream_state_tests"
+path = "tests/tgstream_state_tests.rs"
 
 [[test]]
-name = "tegstream_integration_minio"
-path = "tests/tegstream_integration_minio.rs"
+name = "tgstream_integration_minio"
+path = "tests/tgstream_integration_minio.rs"
 
 [[test]]
 name = "preallocate_memory_test"
@@ -326,8 +326,8 @@ path = "tests/integration/header_version_test.rs"
 required-features = ["dev"]
 
 [[test]]
-name = "tegstream_preallocate_test"
-path = "tests/tegstream_preallocate_test.rs"
+name = "tgstream_preallocate_test"
+path = "tests/tgstream_preallocate_test.rs"
 required-features = ["dev"]
 
 [lib]

@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use tegdb::tegstream::{Config, Restore, Result, S3Backend, Tailer};
+use tegdb::tgstream::{Config, Restore, Result, S3Backend, Tailer};
 
 #[derive(Parser)]
-#[command(name = "tegstream")]
+#[command(name = "tgstream")]
 #[command(about = "Streaming backup tool for TegDB databases")]
 #[command(version)]
 struct Cli {

@@ -67,8 +67,8 @@ pub mod query_processor;
 // Planner modules are now always available since they're the main execution path
 pub mod planner;
 
-// Cloud sync module (tegstream)
-pub mod tegstream;
+// Cloud sync module (tgstream)
+pub mod tgstream;
 
 // Only export the high-level Database API and essential error types
 pub use database::{Database, DatabaseTransaction, PreparedStatement, QueryResult};
