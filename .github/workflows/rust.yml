@@ -46,6 +46,9 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
     
+    - name: Fetch dependencies
+      run: cargo fetch
+    
     - name: Check formatting
       run: cargo fmt --all -- --check
     
@@ -100,6 +103,9 @@ jobs:
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
+
+    - name: Fetch dependencies
+      run: cargo fetch
 
     - name: Build library
       run: cargo build --lib --verbose --frozen --locked
@@ -156,6 +162,9 @@ jobs:
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
+    
+    - name: Fetch dependencies
+      run: cargo fetch
     
     - name: Run basic usage example
       run: cargo run --example simple_usage --frozen --locked
@@ -215,6 +224,9 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
     
+    - name: Fetch dependencies
+      run: cargo fetch
+    
     - name: Install cargo-audit
       run: cargo install cargo-audit --locked
     
@@ -265,6 +277,9 @@ jobs:
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
+    
+    - name: Fetch dependencies
+      run: cargo fetch
     
     - name: Check if ready for release
       run: |
@@ -320,6 +335,9 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
     
+    - name: Fetch dependencies
+      run: cargo fetch
+    
     - name: Install cargo-llvm-cov
       run: cargo install cargo-llvm-cov --locked
     
@@ -371,6 +389,9 @@ jobs:
         sudo rm -rf /usr/local/lib/android
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
+    
+    - name: Fetch dependencies
+      run: cargo fetch
     
     - name: Run performance tests
       run: ./run_performance_tests.sh --ci
