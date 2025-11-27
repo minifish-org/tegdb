@@ -28,14 +28,41 @@ jobs:
         components: rustfmt, clippy
         profile: minimal
     
+    - name: Cache cargo registry only
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-stable-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-stable-cargo-registry-
+    
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
+    
     - name: Check formatting
       run: cargo fmt --all -- --check
     
     - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --all-features --frozen --locked -- -D warnings
+    
+    - name: Build with all features
+      run: cargo build --all-features --frozen --locked
     
     - name: Check documentation
-      run: cargo doc --no-deps --document-private-items
+      run: cargo doc --no-deps --document-private-items --frozen --locked
+    
+    - name: Run doc tests
+      run: cargo test --doc --frozen --locked
+    
+    - name: Clean up after build
+      run: cargo clean
 
   # Comprehensive test suite using the new test script
   test:
@@ -56,22 +83,29 @@ jobs:
         override: true
         profile: minimal
 
-    - name: Cache cargo registry
+    - name: Cache cargo registry only
       uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
-        key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
-          ${{ runner.os }}-${{ matrix.rust }}-cargo-
+          ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-
+
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
 
     - name: Build library
-      run: cargo build --lib --verbose
+      run: cargo build --lib --verbose --frozen --locked
 
     - name: Build with all features
-      run: cargo build --all-features --verbose
+      run: cargo build --all-features --verbose --frozen --locked
 
     - name: Run comprehensive test suite
       run: ./run_all_tests.sh --ci --verbose
@@ -81,10 +115,14 @@ jobs:
         VERBOSE: true
 
     - name: Run additional unit tests
-      run: cargo test --lib --all-features --verbose
+      run: cargo test --lib --all-features --verbose --frozen --locked
 
     - name: Run doc tests
-      run: cargo test --doc --verbose
+      run: cargo test --doc --verbose --frozen --locked
+
+    - name: Clean up build artifacts
+      if: always()
+      run: cargo clean
 
   # Examples and demos
   examples:
@@ -101,35 +139,48 @@ jobs:
         override: true
         profile: minimal
     
-    - name: Cache cargo
+    - name: Cache cargo registry only
       uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
-        key: ubuntu-stable-cargo-examples-${{ hashFiles('**/Cargo.lock') }}
+        key: ubuntu-stable-cargo-registry-examples-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-stable-cargo-registry-examples-
+    
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
     
     - name: Run basic usage example
-      run: cargo run --example simple_usage
+      run: cargo run --example simple_usage --frozen --locked
     
     - name: Run comprehensive database test
-      run: cargo run --example comprehensive_database_test
+      run: cargo run --example comprehensive_database_test --frozen --locked
     
     - name: Run streaming API demo
-      run: cargo run --example streaming_api_demo
+      run: cargo run --example streaming_api_demo --frozen --locked
     
     - name: Run arithmetic expressions example
-      run: cargo run --example arithmetic_expressions
+      run: cargo run --example arithmetic_expressions --frozen --locked
     
     - name: Run SQLite-like usage example
-      run: cargo run --example sqlite_like_usage
+      run: cargo run --example sqlite_like_usage --frozen --locked
     
     - name: Run IoT optimization demo
-      run: cargo run --example iot_optimization_demo
+      run: cargo run --example iot_optimization_demo --frozen --locked
     
     - name: Run planner demo
-      run: cargo run --example planner_demo
+      run: cargo run --example planner_demo --frozen --locked
+    
+    - name: Clean up build artifacts
+      if: always()
+      run: cargo clean
 
   # Security and dependency checks
   security:
@@ -146,16 +197,40 @@ jobs:
         override: true
         profile: minimal
     
+    - name: Cache cargo registry only
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ubuntu-stable-cargo-registry-security-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-stable-cargo-registry-security-
+    
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
+    
     - name: Install cargo-audit
-      run: cargo install cargo-audit
+      run: cargo install cargo-audit --locked
     
     - name: Run security audit
       run: cargo audit
     
     - name: Check for outdated dependencies
       run: |
-        cargo install cargo-outdated
+        cargo install cargo-outdated --locked
         cargo outdated --exit-code 1 || echo "Some dependencies are outdated, but build continues"
+    
+    - name: Clean installed binaries
+      if: always()
+      run: |
+        rm -rf ~/.cargo/bin/cargo-audit ~/.cargo/bin/cargo-outdated
+        cargo clean
 
   # Release preparation (only on main branch)
   release-check:
@@ -173,6 +248,24 @@ jobs:
         override: true
         profile: minimal
     
+    - name: Cache cargo registry only
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ubuntu-stable-cargo-registry-release-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-stable-cargo-registry-release-
+    
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
+    
     - name: Check if ready for release
       run: |
         echo "Checking release readiness..."
@@ -185,9 +278,13 @@ jobs:
         ./run_all_tests.sh --ci --verbose
         
         # Check documentation builds
-        cargo doc --no-deps
+        cargo doc --no-deps --frozen --locked
         
         echo "✅ Release readiness check completed successfully!"
+    
+    - name: Clean up build artifacts
+      if: always()
+      run: cargo clean
 
   # Coverage reporting
   coverage:
@@ -205,17 +302,41 @@ jobs:
         components: llvm-tools-preview
         profile: minimal
     
+    - name: Cache cargo registry only
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ubuntu-nightly-cargo-registry-coverage-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-nightly-cargo-registry-coverage-
+    
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
+    
     - name: Install cargo-llvm-cov
-      run: cargo install cargo-llvm-cov
+      run: cargo install cargo-llvm-cov --locked
     
     - name: Generate code coverage
-      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --frozen --locked
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         file: lcov.info
         fail_ci_if_error: false
+    
+    - name: Clean up build artifacts
+      if: always()
+      run: |
+        rm -rf ~/.cargo/bin/cargo-llvm-cov
+        cargo clean
 
   # Performance tests (manual trigger only)
   performance:
@@ -233,14 +354,23 @@ jobs:
         override: true
         profile: minimal
     
-    - name: Cache cargo
+    - name: Cache cargo registry only
       uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
-        key: ubuntu-nightly-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+        key: ubuntu-nightly-cargo-registry-bench-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-nightly-cargo-registry-bench-
+    
+    - name: Free disk space
+      run: |
+        df -h
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        df -h
     
     - name: Run performance tests
       run: ./run_performance_tests.sh --ci
@@ -252,17 +382,17 @@ jobs:
         echo "" >> benchmarks.md
         echo "## Database vs SQLite Comparison" >> benchmarks.md
         echo '```' >> benchmarks.md
-        cargo bench --bench database_vs_sqlite_benchmark --features="dev" | tee -a benchmarks.md
+        cargo bench --bench database_vs_sqlite_benchmark --features="dev" --frozen --locked | tee -a benchmarks.md
         echo '```' >> benchmarks.md
         echo "" >> benchmarks.md
         echo "## Engine Performance" >> benchmarks.md
         echo '```' >> benchmarks.md
-        cargo bench --bench engine_basic_benchmark | tee -a benchmarks.md
+        cargo bench --bench engine_basic_benchmark --frozen --locked | tee -a benchmarks.md
         echo '```' >> benchmarks.md
         echo "" >> benchmarks.md
         echo "## Query Planner Performance" >> benchmarks.md
         echo '```' >> benchmarks.md
-        cargo bench --bench planner_optimization_benchmark --features="dev" | tee -a benchmarks.md
+        cargo bench --bench planner_optimization_benchmark --features="dev" --frozen --locked | tee -a benchmarks.md
         echo '```' >> benchmarks.md
     
     - name: Upload benchmark results
@@ -273,3 +403,7 @@ jobs:
           benchmarks.md
           performance-results/
         retention-days: 30
+    
+    - name: Clean up build artifacts
+      if: always()
+      run: cargo clean
