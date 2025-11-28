@@ -7,9 +7,9 @@ use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
 
 use std::rc::Rc;
 
-pub const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 1024 * 1024; // 1 MiB
-pub const DEFAULT_PREALLOCATE_SIZE_MB: u64 = 1;
-pub const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 1_000;
+pub const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
+pub const DEFAULT_PREALLOCATE_SIZE_MB: u64 = 10;
+pub const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 10_000;
 
 /// Default minimum compaction threshold in bytes when no preallocation is set (10 MB)
 pub const DEFAULT_COMPACTION_THRESHOLD_BYTES: u64 = 10 * 1024 * 1024;
@@ -29,14 +29,14 @@ pub struct EngineConfig {
     pub max_key_size: usize,
     /// Maximum value size in bytes (default: 256KB)
     pub max_value_size: usize,
-    /// Whether to automatically compact on open (default: true)
+    /// Whether to automatically compact during runtime when thresholds are met (default: true)
     pub auto_compact: bool,
     /// Initial capacity for BTreeMap (memory preallocation).
     /// Also acts as a hard cap on the number of resident keys.
-    /// Defaults to 1 000 keys.
+    /// Defaults to 10 000 keys.
     pub initial_capacity: Option<usize>,
     /// Preallocate disk space in bytes.
-    /// Acts as a hard cap on the WAL-backed log size. Defaults to 1 MiB.
+    /// Acts as a hard cap on the WAL-backed log size. Defaults to 10 MiB.
     pub preallocate_size: Option<u64>,
     /// Ratio of preallocated log space that must be used before compaction can start
     pub compaction_threshold_ratio: f64,
@@ -101,17 +101,13 @@ impl StorageEngine {
             }
         }
 
-        let mut engine = Self {
+        let engine = Self {
             log,
             key_map,
             config,
             identifier,
             active_data_size,
         };
-
-        if engine.config.auto_compact {
-            engine.compact()?;
-        }
 
         Ok(engine)
     }
