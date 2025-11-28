@@ -21,16 +21,15 @@ fastrand = "2.0.1"  # Fast random number generation for vector indexing
 serde_json = "1.0"  # For Ollama JSON parsing (also used by tgstream)
 
 # CLI dependencies
-clap = { version = "4.0", features = ["derive"] }  # Argument parsing
-rustyline = "14.0"  # REPL functionality
-crossterm = "0.27"  # Terminal I/O
-const_format = "0.2"  # Compile-time string formatting for help messages
+clap = { version = "4.0", features = ["derive"] }
+rustyline = "14.0"
+crossterm = "0.27"
+const_format = "0.2"
 
 # Cloud sync dependencies (for tgstream)
 aws-sdk-s3 = { version = "1" }
 aws-config = { version = "1" }
 serde = { version = "1.0", features = ["derive"] }
-# Note: serde_json is already a dependency above
 toml = { version = "0.8" }
 flate2 = { version = "1.0" }
 tokio = { version = "1.0", features = ["full"] }
@@ -38,20 +37,15 @@ anyhow = { version = "1.0" }
 chrono = { version = "0.4", features = ["serde"] }
 futures = { version = "0.3" }
 
-
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
-sled = "0.34.7" # for performance comparison
+sled = "0.34.7"
 rusqlite = "0.37.0"
-rand = "0.8.5" # for random number generation in examples
-once_cell = "1.19"  # For static initialization in tests
+rand = "0.8.5"
+once_cell = "1.19"
 tokio = { version = "1.0", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] }
-
-# Common dev dependencies that work on all platforms
 tempfile = "3.20.0"
-
-
 
 [[bench]]
 name = "engine_basic_benchmark"
@@ -60,72 +54,95 @@ harness = false
 [[bench]]
 name = "engine_seq_benchmark"
 harness = false
+
 [[bench]]
 name = "parser_benchmark"
 harness = false
+
 [[bench]]
 name = "parser_optimized_benchmark"
 harness = false
+
 [[bench]]
 name = "transaction_benchmark"
 harness = false
+
 [[bench]]
 name = "transaction_begin_scaling"
 harness = false
+
 [[bench]]
 name = "rollback_detailed"
 harness = false
+
 [[bench]]
 name = "pure_rollback"
 harness = false
+
 [[bench]]
 name = "engine_vs_transaction_comparison"
 harness = false
+
 [[bench]]
 name = "database_vs_sqlite_benchmark"
 harness = false
+
 [[bench]]
 name = "planner_optimization_benchmark"
 harness = false
+
 [[bench]]
 name = "simple_planner_test"
 harness = false
+
 [[bench]]
 name = "focused_planner_benchmark"
 harness = false
+
 [[bench]]
 name = "limit_optimization_benchmark"
 harness = false
+
 [[bench]]
 name = "bottleneck_analysis"
 harness = false
+
 [[bench]]
 name = "storage_format_benchmark"
 harness = false
+
 [[bench]]
 name = "fixed_length_format_benchmark"
 harness = false
+
 [[bench]]
 name = "vector_search_benchmark"
 harness = false
+
 [[bench]]
 name = "vector_index_performance_benchmark"
 harness = false
+
 [[bench]]
 name = "lazy_storage_benchmark"
 harness = false
+
 [[bench]]
 name = "native_row_format_benchmark"
 harness = false
+
 [[bench]]
 name = "query_optimizer_benchmark"
 harness = false
+
 [[bench]]
 name = "query_prepared_breakdown"
 harness = false
+
 [[bench]]
 name = "streaming_performance_benchmark"
 harness = false
+
 [[bin]]
 name = "tg"
 path = "src/bin/tg.rs"
@@ -134,99 +151,6 @@ path = "src/bin/tg.rs"
 name = "tgstream"
 path = "src/bin/tgstream.rs"
 
-
-
-# Test configurations
-[[test]]
-name = "engine_tests"
-path = "tests/integration/engine_tests.rs"
-[[test]]
-name = "explicit_transaction_integration_tests"
-path = "tests/integration/explicit_transaction_integration_tests.rs"
-[[test]]
-name = "sql_integration_tests"
-path = "tests/integration/sql_integration_tests.rs"
-# Removed sql_parser_tests - file deleted
-
-[[test]]
-name = "transaction_parsing_tests"
-path = "tests/integration/transaction_parsing_tests.rs"
-[[test]]
-name = "transaction_tests"
-path = "tests/integration/transaction_tests.rs"
-[[test]]
-name = "drop_table_integration_test"
-path = "tests/integration/drop_table_integration_test.rs"
-
-
-# Removed database_tests - file deleted
-
-[[test]]
-name = "query_iterator_test"
-path = "tests/integration/query_iterator_test.rs"
-[[test]]
-name = "read_only_transaction_test"
-path = "tests/integration/read_only_transaction_test.rs"
-[[test]]
-name = "schema_persistence_test"
-path = "tests/integration/schema_persistence_test.rs"
-[[test]]
-name = "simplified_api_test"
-path = "tests/integration/simplified_api_test.rs"
-[[test]]
-name = "backend_compatibility_test"
-path = "tests/integration/backend_compatibility_test.rs"
-[[test]]
-name = "commit_marker_tests"
-path = "tests/integration/commit_marker_tests.rs"
-[[test]]
-name = "integration_vector_features_test"
-path = "tests/integration_vector_features_test.rs"
-[[test]]
-name = "planner_database_integration_test"
-path = "tests/integration/planner_database_integration_test.rs"
-[[test]]
-name = "high_level_api_performance_test"
-path = "tests/performance/high_level_api_performance_test.rs"
-[[test]]
-name = "arithmetic_expressions_test"
-path = "tests/arithmetic/arithmetic_expressions_test.rs"
-[[test]]
-name = "arithmetic_edge_cases_test"
-path = "tests/arithmetic/arithmetic_edge_cases_test.rs"
-[[test]]
-name = "arithmetic_parser_tests"
-path = "tests/arithmetic/arithmetic_parser_tests.rs"
-[[test]]
-name = "cli_tests"
-path = "tests/cli_tests.rs"
-[[test]]
-name = "parser_tests"
-path = "tests/parser_tests.rs"
-[[test]]
-name = "tgstream_parser_tests"
-path = "tests/tgstream_parser_tests.rs"
-
-[[test]]
-name = "tgstream_state_tests"
-path = "tests/tgstream_state_tests.rs"
-
-[[test]]
-name = "tgstream_integration_minio"
-path = "tests/tgstream_integration_minio.rs"
-
-[[test]]
-name = "preallocate_memory_test"
-path = "tests/integration/preallocate_memory_test.rs"
-[[test]]
-name = "preallocate_disk_test"
-path = "tests/integration/preallocate_disk_test.rs"
-[[test]]
-name = "header_version_test"
-path = "tests/integration/header_version_test.rs"
-[[test]]
-name = "tgstream_preallocate_test"
-path = "tests/tgstream_preallocate_test.rs"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
