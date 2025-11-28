@@ -111,3 +111,4 @@
 pub mod arithmetic;
 pub mod integration;
 pub mod performance;
+pub mod unit;

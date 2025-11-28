@@ -1,4 +1,5 @@
-use tegdb::{EngineConfig, Error, StorageEngine};
+use tegdb::storage_engine::{EngineConfig, StorageEngine};
+use tegdb::Error;
 use tempfile::TempDir;
 
 #[test]

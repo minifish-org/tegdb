@@ -578,7 +578,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
 ### Engine Configuration
 
 ```rust
-use tegdb::EngineConfig;
+use tegdb::storage_engine::EngineConfig;
 
 let config = EngineConfig {
     max_key_size: 1024,        // 1KB max key size
@@ -591,10 +591,10 @@ let config = EngineConfig {
 
 ### Low-Level Engine API
 
-For advanced use cases, you can access low-level APIs:
+For advanced use cases, you can access low-level APIs via module paths:
 
 ```rust
-use tegdb::{StorageEngine, EngineConfig};
+use tegdb::storage_engine::{StorageEngine, EngineConfig};
 
 // Direct key-value operations (requires absolute PathBuf)
 let mut engine = StorageEngine::new(std::path::PathBuf::from("/tmp/data.teg"))?;

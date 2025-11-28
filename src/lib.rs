@@ -34,12 +34,6 @@
 //! # }
 //! ```
 //!
-//! ## Low-level API (Advanced Users)
-//!
-//! For advanced use cases, benchmarks, or examples, you can access the low-level engine API:
-//!
-//! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
-//! for direct engine manipulation.
 pub mod backends;
 pub mod catalog;
 pub mod database;
@@ -85,32 +79,8 @@ pub use query_processor::{ColumnInfo, TableSchema};
 // Export parse_sql since it's used by the public Database API (prepare method)
 pub use parser::parse_sql;
 
-// Expose low-level API for development, examples, and benchmarks
-pub use catalog::Catalog;
-pub use parser::{
-    debug_parse_sql, parse_sql_with_suggestions, Assignment, ColumnDefinition, ComparisonOperator,
-    Condition, CreateTableStatement, DeleteStatement, DropTableStatement, Expression,
-    InsertStatement, ParseError, SelectStatement, Statement, UpdateStatement, WhereClause,
-};
-pub use planner::{ExecutionPlan, QueryPlanner};
-pub use query_processor::{QueryProcessor, ResultSet};
-pub use storage_engine::{EngineConfig, StorageEngine, Transaction};
-pub use storage_format::StorageFormat;
-pub use vector_index::{HNSWIndex, IVFIndex, LSHIndex};
-
 // Export SqlValue unconditionally as it's needed for working with query results
 pub use parser::SqlValue;
 
 // Export embedding functionality for semantic search
 pub use embedding::{cosine_similarity, embed, EmbeddingModel};
-
-// For backward compatibility, also expose via modules
-pub mod low_level {
-    pub use crate::catalog::Catalog;
-    pub use crate::parser::{parse_sql, SqlValue, Statement};
-    pub use crate::planner::{ExecutionPlan, QueryPlanner};
-    pub use crate::query_processor::{ColumnInfo, QueryProcessor, ResultSet, TableSchema};
-    pub use crate::storage_engine::{
-        EngineConfig, StorageEngine, Transaction as EngineTransaction,
-    };
-}

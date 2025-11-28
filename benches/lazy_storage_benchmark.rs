@@ -122,9 +122,9 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     });
 
     // 7. Condition evaluation (zero-copy)
-    let simple_condition = tegdb::Condition::Comparison {
-        left: tegdb::Expression::Column("id".to_string()),
-        operator: tegdb::ComparisonOperator::Equal,
+    let simple_condition = tegdb::parser::Condition::Comparison {
+        left: tegdb::parser::Expression::Column("id".to_string()),
+        operator: tegdb::parser::ComparisonOperator::Equal,
         right: tegdb::SqlValue::Integer(123),
     };
 
@@ -141,15 +141,15 @@ fn lazy_storage_benchmark(c: &mut Criterion) {
     });
 
     // 8. Complex condition evaluation (fallback to full deserialization)
-    let complex_condition = tegdb::Condition::And(
-        Box::new(tegdb::Condition::Comparison {
-            left: tegdb::Expression::Column("id".to_string()),
-            operator: tegdb::ComparisonOperator::Equal,
+    let complex_condition = tegdb::parser::Condition::And(
+        Box::new(tegdb::parser::Condition::Comparison {
+            left: tegdb::parser::Expression::Column("id".to_string()),
+            operator: tegdb::parser::ComparisonOperator::Equal,
             right: tegdb::SqlValue::Integer(123),
         }),
-        Box::new(tegdb::Condition::Comparison {
-            left: tegdb::Expression::Column("value".to_string()),
-            operator: tegdb::ComparisonOperator::GreaterThan,
+        Box::new(tegdb::parser::Condition::Comparison {
+            left: tegdb::parser::Expression::Column("value".to_string()),
+            operator: tegdb::parser::ComparisonOperator::GreaterThan,
             right: tegdb::SqlValue::Integer(100),
         }),
     );

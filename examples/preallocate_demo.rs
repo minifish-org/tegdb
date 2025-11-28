@@ -5,7 +5,7 @@ use std::time::Instant;
 /// 1. How to use memory preallocation (initial_capacity)
 /// 2. How to use disk preallocation (preallocate_size)
 /// 3. Performance comparison with and without preallocation
-use tegdb::{EngineConfig, StorageEngine};
+use tegdb::storage_engine::{EngineConfig, StorageEngine};
 
 fn main() -> tegdb::Result<()> {
     println!("=== TegDB Preallocation Demo ===\n");

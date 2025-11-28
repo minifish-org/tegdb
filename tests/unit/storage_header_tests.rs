@@ -1,7 +1,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use tegdb::log::STORAGE_FORMAT_VERSION;
-use tegdb::StorageEngine;
+use tegdb::storage_engine::StorageEngine;
 use tempfile::TempDir;
 
 /// Test that current storage headers can be read correctly

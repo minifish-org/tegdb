@@ -1,4 +1,4 @@
-use tegdb::low_level::{parse_sql, Statement};
+use tegdb::parser::{parse_sql, Statement};
 
 /// Test parsing BEGIN statements
 #[test]

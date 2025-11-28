@@ -1,6 +1,6 @@
 use std::fs::File;
+use tegdb::storage_engine::{EngineConfig, StorageEngine};
 use tegdb::tgstream::parser::{find_last_commit_offset, RecordParser};
-use tegdb::{EngineConfig, StorageEngine};
 use tempfile::TempDir;
 
 #[test]

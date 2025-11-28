@@ -5,7 +5,8 @@ mod test_helpers {
 }
 use test_helpers::run_with_both_backends;
 
-use tegdb::{Database, Expression, Result, SqlValue};
+use tegdb::parser::Expression;
+use tegdb::{Database, Result, SqlValue};
 
 #[test]
 fn test_commit_marker_and_crash_recovery() -> Result<()> {

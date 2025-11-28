@@ -1,8 +1,6 @@
 use std::{env, fs, path::PathBuf};
-use tegdb::{
-    low_level::{EngineConfig, StorageEngine},
-    Result,
-};
+use tegdb::storage_engine::{EngineConfig, StorageEngine};
+use tegdb::Result;
 
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {

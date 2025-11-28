@@ -112,7 +112,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     let mut group = c.benchmark_group("Storage Access Breakdown");
 
     // Test storage engine operations
-    let engine = tegdb::StorageEngine::new(temp_db_path("storage_test")).unwrap();
+    let engine = tegdb::storage_engine::StorageEngine::new(temp_db_path("storage_test")).unwrap();
 
     group.bench_function("storage_get_nonexistent", |b| {
         b.iter(|| {
@@ -203,9 +203,9 @@ fn bottleneck_analysis(c: &mut Criterion) {
     let mut group = c.benchmark_group("Condition Evaluation Breakdown");
 
     // Test condition evaluation overhead
-    let condition = tegdb::Condition::Comparison {
-        left: tegdb::Expression::Column("id".to_string()),
-        operator: tegdb::ComparisonOperator::Equal,
+    let condition = tegdb::parser::Condition::Comparison {
+        left: tegdb::parser::Expression::Column("id".to_string()),
+        operator: tegdb::parser::ComparisonOperator::Equal,
         right: tegdb::SqlValue::Integer(500),
     };
 

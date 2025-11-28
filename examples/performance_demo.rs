@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
-use tegdb::{ColumnConstraint, ColumnInfo, DataType, SqlValue, StorageFormat, TableSchema};
+use tegdb::storage_format::StorageFormat;
+use tegdb::{ColumnConstraint, ColumnInfo, DataType, SqlValue, TableSchema};
 
 fn main() {
     println!("=== TegDB Fixed-Length Storage Format Performance Demo ===\n");

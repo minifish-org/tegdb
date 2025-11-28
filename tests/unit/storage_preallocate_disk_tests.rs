@@ -1,6 +1,7 @@
 use std::fs;
 use tegdb::log::{LENGTH_FIELD_BYTES, STORAGE_HEADER_SIZE};
-use tegdb::{EngineConfig, Error, StorageEngine};
+use tegdb::storage_engine::{EngineConfig, StorageEngine};
+use tegdb::Error;
 use tempfile::TempDir;
 
 #[test]
