@@ -906,6 +906,315 @@ impl Expression {
             }
         }
     }
+
+    /// Evaluate expression with support for extension functions
+    ///
+    /// This method extends the basic `evaluate` method by first checking the extension
+    /// registry for custom functions before falling back to built-in functions.
+    pub fn evaluate_with_extensions(
+        &self,
+        context: &HashMap<String, SqlValue>,
+        extensions: &crate::extension::ExtensionRegistry,
+    ) -> Result<SqlValue, String> {
+        match self {
+            Expression::Value(value) => Ok(value.clone()),
+            Expression::Column(column) => context
+                .get(column)
+                .cloned()
+                .ok_or_else(|| format!("Column '{column}' not found in context")),
+            Expression::BinaryOp {
+                left,
+                operator,
+                right,
+            } => {
+                let left_val = left.evaluate_with_extensions(context, extensions)?;
+                let right_val = right.evaluate_with_extensions(context, extensions)?;
+                // Reuse the same logic as evaluate()
+                self.evaluate_binary_op(&left_val, operator, &right_val)
+            }
+            Expression::FunctionCall { name, args } => {
+                // First, evaluate all arguments with extension support
+                let evaluated_args: Result<Vec<SqlValue>, String> = args
+                    .iter()
+                    .map(|arg| arg.evaluate_with_extensions(context, extensions))
+                    .collect();
+                let evaluated_args = evaluated_args?;
+
+                // Check if this is an extension function
+                if extensions.has_scalar_function(name) {
+                    return extensions
+                        .execute_scalar(name, &evaluated_args)
+                        .map_err(|e| e.to_string());
+                }
+
+                // Fall back to built-in functions
+                self.evaluate_builtin_function(name, args, context)
+            }
+            Expression::AggregateFunction { name, arg } => {
+                // Check if this is an extension aggregate function
+                if extensions.has_aggregate_function(name) {
+                    // For aggregates, we return a placeholder - actual aggregation happens in query processor
+                    let _arg_value = arg.evaluate_with_extensions(context, extensions)?;
+                    return Ok(SqlValue::Null); // Placeholder
+                }
+
+                // Fall back to built-in aggregates
+                let _arg_value = arg.evaluate_with_extensions(context, extensions)?;
+                match name.to_uppercase().as_str() {
+                    "COUNT" => Ok(SqlValue::Integer(1)),
+                    "SUM" => Ok(SqlValue::Integer(0)),
+                    "AVG" => Ok(SqlValue::Real(0.0)),
+                    "MAX" => Ok(SqlValue::Integer(0)),
+                    "MIN" => Ok(SqlValue::Integer(0)),
+                    _ => Err(format!("Aggregate function '{name}' not implemented")),
+                }
+            }
+        }
+    }
+
+    /// Helper to evaluate binary operations (shared between evaluate and evaluate_with_extensions)
+    fn evaluate_binary_op(
+        &self,
+        left_val: &SqlValue,
+        operator: &ArithmeticOperator,
+        right_val: &SqlValue,
+    ) -> Result<SqlValue, String> {
+        match (left_val.clone(), right_val.clone()) {
+            (SqlValue::Integer(a), SqlValue::Integer(b)) => {
+                let result = match operator {
+                    ArithmeticOperator::Add => a + b,
+                    ArithmeticOperator::Subtract => a - b,
+                    ArithmeticOperator::Multiply => a * b,
+                    ArithmeticOperator::Divide => {
+                        if b == 0 {
+                            return Err("Division by zero".to_string());
+                        }
+                        a / b
+                    }
+                    ArithmeticOperator::Modulo => {
+                        if b == 0 {
+                            return Err("Modulo by zero".to_string());
+                        }
+                        a % b
+                    }
+                };
+                Ok(SqlValue::Integer(result))
+            }
+            (SqlValue::Real(a), SqlValue::Real(b)) => {
+                let result = match operator {
+                    ArithmeticOperator::Add => a + b,
+                    ArithmeticOperator::Subtract => a - b,
+                    ArithmeticOperator::Multiply => a * b,
+                    ArithmeticOperator::Divide => {
+                        if b == 0.0 {
+                            return Err("Division by zero".to_string());
+                        }
+                        a / b
+                    }
+                    ArithmeticOperator::Modulo => {
+                        if b == 0.0 {
+                            return Err("Modulo by zero".to_string());
+                        }
+                        a % b
+                    }
+                };
+                Ok(SqlValue::Real(result))
+            }
+            (SqlValue::Integer(a), SqlValue::Real(b)) => {
+                let a_f64 = a as f64;
+                let result = match operator {
+                    ArithmeticOperator::Add => a_f64 + b,
+                    ArithmeticOperator::Subtract => a_f64 - b,
+                    ArithmeticOperator::Multiply => a_f64 * b,
+                    ArithmeticOperator::Divide => {
+                        if b == 0.0 {
+                            return Err("Division by zero".to_string());
+                        }
+                        a_f64 / b
+                    }
+                    ArithmeticOperator::Modulo => {
+                        if b == 0.0 {
+                            return Err("Modulo by zero".to_string());
+                        }
+                        a_f64 % b
+                    }
+                };
+                Ok(SqlValue::Real(result))
+            }
+            (SqlValue::Real(a), SqlValue::Integer(b)) => {
+                let b_f64 = b as f64;
+                let result = match operator {
+                    ArithmeticOperator::Add => a + b_f64,
+                    ArithmeticOperator::Subtract => a - b_f64,
+                    ArithmeticOperator::Multiply => a * b_f64,
+                    ArithmeticOperator::Divide => {
+                        if b_f64 == 0.0 {
+                            return Err("Division by zero".to_string());
+                        }
+                        a / b_f64
+                    }
+                    ArithmeticOperator::Modulo => {
+                        if b_f64 == 0.0 {
+                            return Err("Modulo by zero".to_string());
+                        }
+                        a % b_f64
+                    }
+                };
+                Ok(SqlValue::Real(result))
+            }
+            (SqlValue::Text(a), SqlValue::Text(b)) => match operator {
+                ArithmeticOperator::Add => Ok(SqlValue::Text(format!("{a}{b}"))),
+                _ => Err("Only addition (+) is supported for text values".to_string()),
+            },
+            _ => Err(format!(
+                "Unsupported operation: {left_val:?} {operator:?} {right_val:?}"
+            )),
+        }
+    }
+
+    /// Helper to evaluate built-in functions (shared logic)
+    fn evaluate_builtin_function(
+        &self,
+        name: &str,
+        args: &[Expression],
+        context: &HashMap<String, SqlValue>,
+    ) -> Result<SqlValue, String> {
+        match name.to_uppercase().as_str() {
+            "COSINE_SIMILARITY" => {
+                if args.len() != 2 {
+                    return Err("COSINE_SIMILARITY requires exactly 2 arguments".to_string());
+                }
+                let vec1 = args[0].evaluate(context)?;
+                let vec2 = args[1].evaluate(context)?;
+
+                match (vec1, vec2) {
+                    (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
+                        if v1.len() != v2.len() {
+                            return Err(
+                                "Vectors must have the same dimension for cosine similarity"
+                                    .to_string(),
+                            );
+                        }
+                        let dot_product: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+                        let mag1: f64 = v1.iter().map(|x| x * x).sum::<f64>().sqrt();
+                        let mag2: f64 = v2.iter().map(|x| x * x).sum::<f64>().sqrt();
+                        if mag1 == 0.0 || mag2 == 0.0 {
+                            return Err(
+                                "Cannot calculate cosine similarity with zero vectors".to_string()
+                            );
+                        }
+                        Ok(SqlValue::Real(dot_product / (mag1 * mag2)))
+                    }
+                    _ => Err("COSINE_SIMILARITY requires vector arguments".to_string()),
+                }
+            }
+            "EUCLIDEAN_DISTANCE" => {
+                if args.len() != 2 {
+                    return Err("EUCLIDEAN_DISTANCE requires exactly 2 arguments".to_string());
+                }
+                let vec1 = args[0].evaluate(context)?;
+                let vec2 = args[1].evaluate(context)?;
+
+                match (vec1, vec2) {
+                    (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
+                        if v1.len() != v2.len() {
+                            return Err(
+                                "Vectors must have the same dimension for euclidean distance"
+                                    .to_string(),
+                            );
+                        }
+                        let distance: f64 = v1
+                            .iter()
+                            .zip(v2.iter())
+                            .map(|(a, b)| (a - b).powi(2))
+                            .sum::<f64>()
+                            .sqrt();
+                        Ok(SqlValue::Real(distance))
+                    }
+                    _ => Err("EUCLIDEAN_DISTANCE requires vector arguments".to_string()),
+                }
+            }
+            "DOT_PRODUCT" => {
+                if args.len() != 2 {
+                    return Err("DOT_PRODUCT requires exactly 2 arguments".to_string());
+                }
+                let vec1 = args[0].evaluate(context)?;
+                let vec2 = args[1].evaluate(context)?;
+
+                match (vec1, vec2) {
+                    (SqlValue::Vector(v1), SqlValue::Vector(v2)) => {
+                        if v1.len() != v2.len() {
+                            return Err(
+                                "Vectors must have the same dimension for dot product".to_string()
+                            );
+                        }
+                        let dot_product: f64 = v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum();
+                        Ok(SqlValue::Real(dot_product))
+                    }
+                    _ => Err("DOT_PRODUCT requires vector arguments".to_string()),
+                }
+            }
+            "L2_NORMALIZE" => {
+                if args.len() != 1 {
+                    return Err("L2_NORMALIZE requires exactly 1 argument".to_string());
+                }
+                let vec = args[0].evaluate(context)?;
+
+                match vec {
+                    SqlValue::Vector(v) => {
+                        let magnitude: f64 = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+                        if magnitude == 0.0 {
+                            return Err("Cannot normalize zero vector".to_string());
+                        }
+                        let normalized: Vec<f64> = v.iter().map(|x| x / magnitude).collect();
+                        Ok(SqlValue::Vector(normalized))
+                    }
+                    _ => Err("L2_NORMALIZE requires vector argument".to_string()),
+                }
+            }
+            "EMBED" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(
+                        "EMBED requires 1 or 2 arguments: EMBED(text) or EMBED(text, model)"
+                            .to_string(),
+                    );
+                }
+                let text = args[0].evaluate(context)?;
+                let model_name = if args.len() == 2 {
+                    match args[1].evaluate(context)? {
+                        SqlValue::Text(s) => s,
+                        _ => return Err("EMBED model argument must be text".to_string()),
+                    }
+                } else {
+                    "simple".to_string()
+                };
+
+                match text {
+                    SqlValue::Text(t) => {
+                        let model = model_name
+                            .parse::<crate::embedding::EmbeddingModel>()
+                            .map_err(|e| format!("EMBED model error: {e}"))?;
+                        let embedding = crate::embedding::embed(&t, model)
+                            .map_err(|e| format!("EMBED error: {e}"))?;
+                        Ok(SqlValue::Vector(embedding))
+                    }
+                    _ => Err("EMBED requires text argument".to_string()),
+                }
+            }
+            "ABS" => {
+                if args.len() != 1 {
+                    return Err("ABS requires exactly 1 argument".to_string());
+                }
+                let value = args[0].evaluate(context)?;
+                match value {
+                    SqlValue::Integer(i) => Ok(SqlValue::Integer(i.abs())),
+                    SqlValue::Real(f) => Ok(SqlValue::Real(f.abs())),
+                    _ => Err("ABS requires numeric argument".to_string()),
+                }
+            }
+            _ => Err(format!("Function '{name}' evaluation not implemented")),
+        }
+    }
 }
 
 /// Parse SQL and assign unique parameter indices

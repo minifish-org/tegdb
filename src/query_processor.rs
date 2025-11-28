@@ -350,6 +350,8 @@ pub struct SelectRowIterator<'a> {
     aggregate_result: Option<Vec<SqlValue>>,
     /// Sorted mode - if Some, contains the sorted results to return
     sorted_results: Option<std::vec::IntoIter<Vec<SqlValue>>>,
+    /// Optional extension registry for custom functions
+    extensions: Option<&'a crate::extension::ExtensionRegistry>,
 }
 
 impl<'a> SelectRowIterator<'a> {
@@ -373,7 +375,42 @@ impl<'a> SelectRowIterator<'a> {
             count: 0,
             aggregate_result: None,
             sorted_results: None,
+            extensions: None,
         }
+    }
+
+    /// Create a new select row iterator with extension support
+    pub fn new_with_extensions(
+        scan_iter: ScanIterator<'a>,
+        schema: std::rc::Rc<TableSchema>,
+        query_schema: QuerySchema,
+        filter: Option<Condition>,
+        limit: Option<u64>,
+        extensions: &'a crate::extension::ExtensionRegistry,
+    ) -> Self {
+        let storage_format = StorageFormat::new();
+
+        Self {
+            scan_iter,
+            schema,
+            query_schema,
+            filter,
+            storage_format,
+            limit,
+            count: 0,
+            aggregate_result: None,
+            sorted_results: None,
+            extensions: Some(extensions),
+        }
+    }
+
+    /// Set extensions for this iterator (builder pattern)
+    pub fn with_extensions(
+        mut self,
+        extensions: Option<&'a crate::extension::ExtensionRegistry>,
+    ) -> Self {
+        self.extensions = extensions;
+        self
     }
 
     /// Collect all remaining rows into a Vec for backward compatibility
@@ -388,6 +425,7 @@ impl<'a> SelectRowIterator<'a> {
         expression: &Expression,
         row_data: &HashMap<String, SqlValue>,
         _row_bytes: &[u8],
+        extensions: Option<&crate::extension::ExtensionRegistry>,
     ) -> Result<SqlValue> {
         match expression {
             Expression::Value(value) => Ok(value.clone()),
@@ -400,8 +438,8 @@ impl<'a> SelectRowIterator<'a> {
                 operator,
                 right,
             } => {
-                let left_val = Self::evaluate_expression(left, row_data, _row_bytes)?;
-                let right_val = Self::evaluate_expression(right, row_data, _row_bytes)?;
+                let left_val = Self::evaluate_expression(left, row_data, _row_bytes, extensions)?;
+                let right_val = Self::evaluate_expression(right, row_data, _row_bytes, extensions)?;
 
                 match (left_val, right_val) {
                     (SqlValue::Integer(a), SqlValue::Integer(b)) => {
@@ -511,20 +549,31 @@ impl<'a> SelectRowIterator<'a> {
             }
             Expression::FunctionCall { name, args } => {
                 // Evaluate all arguments first
-                let evaluated_args: Result<Vec<Expression>> = args
+                let evaluated_args: Result<Vec<SqlValue>> = args
                     .iter()
-                    .map(|arg| {
-                        let value = Self::evaluate_expression(arg, row_data, _row_bytes)?;
-                        Ok(Expression::Value(value))
-                    })
+                    .map(|arg| Self::evaluate_expression(arg, row_data, _row_bytes, extensions))
                     .collect();
-
                 let evaluated_args = evaluated_args?;
 
-                // Create a new function call with evaluated arguments
+                // Check if this is an extension function
+                if let Some(ext_registry) = extensions {
+                    if ext_registry.has_scalar_function(name) {
+                        return ext_registry
+                            .execute_scalar(name, &evaluated_args)
+                            .map_err(|e| {
+                                crate::Error::Other(format!("Extension function error: {e}"))
+                            });
+                    }
+                }
+
+                // Fall back to built-in functions
+                // Create expression values for the built-in evaluate
+                let expr_args: Vec<Expression> =
+                    evaluated_args.into_iter().map(Expression::Value).collect();
+
                 let func_call = Expression::FunctionCall {
                     name: name.clone(),
-                    args: evaluated_args,
+                    args: expr_args,
                 };
 
                 // Evaluate the function call using the Expression::evaluate method
@@ -535,7 +584,7 @@ impl<'a> SelectRowIterator<'a> {
             Expression::AggregateFunction { name, arg } => {
                 // For now, we'll evaluate the argument but not perform aggregation
                 // This will be handled by the query processor during execution
-                let _arg_value = Self::evaluate_expression(arg, row_data, _row_bytes)?;
+                let _arg_value = Self::evaluate_expression(arg, row_data, _row_bytes, extensions)?;
                 match name.to_uppercase().as_str() {
                     "COUNT" => Ok(SqlValue::Integer(1)), // Placeholder
                     "SUM" => Ok(SqlValue::Integer(0)),   // Placeholder
@@ -635,7 +684,12 @@ impl<'a> Iterator for SelectRowIterator<'a> {
 
                             // Evaluate each expression
                             for expr in expressions {
-                                match Self::evaluate_expression(expr, &row_data, &value) {
+                                match Self::evaluate_expression(
+                                    expr,
+                                    &row_data,
+                                    &value,
+                                    self.extensions,
+                                ) {
                                     Ok(value) => final_values.push(value),
                                     Err(e) => return Some(Err(e)),
                                 }
@@ -716,6 +770,7 @@ pub struct QueryProcessor<'a> {
     table_schemas: HashMap<String, Rc<TableSchema>>,
     storage_format: StorageFormat,
     transaction_active: bool,
+    extensions: Option<&'a crate::extension::ExtensionRegistry>,
 }
 
 impl<'a> QueryProcessor<'a> {
@@ -729,6 +784,22 @@ impl<'a> QueryProcessor<'a> {
             table_schemas,
             storage_format: StorageFormat::new(), // Always use native format
             transaction_active: false,
+            extensions: None,
+        }
+    }
+
+    /// Create a new query processor with transaction, schemas, and extension support
+    pub fn new_with_extensions(
+        transaction: Transaction<'a>,
+        table_schemas: HashMap<String, Rc<TableSchema>>,
+        extensions: &'a crate::extension::ExtensionRegistry,
+    ) -> Self {
+        Self {
+            transaction,
+            table_schemas,
+            storage_format: StorageFormat::new(),
+            transaction_active: false,
+            extensions: Some(extensions),
         }
     }
 
@@ -1237,7 +1308,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     None,
                     None,
-                );
+                )
+                .with_extensions(self.extensions);
                 sorted_iter.sorted_results = Some(sorted_rows.into_iter());
 
                 Ok(ResultSet::Select {
@@ -1426,7 +1498,8 @@ impl<'a> QueryProcessor<'a> {
             query_schema.clone(),
             None,
             None,
-        );
+        )
+        .with_extensions(self.extensions);
         aggregate_iter.aggregate_result = Some(aggregate_results);
 
         Ok(ResultSet::Select {
@@ -1666,7 +1739,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     additional_filter,
                     Some(1), // PK lookup returns at most 1 row
-                );
+                )
+                .with_extensions(self.extensions);
 
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
@@ -1699,7 +1773,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     additional_filter,
                     limit,
-                );
+                )
+                .with_extensions(self.extensions);
 
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
@@ -1773,7 +1848,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     None,
                     None,
-                );
+                )
+                .with_extensions(self.extensions);
 
                 // Override the iterator's behavior by setting sorted_results
                 let mut result_iter = row_iter;
@@ -1809,7 +1885,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     filter,
                     limit,
-                );
+                )
+                .with_extensions(self.extensions);
 
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
@@ -1846,7 +1923,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     additional_filter,
                     None,
-                );
+                )
+                .with_extensions(self.extensions);
 
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
@@ -2317,7 +2395,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     additional_filter,
                     Some(1),
-                );
+                )
+                .with_extensions(self.extensions);
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(row_iter),
@@ -2339,7 +2418,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     additional_filter,
                     limit,
-                );
+                )
+                .with_extensions(self.extensions);
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(row_iter),
@@ -2361,7 +2441,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     filter,
                     limit,
-                );
+                )
+                .with_extensions(self.extensions);
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),
                     rows: Box::new(row_iter),
@@ -2407,7 +2488,8 @@ impl<'a> QueryProcessor<'a> {
                     query_schema.clone(),
                     additional_filter,
                     Some(k as u64),
-                );
+                )
+                .with_extensions(self.extensions);
 
                 Ok(ResultSet::Select {
                     columns: query_schema.column_names.clone(),

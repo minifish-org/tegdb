@@ -70,9 +70,19 @@ pub mod planner;
 // Cloud sync module (tgstream)
 pub mod tgstream;
 
+// Extension system
+pub mod extension;
+
 // Only export the high-level Database API and essential error types
 pub use database::{Database, DatabaseTransaction, PreparedStatement, QueryResult};
 pub use error::{Error, Result};
+
+// Export extension system types
+pub use extension::{
+    AggregateFunction, AggregateState, ArgType, Extension, ExtensionError, ExtensionRegistry,
+    ExtensionResult, FunctionSignature, MathFunctionsExtension, ScalarFunction,
+    StringFunctionsExtension,
+};
 
 // Export schema-related types that are needed for public API (get_table_schemas_ref)
 pub use parser::{ColumnConstraint, DataType};

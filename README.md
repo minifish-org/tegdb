@@ -34,6 +34,14 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 - Clean separation of concerns across layers
 - Extensive test coverage including ACID compliance
 
+### 🔌 **Extension System**
+
+- PostgreSQL-inspired plugin architecture
+- Built-in string functions: UPPER, LOWER, LENGTH, TRIM, SUBSTR, REPLACE, CONCAT, REVERSE
+- Built-in math functions: ABS, CEIL, FLOOR, ROUND, SQRT, POW, MOD, SIGN
+- Create custom scalar and aggregate functions
+- Type-safe function signatures with validation
+
 ## Getting Started
 
 ### Quick Start (CLI + MinIO in 2–3 minutes)
@@ -294,6 +302,114 @@ COMMIT;
 - `REAL` - 64-bit floating point numbers  
 - `TEXT` - UTF-8 strings (requires length specification, e.g., TEXT(100))
 - `NULL` - Null values
+
+## Extension System
+
+TegDB provides a PostgreSQL-inspired extension system for adding custom functions.
+
+### Built-in Extensions
+
+Register built-in extensions to access common functions:
+
+```rust
+use tegdb::{Database, StringFunctionsExtension, MathFunctionsExtension, SqlValue};
+
+let mut db = Database::open("file:///tmp/test.teg")?;
+
+// Register built-in extensions
+db.register_extension(Box::new(StringFunctionsExtension))?;
+db.register_extension(Box::new(MathFunctionsExtension))?;
+
+// Call functions directly
+let result = db.call_function("UPPER", &[SqlValue::Text("hello".to_string())])?;
+assert_eq!(result, SqlValue::Text("HELLO".to_string()));
+
+let result = db.call_function("SQRT", &[SqlValue::Integer(144)])?;
+assert_eq!(result, SqlValue::Real(12.0));
+```
+
+### Available Functions
+
+**String Functions** (tegdb_string):
+- `UPPER(text)` - Convert to uppercase
+- `LOWER(text)` - Convert to lowercase
+- `LENGTH(text)` - String length
+- `TRIM(text)` / `LTRIM(text)` / `RTRIM(text)` - Trim whitespace
+- `SUBSTR(text, start, length)` - Extract substring
+- `REPLACE(text, from, to)` - Replace occurrences
+- `CONCAT(text, ...)` - Concatenate strings (variadic)
+- `REVERSE(text)` - Reverse string
+
+**Math Functions** (tegdb_math):
+- `ABS(number)` - Absolute value
+- `CEIL(number)` / `FLOOR(number)` - Ceiling/floor
+- `ROUND(number, decimals)` - Round to decimal places
+- `SQRT(number)` - Square root
+- `POW(base, exponent)` - Power
+- `MOD(a, b)` - Modulo
+- `SIGN(number)` - Sign (-1, 0, or 1)
+
+### Creating Custom Extensions
+
+Define custom extensions by implementing the `Extension` trait:
+
+```rust
+use tegdb::{Extension, ScalarFunction, FunctionSignature, ArgType, DataType, SqlValue};
+
+// Define a custom function
+struct DoubleFunction;
+
+impl ScalarFunction for DoubleFunction {
+    fn name(&self) -> &'static str { "DOUBLE" }
+    
+    fn signature(&self) -> FunctionSignature {
+        FunctionSignature::new(vec![ArgType::Numeric], DataType::Real)
+    }
+    
+    fn execute(&self, args: &[SqlValue]) -> Result<SqlValue, String> {
+        match &args[0] {
+            SqlValue::Integer(i) => Ok(SqlValue::Integer(i * 2)),
+            SqlValue::Real(r) => Ok(SqlValue::Real(r * 2.0)),
+            _ => Err("Expected numeric argument".to_string()),
+        }
+    }
+}
+
+// Define an extension
+struct MyExtension;
+
+impl Extension for MyExtension {
+    fn name(&self) -> &'static str { "my_extension" }
+    fn version(&self) -> &'static str { "1.0.0" }
+    fn scalar_functions(&self) -> Vec<Box<dyn ScalarFunction>> {
+        vec![Box::new(DoubleFunction)]
+    }
+}
+
+// Register and use
+db.register_extension(Box::new(MyExtension))?;
+let result = db.call_function("DOUBLE", &[SqlValue::Integer(21)])?;
+assert_eq!(result, SqlValue::Integer(42));
+```
+
+### Extension Management
+
+```rust
+// List registered extensions
+for (name, version) in db.list_extensions() {
+    println!("{} v{}", name, version);
+}
+
+// Check if a function exists
+if db.has_function("UPPER") {
+    println!("UPPER function is available");
+}
+
+// Unregister an extension
+db.unregister_extension("my_extension")?;
+```
+
+For a complete example, see `examples/extension_demo.rs`.
 
 ## Performance Characteristics
 

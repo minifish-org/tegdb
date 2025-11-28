@@ -174,6 +174,8 @@ pub struct Database {
     storage: StorageEngine,
     /// Schema catalog for managing table metadata (no locks needed for single-threaded)
     catalog: Catalog,
+    /// Extension registry for custom functions
+    extensions: crate::extension::ExtensionRegistry,
 }
 
 impl Database {
@@ -221,7 +223,11 @@ impl Database {
 
         let catalog = Catalog::load_from_storage(&storage)?;
 
-        Ok(Self { storage, catalog })
+        Ok(Self {
+            storage,
+            catalog,
+            extensions: crate::extension::ExtensionRegistry::new(),
+        })
     }
 
     /// Helper function to create TableSchema from CreateTableStatement
@@ -356,7 +362,8 @@ impl Database {
     ) -> Result<usize> {
         let transaction = self.storage.begin_transaction();
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
+        let mut processor =
+            QueryProcessor::new_with_extensions(transaction, schemas, &self.extensions);
 
         // 执行计划
         let result = processor.execute_plan(plan)?;
@@ -383,7 +390,8 @@ impl Database {
     ) -> Result<QueryResult> {
         let transaction = self.storage.begin_transaction();
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-        let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
+        let mut processor =
+            QueryProcessor::new_with_extensions(transaction, schemas, &self.extensions);
 
         // 执行计划
         let result = match query_schema {
@@ -443,13 +451,91 @@ impl Database {
     pub fn begin_transaction(&mut self) -> Result<DatabaseTransaction<'_>> {
         let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
         let transaction = self.storage.begin_transaction();
-        let processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
+        let processor = QueryProcessor::new_with_extensions(transaction, schemas, &self.extensions);
 
         Ok(DatabaseTransaction {
             processor,
             catalog: &mut self.catalog,
         })
     }
+
+    // ========================================================================
+    // Extension System Methods
+    // ========================================================================
+
+    /// Register an extension with this database
+    ///
+    /// Extensions can provide custom scalar functions, aggregate functions, and types.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use tegdb::{Database, StringFunctionsExtension};
+    ///
+    /// let mut db = Database::open("file:///tmp/test.teg")?;
+    /// db.register_extension(Box::new(StringFunctionsExtension))?;
+    ///
+    /// // Now use extension functions in SQL
+    /// db.query("SELECT UPPER('hello')")?;
+    /// ```
+    pub fn register_extension(
+        &mut self,
+        extension: Box<dyn crate::extension::Extension>,
+    ) -> Result<()> {
+        self.extensions
+            .register(extension)
+            .map_err(|e| crate::Error::Other(e.to_string()))
+    }
+
+    /// Unregister an extension by name
+    pub fn unregister_extension(&mut self, name: &str) -> Result<()> {
+        self.extensions
+            .unregister(name)
+            .map_err(|e| crate::Error::Other(e.to_string()))
+    }
+
+    /// List all registered extensions
+    pub fn list_extensions(&self) -> Vec<(&str, &str)> {
+        self.extensions.list_extensions()
+    }
+
+    /// List all registered scalar functions (including extension functions)
+    pub fn list_scalar_functions(&self) -> Vec<&str> {
+        self.extensions.list_scalar_functions()
+    }
+
+    /// List all registered aggregate functions (including extension functions)
+    pub fn list_aggregate_functions(&self) -> Vec<&str> {
+        self.extensions.list_aggregate_functions()
+    }
+
+    /// Check if a function is registered (either built-in or from an extension)
+    pub fn has_function(&self, name: &str) -> bool {
+        self.extensions.has_function(name)
+    }
+
+    /// Get a reference to the extension registry
+    pub fn extensions(&self) -> &crate::extension::ExtensionRegistry {
+        &self.extensions
+    }
+
+    /// Call a scalar function directly
+    ///
+    /// This allows calling extension functions programmatically without SQL.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let result = db.call_function("UPPER", &[SqlValue::Text("hello".to_string())])?;
+    /// assert_eq!(result, SqlValue::Text("HELLO".to_string()));
+    /// ```
+    pub fn call_function(&self, name: &str, args: &[SqlValue]) -> Result<SqlValue> {
+        self.extensions
+            .execute_scalar(name, args)
+            .map_err(|e| crate::Error::Other(e.to_string()))
+    }
+
+    // ========================================================================
+    // Schema Methods
+    // ========================================================================
 
     /// Get a reference to all cached table schemas (no cloning)
     /// Use this when you only need to read schema information
