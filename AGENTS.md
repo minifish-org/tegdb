@@ -5,7 +5,7 @@ This document defines the autonomous or semi-autonomous agents we rely on when w
 ## Shared Conventions
 
 - Keep changes minimal and avoid introducing new dependencies unless a maintainer explicitly agrees.
-- Default test command: `cargo test --features dev`. When in doubt, also run `cargo test --all-features --quiet` and `cargo test --target wasm32-unknown-unknown --all-features`.
+- Default test command: `cargo test`. When in doubt, also run `cargo test --all-features --quiet` and `cargo test --target wasm32-unknown-unknown --all-features`.
 - Skip benchmarks unless the task explicitly requires them; they take too long for normal CI.
 - CI workflows must target the `main` branch only.
 - Prefer absolute paths in scripts and documentation to reduce ambiguity on macOS/Linux runners.

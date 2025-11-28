@@ -6,7 +6,7 @@
 //! 3. Ollama API is accessible
 //! 4. gemma3:latest model works
 //!
-//! Run: cargo run --example verify_chatbot_setup --features dev
+//! Run: cargo run --example verify_chatbot_setup
 
 use serde_json::json;
 use tegdb::{Database, Result, SqlValue};
@@ -72,8 +72,8 @@ async fn main() -> Result<()> {
     if all_ok {
         println!("✅ All tests passed!");
         println!("\nYou can now run:");
-        println!("  cargo run --example ollama_chatbot_simple --features dev");
-        println!("  cargo run --example ollama_chatbot_demo --features dev");
+        println!("  cargo run --example ollama_chatbot_simple");
+        println!("  cargo run --example ollama_chatbot_demo");
     } else {
         println!("❌ Some tests failed. Please check the errors above.");
     }

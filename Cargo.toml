@@ -56,123 +56,76 @@ tempfile = "3.20.0"
 [[bench]]
 name = "engine_basic_benchmark"
 harness = false
-required-features = ["dev"]
 
 [[bench]]
 name = "engine_seq_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "parser_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "parser_optimized_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "transaction_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "transaction_begin_scaling"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "rollback_detailed"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "pure_rollback"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "engine_vs_transaction_comparison"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "database_vs_sqlite_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "planner_optimization_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "simple_planner_test"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "focused_planner_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "limit_optimization_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "bottleneck_analysis"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "storage_format_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "fixed_length_format_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "vector_search_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "vector_index_performance_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "lazy_storage_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "native_row_format_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "query_optimizer_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "query_prepared_breakdown"
 harness = false
-required-features = ["dev"]
-
 [[bench]]
 name = "streaming_performance_benchmark"
 harness = false
-required-features = ["dev"]
-
 [[bin]]
 name = "tg"
 path = "src/bin/tg.rs"
@@ -183,47 +136,27 @@ path = "src/bin/tgstream.rs"
 
 
 
-[features]
-# Feature to expose low-level API for examples, benchmarks, and advanced users
-dev = []
-
-# Enable dev feature for docs.rs documentation
-[package.metadata.docs.rs]
-features = ["dev"]
-
-# Test configurations with dev feature requirement
+# Test configurations
 [[test]]
 name = "engine_tests"
 path = "tests/integration/engine_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "explicit_transaction_integration_tests"
 path = "tests/integration/explicit_transaction_integration_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "sql_integration_tests"
 path = "tests/integration/sql_integration_tests.rs"
-required-features = ["dev"]
-
 # Removed sql_parser_tests - file deleted
 
 [[test]]
 name = "transaction_parsing_tests"
 path = "tests/integration/transaction_parsing_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "transaction_tests"
 path = "tests/integration/transaction_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "drop_table_integration_test"
 path = "tests/integration/drop_table_integration_test.rs"
-required-features = ["dev"]
-
 
 
 # Removed database_tests - file deleted
@@ -231,73 +164,45 @@ required-features = ["dev"]
 [[test]]
 name = "query_iterator_test"
 path = "tests/integration/query_iterator_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "read_only_transaction_test"
 path = "tests/integration/read_only_transaction_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "schema_persistence_test"
 path = "tests/integration/schema_persistence_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "simplified_api_test"
 path = "tests/integration/simplified_api_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "backend_compatibility_test"
 path = "tests/integration/backend_compatibility_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "commit_marker_tests"
 path = "tests/integration/commit_marker_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "integration_vector_features_test"
 path = "tests/integration_vector_features_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "planner_database_integration_test"
 path = "tests/integration/planner_database_integration_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "high_level_api_performance_test"
 path = "tests/performance/high_level_api_performance_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "arithmetic_expressions_test"
 path = "tests/arithmetic/arithmetic_expressions_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "arithmetic_edge_cases_test"
 path = "tests/arithmetic/arithmetic_edge_cases_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "arithmetic_parser_tests"
 path = "tests/arithmetic/arithmetic_parser_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "cli_tests"
 path = "tests/cli_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "parser_tests"
 path = "tests/parser_tests.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "tgstream_parser_tests"
 path = "tests/tgstream_parser_tests.rs"
@@ -313,23 +218,15 @@ path = "tests/tgstream_integration_minio.rs"
 [[test]]
 name = "preallocate_memory_test"
 path = "tests/integration/preallocate_memory_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "preallocate_disk_test"
 path = "tests/integration/preallocate_disk_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "header_version_test"
 path = "tests/integration/header_version_test.rs"
-required-features = ["dev"]
-
 [[test]]
 name = "tgstream_preallocate_test"
 path = "tests/tgstream_preallocate_test.rs"
-required-features = ["dev"]
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 

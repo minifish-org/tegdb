@@ -1,7 +1,4 @@
 use std::{env, fs, path::PathBuf};
-#[cfg(not(feature = "dev"))]
-use tegdb::Result;
-#[cfg(feature = "dev")]
 use tegdb::{
     low_level::{EngineConfig, StorageEngine},
     Result,
@@ -15,7 +12,6 @@ fn temp_db_path(prefix: &str) -> PathBuf {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_commit() -> Result<()> {
     let path = temp_db_path("transaction_commit");
     if path.exists() {
@@ -51,7 +47,6 @@ fn test_transaction_commit() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_rollback() -> Result<()> {
     let path = temp_db_path("transaction_rollback");
     if path.exists() {
@@ -81,7 +76,6 @@ fn test_transaction_rollback() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_empty_commit() -> Result<()> {
     let path = temp_db_path("tx_empty_commit");
     if path.exists() {
@@ -104,7 +98,6 @@ fn test_transaction_empty_commit() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_empty_rollback() -> Result<()> {
     let path = temp_db_path("tx_empty_rollback");
     if path.exists() {
@@ -127,7 +120,6 @@ fn test_transaction_empty_rollback() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_snapshot_isolation() -> Result<()> {
     let path = temp_db_path("tx_snapshot");
     if path.exists() {
@@ -151,7 +143,6 @@ fn test_transaction_snapshot_isolation() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_sequential_transactions() -> Result<()> {
     let path = temp_db_path("tx_sequential");
     if path.exists() {
@@ -179,7 +170,6 @@ fn test_sequential_transactions() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_double_commit_fails() -> Result<()> {
     let path = temp_db_path("tx_double_commit");
     if path.exists() {
@@ -197,7 +187,6 @@ fn test_double_commit_fails() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_commit_after_rollback_fails() -> Result<()> {
     let path = temp_db_path("tx_commit_after_rollback");
     if path.exists() {
@@ -215,7 +204,6 @@ fn test_commit_after_rollback_fails() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_delete_then_set_in_transaction() -> Result<()> {
     let path = temp_db_path("tx_delete_then_set");
     if path.exists() {
@@ -238,7 +226,6 @@ fn test_delete_then_set_in_transaction() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_durability_after_commit() -> Result<()> {
     let path = temp_db_path("tx_durability_after_commit");
     if path.exists() {
@@ -260,7 +247,6 @@ fn test_durability_after_commit() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_large_transaction_memory_usage() -> Result<()> {
     let path = temp_db_path("tx_large");
     if path.exists() {
@@ -294,7 +280,6 @@ fn test_large_transaction_memory_usage() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_get_behaviour() -> Result<()> {
     let path = temp_db_path("tx_get");
     if path.exists() {
@@ -335,7 +320,6 @@ fn test_transaction_get_behaviour() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_scan_behaviour() -> Result<()> {
     let path = temp_db_path("tx_scan");
     if path.exists() {
@@ -389,7 +373,6 @@ fn test_transaction_scan_behaviour() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_implicit_rollback_on_drop() -> Result<()> {
     let path = temp_db_path("tx_implicit_rollback");
     if path.exists() {
@@ -409,7 +392,6 @@ fn test_implicit_rollback_on_drop() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_snapshot_after_rollback() -> Result<()> {
     let path = temp_db_path("tx_snapshot_rollback");
     if path.exists() {
@@ -432,7 +414,6 @@ fn test_transaction_snapshot_after_rollback() -> Result<()> {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_key_size_limit() {
     let path = temp_db_path("tx_key_limit");
     if path.exists() {
@@ -458,7 +439,6 @@ fn test_transaction_key_size_limit() {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_value_size_limit() {
     let path = temp_db_path("tx_value_limit");
     if path.exists() {
@@ -481,7 +461,6 @@ fn test_transaction_value_size_limit() {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_transaction_error_propagation_in_transaction() -> Result<()> {
     let path = temp_db_path("tx_error_prop");
     if path.exists() {

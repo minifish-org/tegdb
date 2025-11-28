@@ -18,7 +18,7 @@ fn test_planner_integration_in_database() -> Result<()> {
         db.execute("INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")?;
         db.execute("INSERT INTO users (id, name, age) VALUES (3, 'Charlie', 35)")?;
 
-        // Test that queries work (these should go through the planner when dev feature is enabled)
+        // Test that queries work (these go through the planner)
         let result = db.query("SELECT * FROM users WHERE id = 1").unwrap();
         assert_eq!(result.columns().len(), 3);
         assert_eq!(result.rows().len(), 1);

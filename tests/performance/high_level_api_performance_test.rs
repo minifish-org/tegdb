@@ -8,10 +8,7 @@ use std::time::{Duration, Instant};
 use tegdb::{Database, Result};
 use tempfile::NamedTempFile;
 
-// These are available with the dev feature
-#[cfg(feature = "dev")]
 use tegdb::parser::parse_sql;
-#[cfg(feature = "dev")]
 use tegdb::planner::QueryPlanner;
 
 /// Performance test results for analysis
@@ -589,7 +586,6 @@ fn test_memory_usage_pattern() -> Result<()> {
 }
 
 /// Measure SQL execution with detailed pipeline timing
-#[cfg(feature = "dev")]
 fn measure_sql_execution(
     db: &mut Database,
     sql: &str,
@@ -642,42 +638,7 @@ fn measure_sql_execution(
     ))
 }
 
-/// Simplified version when dev feature is not available
-#[cfg(not(feature = "dev"))]
-fn measure_sql_execution(
-    db: &mut Database,
-    sql: &str,
-    operation_name: &str,
-) -> Result<SqlExecutionMetrics> {
-    // Without dev feature, we can only measure total execution time
-    let start = Instant::now();
-
-    let actual_records = if sql.trim().to_uppercase().starts_with("SELECT") {
-        let result = db.query(sql)?;
-        let rows = result.collect_rows()?;
-        rows.len()
-    } else {
-        db.execute(sql)?
-    };
-
-    let total_duration = start.elapsed();
-
-    // Rough estimates for breakdown
-    let parse_duration = total_duration / 20; // ~5%
-    let plan_duration = total_duration / 10; // ~10%
-    let execute_duration = total_duration - parse_duration - plan_duration;
-
-    Ok(SqlExecutionMetrics::new(
-        operation_name,
-        parse_duration,
-        plan_duration,
-        execute_duration,
-        actual_records,
-    ))
-}
-
 /// Measure transaction-based SQL execution with detailed pipeline timing
-#[cfg(feature = "dev")]
 fn measure_transaction_sql_execution(
     tx: &mut tegdb::DatabaseTransaction,
     sql: &str,
@@ -710,40 +671,6 @@ fn measure_transaction_sql_execution(
         parse_duration,
         adjusted_plan_duration,
         adjusted_execute_duration,
-        actual_records,
-    ))
-}
-
-/// Simplified version when dev feature is not available
-#[cfg(not(feature = "dev"))]
-fn measure_transaction_sql_execution(
-    tx: &mut tegdb::DatabaseTransaction,
-    sql: &str,
-    operation_name: &str,
-) -> Result<SqlExecutionMetrics> {
-    // Without dev feature, we can only measure total execution time
-    let start = Instant::now();
-
-    let actual_records = if sql.trim().to_uppercase().starts_with("SELECT") {
-        let result = tx.query(sql)?;
-        let rows = result.collect_rows()?;
-        rows.len()
-    } else {
-        tx.execute(sql)?
-    };
-
-    let total_duration = start.elapsed();
-
-    // Rough estimates for breakdown
-    let parse_duration = total_duration / 20; // ~5%
-    let plan_duration = total_duration / 10; // ~10%
-    let execute_duration = total_duration - parse_duration - plan_duration;
-
-    Ok(SqlExecutionMetrics::new(
-        operation_name,
-        parse_duration,
-        plan_duration,
-        execute_duration,
         actual_records,
     ))
 }

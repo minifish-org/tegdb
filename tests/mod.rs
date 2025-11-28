@@ -51,28 +51,28 @@
 //!
 //! ### Run all tests:
 //! ```bash
-//! cargo test --features dev
+//! cargo test
 //! ```
 //!
 //! ### Run specific test categories:
 //! ```bash
 //! # Unit tests only
-//! cargo test --features dev unit
+//! cargo test unit
 //!
 //! # Integration tests only
-//! cargo test --features dev integration
+//! cargo test integration
 //!
 //! # Performance tests only
-//! cargo test --features dev performance
+//! cargo test performance
 //!
 //! # Arithmetic tests only
-//! cargo test --features dev arithmetic
+//! cargo test arithmetic
 //! ```
 //!
 //! ### Run specific test files:
 //! ```bash
-//! cargo test --features dev --test database_tests
-//! cargo test --features dev --test engine_tests
+//! cargo test --test database_tests
+//! cargo test --test engine_tests
 //! ```
 //!
 //! ## Test Organization Principles
@@ -103,10 +103,7 @@
 //!
 //! ## Test Dependencies
 //!
-//! Most tests require the `dev` feature to access internal APIs:
-//! ```rust
-//! #[cfg(feature = "dev")]
-//! ```
+//! All low-level APIs are now always available for tests and examples.
 //!
 //! Use the test helpers for consistent file-backed testing.
 

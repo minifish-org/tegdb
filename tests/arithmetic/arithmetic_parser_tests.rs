@@ -1,9 +1,7 @@
 //! Test parsing of arithmetic expressions in UPDATE statements
 
-#[cfg(feature = "dev")]
 use tegdb::parser::*;
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_arithmetic_expressions() {
     // Test simple addition
@@ -35,7 +33,6 @@ fn test_parse_arithmetic_expressions() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_all_arithmetic_operators() {
     let test_cases = vec![
@@ -62,7 +59,6 @@ fn test_parse_all_arithmetic_operators() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_complex_arithmetic_expressions() {
     // Test operator precedence: multiplication before addition
@@ -104,7 +100,6 @@ fn test_parse_complex_arithmetic_expressions() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_parenthesized_expressions() {
     // Test parentheses override precedence: (price + quantity) * rate
@@ -146,7 +141,6 @@ fn test_parse_parenthesized_expressions() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_mixed_types_arithmetic() {
     // Test mixing integers and reals
@@ -172,7 +166,6 @@ fn test_parse_mixed_types_arithmetic() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_multiple_assignments_with_expressions() {
     let sql =
@@ -231,7 +224,6 @@ fn test_parse_multiple_assignments_with_expressions() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn test_parse_literal_values_still_work() {
     // Ensure simple literal assignments still work

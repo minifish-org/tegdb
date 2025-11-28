@@ -1,7 +1,6 @@
 //! Example demonstrating that the query planner is actually being used in TegDB
 //!
-//! This example shows that with the `dev` feature enabled, TegDB uses the planner
-//! pipeline instead of going directly to the executor.
+//! This example shows that TegDB uses the planner pipeline for query execution.
 //!
 //! Run with: cargo run --example planner_usage_demo
 

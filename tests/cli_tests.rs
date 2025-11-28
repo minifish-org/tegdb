@@ -25,7 +25,7 @@ fn run_cli_command(args: &[&str], input: Option<&str>) -> (String, String, i32) 
 
     let mut cmd = if binary == "cargo" {
         let mut c = Command::new("cargo");
-        c.args(["run", "--bin", "tg", "--features", "dev", "--"]);
+        c.args(["run", "--bin", "tg", "--"]);
         c.args(args);
         c
     } else {

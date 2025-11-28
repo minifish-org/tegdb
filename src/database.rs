@@ -417,10 +417,6 @@ impl Database {
     /// Execute SQL statement, return number of affected rows
     pub fn execute(&mut self, sql: &str) -> Result<usize> {
         let normalized = normalize_sql_input(sql);
-        #[cfg(feature = "dev")]
-        {
-            // Debug mode enabled but no longer printing debug info to avoid log spam
-        }
         let statement =
             parse_sql(&normalized).map_err(|e| crate::Error::ParseError(e.to_string()))?;
 

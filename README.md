@@ -586,17 +586,12 @@ let config = EngineConfig {
     auto_compact: true,         // Auto-compact on open
 };
 
-// Note: Custom config requires dev feature and low-level API
+// Note: Custom config requires low-level API
 ```
 
 ### Low-Level Engine API
 
-For advanced use cases, enable the `dev` feature to access low-level APIs:
-
-```toml
-[dependencies]
-tegdb = { version = "0.3.0", features = ["dev"] }
-```
+For advanced use cases, you can access low-level APIs:
 
 ```rust
 use tegdb::{StorageEngine, EngineConfig};
@@ -621,14 +616,11 @@ tx.commit()?;
 # Standard build
 cargo build
 
-# With development features
-cargo build --features dev
-
 # Run tests
-cargo test --features dev
+cargo test
 
 # Run benchmarks  
-cargo bench --features dev
+cargo bench
 ```
 
 ### Testing
@@ -672,7 +664,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 Run performance benchmarks against other embedded databases:
 
 ```bash
-cargo bench --features dev
+cargo bench
 ```
 
 Included benchmarks compare against:

@@ -1,4 +1,3 @@
-#[cfg(feature = "dev")]
 mod vector_storage_format_tests {
     use std::collections::HashMap;
     use tegdb::parser::{ColumnConstraint, DataType, SqlValue};

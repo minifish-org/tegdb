@@ -3,7 +3,7 @@
 //! This example demonstrates TegDB's extension system, which allows you to
 //! add custom functions to the database.
 //!
-//! Run with: cargo run --example extension_demo --features dev
+//! Run with: cargo run --example extension_demo
 
 use tegdb::{
     ArgType, DataType, Database, Extension, FunctionSignature, MathFunctionsExtension, Result,

@@ -10,7 +10,7 @@
 //! - Ollama running locally: `ollama serve`
 //! - gemma3:latest model: `ollama pull gemma3:latest`
 //!
-//! Run with: cargo run --example ollama_chatbot_demo --features dev
+//! Run with: cargo run --example ollama_chatbot_demo
 
 use serde_json::json;
 use std::io::{self, Write};

@@ -104,7 +104,7 @@ fn test_arithmetic_expression_parsing() {
     use tegdb::SqlValue;
 
     run_with_both_backends("arithmetic_expression_parsing", |db_path| {
-        // This requires accessing the parser directly, which needs dev features
+        // This requires accessing the parser directly
         // For now, we'll test through the database API which exercises the parser
         let mut db = Database::open(db_path).expect("Failed to open database");
 

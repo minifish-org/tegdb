@@ -36,13 +36,7 @@
 //!
 //! ## Low-level API (Advanced Users)
 //!
-//! For advanced use cases, benchmarks, or examples, you can enable the `dev` feature
-//! to access the low-level engine API:
-//!
-//! ```toml
-//! [dependencies]
-//! tegdb = { version = "0.2", features = ["dev"] }
-//! ```
+//! For advanced use cases, benchmarks, or examples, you can access the low-level engine API:
 //!
 //! This exposes additional types like `Engine`, `EngineConfig`, `Executor`, etc.
 //! for direct engine manipulation.
@@ -91,24 +85,17 @@ pub use query_processor::{ColumnInfo, TableSchema};
 // Export parse_sql since it's used by the public Database API (prepare method)
 pub use parser::parse_sql;
 
-// Conditionally expose low-level API for development, examples, and benchmarks
-#[cfg(feature = "dev")]
+// Expose low-level API for development, examples, and benchmarks
 pub use catalog::Catalog;
-#[cfg(feature = "dev")]
 pub use parser::{
     debug_parse_sql, parse_sql_with_suggestions, Assignment, ColumnDefinition, ComparisonOperator,
     Condition, CreateTableStatement, DeleteStatement, DropTableStatement, Expression,
     InsertStatement, ParseError, SelectStatement, Statement, UpdateStatement, WhereClause,
 };
-#[cfg(feature = "dev")]
 pub use planner::{ExecutionPlan, QueryPlanner};
-#[cfg(feature = "dev")]
 pub use query_processor::{QueryProcessor, ResultSet};
-#[cfg(feature = "dev")]
 pub use storage_engine::{EngineConfig, StorageEngine, Transaction};
-#[cfg(feature = "dev")]
 pub use storage_format::StorageFormat;
-#[cfg(feature = "dev")]
 pub use vector_index::{HNSWIndex, IVFIndex, LSHIndex};
 
 // Export SqlValue unconditionally as it's needed for working with query results
@@ -117,8 +104,7 @@ pub use parser::SqlValue;
 // Export embedding functionality for semantic search
 pub use embedding::{cosine_similarity, embed, EmbeddingModel};
 
-// For backward compatibility, also expose via modules when dev feature is enabled
-#[cfg(feature = "dev")]
+// For backward compatibility, also expose via modules
 pub mod low_level {
     pub use crate::catalog::Catalog;
     pub use crate::parser::{parse_sql, SqlValue, Statement};

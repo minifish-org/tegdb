@@ -4,7 +4,7 @@
 //! - Ollama: `ollama serve` (already running)
 //! - Model: `ollama pull gemma3:latest` (already pulled)
 //!
-//! Run: cargo run --example manual_chatbot --features dev
+//! Run: cargo run --example manual_chatbot
 
 use serde_json::json;
 use tegdb::{embedding, Database, Result};
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
 
     println!("\n✅ All tests completed! The chatbot components are working.");
     println!("\nTo run interactively:");
-    println!("1. cargo run --example ollama_chatbot_working --features dev");
+    println!("1. cargo run --example ollama_chatbot_working");
     println!("2. Type your questions and press Enter");
     println!("3. Type 'exit' to quit");
 

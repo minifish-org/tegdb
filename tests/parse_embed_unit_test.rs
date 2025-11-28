@@ -3,7 +3,6 @@
 use tegdb::parser::{parse_sql, Statement};
 
 #[test]
-#[cfg(feature = "dev")]
 fn test_parse_basic_select() {
     let result = parse_sql("SELECT id FROM test;");
     assert!(
@@ -14,7 +13,6 @@ fn test_parse_basic_select() {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 #[ignore]
 fn test_parse_select_with_abs() {
     let result = parse_sql("SELECT ABS(-5) as result;");
@@ -26,7 +24,6 @@ fn test_parse_select_with_abs() {
 }
 
 #[test]
-#[cfg(feature = "dev")]
 #[ignore]
 fn test_parse_embed_directly() {
     let result = parse_sql("SELECT EMBED('hello') as embedding;");

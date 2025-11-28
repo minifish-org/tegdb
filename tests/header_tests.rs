@@ -74,7 +74,6 @@ fn reads_entries_after_header() {
     }
 }
 
-#[cfg(feature = "dev")]
 #[test]
 fn compaction_preserves_header() {
     use tegdb::storage_engine::StorageEngine;
