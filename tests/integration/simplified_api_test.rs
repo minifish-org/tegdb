@@ -1,7 +1,8 @@
 //! Integration test for simplified Database API
 
-#[path = "../helpers/test_helpers.rs"]
-mod test_helpers;
+mod test_helpers {
+    include!("../common/test_helpers.rs");
+}
 use test_helpers::run_with_both_backends;
 
 use tegdb::{Database, SqlValue};

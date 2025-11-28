@@ -21,7 +21,6 @@ pub enum Record {
 pub struct RecordParser;
 
 impl RecordParser {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self
     }

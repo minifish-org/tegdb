@@ -1,8 +1,5 @@
 //! Test parsing of arithmetic expressions in UPDATE statements
 
-#[path = "../helpers/test_helpers.rs"]
-mod test_helpers;
-
 #[cfg(feature = "dev")]
 use tegdb::parser::*;
 

@@ -14,30 +14,30 @@ pub struct S3Backend {
 
 impl S3Backend {
     /// Create new S3 backend
-    #[allow(deprecated)]
     pub async fn new(config: &S3Config) -> Result<Self> {
         let region = Region::new(config.region.clone());
 
-        // Build base config from environment
-        let mut env_config = aws_config::from_env().region(region);
-
-        // Set custom endpoint if provided (for MinIO)
-        if let Some(endpoint) = &config.endpoint {
-            env_config = env_config.endpoint_url(endpoint);
-        }
-
-        // Override credentials if provided (for MinIO or explicit AWS credentials)
+        // Set environment variables if credentials are provided (before loading config)
+        // This avoids using deprecated APIs while still supporting explicit credentials
         if let (Some(access_key), Some(secret_key)) =
             (&config.access_key_id, &config.secret_access_key)
         {
-            let credentials = aws_sdk_s3::config::Credentials::new(
-                access_key, secret_key, None, None, "tgstream",
-            );
-            env_config = env_config.credentials_provider(credentials);
+            std::env::set_var("AWS_ACCESS_KEY_ID", access_key);
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", secret_key);
         }
 
-        let aws_config = env_config.load().await;
-        let client = Client::new(&aws_config);
+        // Build base config from environment
+        let mut env_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region)
+            .load()
+            .await;
+
+        // Set custom endpoint if provided (for MinIO)
+        if let Some(endpoint) = &config.endpoint {
+            env_config = env_config.to_builder().endpoint_url(endpoint).build();
+        }
+
+        let client = Client::new(&env_config);
 
         Ok(Self {
             client,
@@ -119,16 +119,13 @@ impl S3Backend {
             .await
             .map_err(|e| Error::S3(format!("Download failed: {}", e)))?;
 
-        let mut data = Vec::new();
-        let mut body = output.body;
-        #[allow(unused_imports)]
-        use futures::StreamExt;
-        while let Some(chunk) = body.next().await {
-            let chunk = chunk.map_err(|e| Error::S3(format!("Stream error: {}", e)))?;
-            data.extend_from_slice(&chunk);
-        }
+        let body = output.body;
+        let data = aws_sdk_s3::primitives::ByteStream::collect(body)
+            .await
+            .map_err(|e| Error::S3(format!("Stream error: {}", e)))?;
+        let bytes: Vec<u8> = data.into_bytes().into();
 
-        std::fs::write(local_path, data)?;
+        std::fs::write(local_path, &bytes)?;
         Ok(())
     }
 
@@ -143,16 +140,13 @@ impl S3Backend {
             .await
             .map_err(|e| Error::S3(format!("Download failed: {}", e)))?;
 
-        let mut data = Vec::new();
-        let mut body = output.body;
-        #[allow(unused_imports)]
-        use futures::StreamExt;
-        while let Some(chunk) = body.next().await {
-            let chunk = chunk.map_err(|e| Error::S3(format!("Stream error: {}", e)))?;
-            data.extend_from_slice(&chunk);
-        }
+        let body = output.body;
+        let data = aws_sdk_s3::primitives::ByteStream::collect(body)
+            .await
+            .map_err(|e| Error::S3(format!("Stream error: {}", e)))?;
+        let bytes: Vec<u8> = data.into_bytes().into();
 
-        Ok(data)
+        Ok(bytes)
     }
 
     /// List objects with prefix

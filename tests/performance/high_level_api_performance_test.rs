@@ -3,9 +3,6 @@
 //! This module provides comprehensive performance tests for the Database interface,
 //! focusing on real-world usage patterns and identifying performance bottlenecks.
 
-#[path = "../helpers/test_helpers.rs"]
-mod test_helpers;
-
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tegdb::{Database, Result};

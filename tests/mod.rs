@@ -112,6 +112,5 @@
 
 // Re-export test modules for easy access
 pub mod arithmetic;
-pub mod helpers;
 pub mod integration;
 pub mod performance;

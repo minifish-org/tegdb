@@ -1,7 +1,8 @@
 #![allow(clippy::uninlined_format_args)]
 
-#[path = "../helpers/test_helpers.rs"]
-mod test_helpers;
+mod test_helpers {
+    include!("../common/test_helpers.rs");
+}
 use test_helpers::run_with_both_backends;
 
 use tegdb::{Database, Expression, Result, SqlValue};

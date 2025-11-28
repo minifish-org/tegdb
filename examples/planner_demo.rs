@@ -248,27 +248,3 @@ fn demonstrate_execution_comparison() -> Result<()> {
 
     Ok(())
 }
-
-#[allow(dead_code)]
-fn show_planner_architecture() {
-    println!("5. Query Planner Architecture Overview:");
-    println!();
-    println!("   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐");
-    println!("   │   SQL Text  │ -> │   Parser    │ -> │   Planner   │ -> │  QueryProcessor   │");
-    println!("   └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘");
-    println!("          │                   │                   │                   │");
-    println!("          │                   │                   │                   │");
-    println!("    \"SELECT...\"         Statement         ExecutionPlan        ResultSet");
-    println!();
-    println!("   Components:");
-    println!("   • Parser: Converts SQL text into AST (Abstract Syntax Tree)");
-    println!("   • Planner: Analyzes AST and generates optimized execution plan");
-    println!("   • QueryProcessor: Executes the plan against the storage engine");
-    println!();
-    println!("   Plan Types:");
-    println!("   • PrimaryKeyLookup: Direct key access for equality on PK");
-    println!("   • TableScan: Sequential table scan with optimizations");
-    println!("   • Insert/Update/Delete: Modification plans");
-    println!("   • DDL: Schema change operations");
-    println!();
-}

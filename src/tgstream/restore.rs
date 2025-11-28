@@ -16,8 +16,6 @@ pub struct Restore {
 struct LatestPointer {
     base_id: String,
     last_offset: u64,
-    #[allow(dead_code)]
-    created_at: String,
 }
 
 impl Restore {
@@ -91,7 +89,6 @@ impl Restore {
             last_offset: json["last_offset"]
                 .as_u64()
                 .ok_or_else(|| Error::Restore("Missing last_offset in latest.json".to_string()))?,
-            created_at: json["created_at"].as_str().unwrap_or("").to_string(),
         })
     }
 

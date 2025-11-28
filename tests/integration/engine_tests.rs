@@ -6,9 +6,6 @@ use std::path::PathBuf;
 use tegdb::storage_engine::{EngineConfig, StorageEngine};
 use tegdb::Result;
 
-#[path = "../helpers/test_helpers.rs"]
-mod test_helpers;
-
 /// Creates a unique temporary file path for tests
 fn temp_db_path(prefix: &str) -> PathBuf {
     let mut path = env::temp_dir();
