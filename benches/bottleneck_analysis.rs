@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::hint::black_box;
 use std::path::PathBuf;
+use tegdb::storage_engine::StorageEngine;
 
 /// Creates a unique temporary file path for benchmarks
 fn temp_db_path(prefix: &str) -> PathBuf {
@@ -112,7 +113,7 @@ fn bottleneck_analysis(c: &mut Criterion) {
     let mut group = c.benchmark_group("Storage Access Breakdown");
 
     // Test storage engine operations
-    let engine = tegdb::storage_engine::StorageEngine::new(temp_db_path("storage_test")).unwrap();
+    let engine = StorageEngine::new(temp_db_path("storage_test")).unwrap();
 
     group.bench_function("storage_get_nonexistent", |b| {
         b.iter(|| {

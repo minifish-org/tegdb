@@ -458,7 +458,7 @@ fn storage_format_benchmarks(c: &mut Criterion) {
                 if let (SqlValue::Integer(id_val), SqlValue::Real(score_val)) =
                     (&values[0], &values[2])
                 {
-                    if id_val > &50 && score_val > &75.0 {
+                    if *id_val > 50 && *score_val > 75.0 {
                         results.push((values[0].clone(), values[1].clone(), values[2].clone()));
                     }
                 }
