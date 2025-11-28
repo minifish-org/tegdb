@@ -305,11 +305,33 @@ COMMIT;
 
 ## Extension System
 
-TegDB provides a PostgreSQL-inspired extension system for adding custom functions.
+TegDB provides a PostgreSQL-inspired extension system for adding custom functions. Extensions can be loaded via SQL commands (PostgreSQL-style) or programmatically via the Rust API.
 
-### Built-in Extensions
+### Loading Extensions via SQL (PostgreSQL-style)
 
-Register built-in extensions to access common functions:
+The recommended way to manage extensions is using SQL commands:
+
+```sql
+-- Load built-in extensions
+CREATE EXTENSION tegdb_string;
+CREATE EXTENSION tegdb_math;
+
+-- Use extension functions in SQL
+SELECT UPPER('hello'), SQRT(144);
+
+-- Load custom extension from dynamic library
+CREATE EXTENSION my_extension;
+-- Or specify explicit path
+CREATE EXTENSION my_extension WITH PATH '/path/to/libmy_extension.so';
+
+-- Extensions persist automatically - they'll be loaded on next database open
+-- Remove an extension
+DROP EXTENSION my_extension;
+```
+
+### Loading Extensions via Rust API
+
+You can also register extensions programmatically:
 
 ```rust
 use tegdb::{Database, StringFunctionsExtension, MathFunctionsExtension, SqlValue};
@@ -394,6 +416,13 @@ assert_eq!(result, SqlValue::Integer(42));
 
 ### Extension Management
 
+**Via SQL:**
+```sql
+-- Extensions are automatically persisted and loaded on database open
+-- No need to re-run CREATE EXTENSION after restarting
+```
+
+**Via Rust API:**
 ```rust
 // List registered extensions
 for (name, version) in db.list_extensions() {
@@ -409,7 +438,76 @@ if db.has_function("UPPER") {
 db.unregister_extension("my_extension")?;
 ```
 
-For a complete example, see `examples/extension_demo.rs`.
+### Creating Loadable Extensions
+
+To create a dynamic library extension that can be loaded via `CREATE EXTENSION`:
+
+1. **Create a Rust library project:**
+   ```bash
+   cargo new --lib my_extension
+   cd my_extension
+   ```
+
+2. **Configure Cargo.toml:**
+   ```toml
+   [lib]
+   crate-type = ["cdylib"]
+   
+   [dependencies]
+   tegdb = { path = "../tegdb" }  # Or from crates.io
+   ```
+
+3. **Implement the extension:**
+   ```rust
+   use tegdb::{Extension, ExtensionWrapper, ScalarFunction, SqlValue, FunctionSignature, ArgType, DataType};
+   
+   struct MyFunction;
+   
+   impl ScalarFunction for MyFunction {
+       fn name(&self) -> &'static str { "MY_FUNCTION" }
+       fn signature(&self) -> FunctionSignature {
+           FunctionSignature::new(vec![ArgType::TextLike], DataType::Text(None))
+       }
+       fn execute(&self, args: &[SqlValue]) -> Result<SqlValue, String> {
+           match &args[0] {
+               SqlValue::Text(s) => Ok(SqlValue::Text(s.to_uppercase())),
+               _ => Err("Expected text argument".to_string()),
+           }
+       }
+   }
+   
+   struct MyExtension;
+   
+   impl Extension for MyExtension {
+       fn name(&self) -> &'static str { "my_extension" }
+       fn version(&self) -> &'static str { "1.0.0" }
+       fn scalar_functions(&self) -> Vec<Box<dyn ScalarFunction>> {
+           vec![Box::new(MyFunction)]
+       }
+   }
+   
+   #[no_mangle]
+   pub extern "C" fn create_extension() -> *mut ExtensionWrapper {
+       Box::into_raw(Box::new(ExtensionWrapper {
+           extension: Box::new(MyExtension),
+       }))
+   }
+   ```
+
+4. **Build and install:**
+   ```bash
+   cargo build --release
+   cp target/release/libmy_extension.so ~/.tegdb/extensions/
+   # Or place in ./extensions/ relative to your database
+   ```
+
+5. **Use in SQL:**
+   ```sql
+   CREATE EXTENSION my_extension;
+   SELECT MY_FUNCTION('hello');
+   ```
+
+For complete examples, see `examples/extension_demo.rs` and `examples/extension_template.rs`.
 
 ## Performance Characteristics
 

@@ -67,9 +67,9 @@ pub use error::{Error, Result};
 
 // Export extension system types
 pub use extension::{
-    AggregateFunction, AggregateState, ArgType, Extension, ExtensionError, ExtensionRegistry,
-    ExtensionResult, FunctionSignature, MathFunctionsExtension, ScalarFunction,
-    StringFunctionsExtension,
+    AggregateFunction, AggregateState, ArgType, Extension, ExtensionError, ExtensionFactory,
+    ExtensionRegistry, ExtensionResult, ExtensionWrapper, FunctionSignature,
+    MathFunctionsExtension, ScalarFunction, StringFunctionsExtension,
 };
 
 // Export schema-related types that are needed for public API (get_table_schemas_ref)

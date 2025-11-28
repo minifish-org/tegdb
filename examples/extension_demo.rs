@@ -284,6 +284,33 @@ fn main() -> Result<()> {
         db.has_function("DOUBLE")
     );
 
+    println!();
+
+    // ========================================================================
+    // 8. Using Extensions via SQL (PostgreSQL-style)
+    // ========================================================================
+    println!("8. Using extensions via SQL commands:\n");
+
+    // Note: tegdb_string and tegdb_math are already registered via Rust API above
+    // In a real scenario, you would use SQL to create them initially
+    // For demo purposes, we'll show that SQL commands work too
+    println!("   Note: tegdb_string and tegdb_math are already loaded");
+    println!("   You can also use SQL to create extensions:");
+    println!("     CREATE EXTENSION tegdb_string;");
+    println!("     CREATE EXTENSION tegdb_math;");
+    println!("     CREATE EXTENSION my_extension WITH PATH '/path/to/lib.so';");
+    println!();
+
+    // Use extension functions in SQL (they work regardless of how they were loaded)
+    let result = db.query("SELECT UPPER('hello'), SQRT(144)")?;
+    println!("   SELECT UPPER('hello'), SQRT(144):");
+    for row in result.rows() {
+        println!("     {:?}", row);
+    }
+
+    // Extensions persist - they'll be loaded automatically on next database open
+    println!("\n   Note: Extensions created via SQL are persisted and auto-load on restart");
+
     println!("\n=== Demo Complete ===");
 
     // Cleanup

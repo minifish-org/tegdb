@@ -19,6 +19,10 @@ pub const SCHEMA_KEY_END: &str = "S~";
 pub const INDEX_KEY_PREFIX: &str = "I:";
 /// Storage key end marker for index entries (comes after ':' in lexicographic order)
 pub const INDEX_KEY_END: &str = "I~";
+/// Storage key prefix for extension entries
+pub const EXTENSION_KEY_PREFIX: &str = "E:";
+/// Storage key end marker for extension entries (comes after ':' in lexicographic order)
+pub const EXTENSION_KEY_END: &str = "E~";
 /// Default table name for unknown schemas during deserialization
 pub const UNKNOWN_TABLE_NAME: &str = "unknown";
 
@@ -324,6 +328,58 @@ impl Catalog {
         }
 
         Ok(indexes)
+    }
+
+    /// Get extension storage key for an extension
+    pub fn get_extension_storage_key(extension_name: &str) -> String {
+        format!("{EXTENSION_KEY_PREFIX}{extension_name}")
+    }
+
+    /// Add an extension to the catalog (stores in memory, caller must persist to storage)
+    pub fn add_extension(&mut self, name: String, library_path: Option<String>) {
+        // This method is for in-memory tracking if needed in the future
+        // For now, extensions are stored directly in storage via the transaction
+        let _ = (name, library_path);
+    }
+
+    /// Remove an extension from the catalog (removes from memory, caller must delete from storage)
+    pub fn remove_extension(&mut self, _name: &str) {
+        // This method is for in-memory tracking if needed in the future
+        // For now, extensions are removed directly from storage via the transaction
+    }
+
+    /// List all enabled extensions from storage
+    pub fn list_enabled_extensions(
+        &self,
+        storage: &StorageEngine,
+    ) -> Result<Vec<(String, Option<String>)>> {
+        Self::load_extensions_from_storage(storage)
+    }
+
+    /// Load extensions from storage
+    pub fn load_extensions_from_storage(
+        storage: &StorageEngine,
+    ) -> Result<Vec<(String, Option<String>)>> {
+        let mut extensions = Vec::new();
+        let extension_prefix = EXTENSION_KEY_PREFIX.as_bytes().to_vec();
+        let extension_end = EXTENSION_KEY_END.as_bytes().to_vec();
+
+        let extension_entries = storage.scan(extension_prefix..extension_end)?;
+
+        for (key, value_rc) in extension_entries {
+            let key_str = String::from_utf8_lossy(&key);
+            if let Some(extension_name) = key_str.strip_prefix(EXTENSION_KEY_PREFIX) {
+                let value_str = String::from_utf8_lossy(&value_rc);
+                let library_path = if value_str == "builtin" {
+                    None
+                } else {
+                    Some(value_str.to_string())
+                };
+                extensions.push((extension_name.to_string(), library_path));
+            }
+        }
+
+        Ok(extensions)
     }
 
     /// Compute table metadata and embed it in columns

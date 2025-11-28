@@ -343,6 +343,8 @@ pub enum Statement {
     DropTable(DropTableStatement),
     CreateIndex(CreateIndexStatement),
     DropIndex(DropIndexStatement),
+    CreateExtension(CreateExtensionStatement),
+    DropExtension(DropExtensionStatement),
     Begin,
     Commit,
     Rollback,
@@ -410,6 +412,17 @@ pub enum IndexType {
 pub struct DropIndexStatement {
     pub index_name: String,
     pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreateExtensionStatement {
+    pub extension_name: String,
+    pub library_path: Option<String>, // Optional WITH PATH '...' clause
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropExtensionStatement {
+    pub extension_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1297,6 +1310,14 @@ fn parse_statement(input: &str) -> IResult<&str, Statement> {
             parse_drop_index,
         ),
         preceded(
+            peek(pair(tag_no_case("CREATE"), multispace1).and(tag_no_case("EXTENSION"))),
+            parse_create_extension,
+        ),
+        preceded(
+            peek(pair(tag_no_case("DROP"), multispace1).and(tag_no_case("EXTENSION"))),
+            parse_drop_extension,
+        ),
+        preceded(
             peek(alt((tag_no_case("BEGIN"), tag_no_case("START")))),
             parse_begin_transaction,
         ),
@@ -1651,6 +1672,63 @@ fn parse_drop_index(input: &str) -> IResult<&str, Statement> {
         Statement::DropIndex(DropIndexStatement {
             index_name: index_name.to_string(),
             if_exists: if_exists.is_some(),
+        }),
+    ))
+}
+
+// Parse CREATE EXTENSION statement
+fn parse_create_extension(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("CREATE"),
+        multispace1,
+    )
+    .parse(input)?;
+    let (input, _) = tag_no_case("EXTENSION").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, extension_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
+
+    // Parse optional WITH PATH 'path' clause
+    let (input, library_path) = opt(preceded(
+        pair(tag_no_case("WITH"), multispace1),
+        preceded(
+            tag_no_case("PATH"),
+            delimited(
+                multispace1,
+                parse_string_literal,
+                parse_whitespace_or_comment,
+            ),
+        ),
+    ))
+    .parse(input)?;
+
+    Ok((
+        input,
+        Statement::CreateExtension(CreateExtensionStatement {
+            extension_name: extension_name.to_string(),
+            library_path: library_path.map(|s| s.to_string()),
+        }),
+    ))
+}
+
+// Parse DROP EXTENSION statement
+fn parse_drop_extension(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = delimited(
+        parse_whitespace_or_comment,
+        tag_no_case("DROP"),
+        multispace1,
+    )
+    .parse(input)?;
+    let (input, _) = tag_no_case("EXTENSION").parse(input)?;
+    let (input, _) = multispace1.parse(input)?;
+    let (input, extension_name) = parse_identifier_optimized.parse(input)?;
+    let (input, _) = parse_whitespace_or_comment.parse(input)?;
+
+    Ok((
+        input,
+        Statement::DropExtension(DropExtensionStatement {
+            extension_name: extension_name.to_string(),
         }),
     ))
 }

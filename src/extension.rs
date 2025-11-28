@@ -48,8 +48,11 @@
 //! ```
 
 use crate::parser::{DataType, SqlValue};
+use crate::Error;
+use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 /// Error type for extension operations
 #[derive(Debug, Clone)]
@@ -118,7 +121,7 @@ impl fmt::Display for ExtensionError {
 impl std::error::Error for ExtensionError {}
 
 /// Result type for extension operations
-pub type ExtensionResult<T> = Result<T, ExtensionError>;
+pub type ExtensionResult<T> = std::result::Result<T, ExtensionError>;
 
 // ============================================================================
 // Function Signatures
@@ -560,6 +563,233 @@ impl ExtensionRegistry {
     pub fn has_function(&self, name: &str) -> bool {
         let upper = name.to_uppercase();
         self.scalar_functions.contains_key(&upper) || self.aggregate_functions.contains_key(&upper)
+    }
+
+    /// Check if an extension is registered by name
+    pub fn has_extension(&self, name: &str) -> bool {
+        self.extensions.contains_key(name)
+    }
+}
+
+// ============================================================================
+// Extension Factory for Dynamic Library Loading
+// ============================================================================
+
+/// Factory for creating extensions from dynamic libraries or built-in extensions
+pub struct ExtensionFactory {
+    search_paths: Vec<PathBuf>,
+}
+
+/// Wrapper to hold extension in a C-compatible way
+/// This is needed because trait objects cannot be passed across FFI boundaries
+/// Extension developers should use this when implementing the create_extension entry point
+pub struct ExtensionWrapper {
+    pub extension: Box<dyn Extension>,
+}
+
+/// Type alias for the extension creation function exported from dynamic libraries
+/// Returns a pointer to an ExtensionWrapper
+type CreateExtensionFn = unsafe extern "C" fn() -> *mut ExtensionWrapper;
+
+impl ExtensionFactory {
+    /// Create a new extension factory with search paths
+    pub fn new(search_paths: Vec<PathBuf>) -> Self {
+        Self { search_paths }
+    }
+
+    /// Get default search paths
+    pub fn default_search_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        // Current directory extensions
+        paths.push(PathBuf::from("./extensions"));
+
+        // User home directory
+        if let Some(home) = std::env::var_os("HOME") {
+            let mut home_path = PathBuf::from(home);
+            home_path.push(".tegdb");
+            home_path.push("extensions");
+            paths.push(home_path);
+        }
+
+        // Platform-specific system paths
+        #[cfg(target_os = "linux")]
+        {
+            paths.push(PathBuf::from("/usr/local/lib/tegdb/extensions"));
+            paths.push(PathBuf::from("/usr/lib/tegdb/extensions"));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            paths.push(PathBuf::from("/usr/local/lib/tegdb/extensions"));
+            paths.push(PathBuf::from("/opt/homebrew/lib/tegdb/extensions"));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(program_files) = std::env::var_os("ProgramFiles") {
+                let mut pf_path = PathBuf::from(program_files);
+                pf_path.push("TegDB");
+                pf_path.push("extensions");
+                paths.push(pf_path);
+            }
+        }
+
+        paths
+    }
+
+    /// Load extension from a dynamic library file
+    pub fn load_from_path(&self, path: &Path) -> std::result::Result<Box<dyn Extension>, Error> {
+        unsafe {
+            let library = Library::new(path).map_err(|e| {
+                Error::Other(format!(
+                    "Failed to load extension library '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+
+            // Get the create_extension symbol
+            let create_fn: Symbol<CreateExtensionFn> =
+                library.get(b"create_extension").map_err(|e| {
+                    Error::Other(format!(
+                        "Failed to resolve extension entry point 'create_extension' in '{}': {}",
+                        path.display(),
+                        e
+                    ))
+                })?;
+
+            // Call the function to create the extension
+            let wrapper_ptr = create_fn();
+            if wrapper_ptr.is_null() {
+                return Err(Error::Other(format!(
+                    "Extension creation function returned null pointer in '{}'",
+                    path.display()
+                )));
+            }
+
+            // Convert raw pointer to Box<ExtensionWrapper> and extract the extension
+            // SAFETY: The extension library must return a valid pointer to an ExtensionWrapper
+            // that was created with Box::into_raw. This is part of the extension API contract.
+            let wrapper = Box::from_raw(wrapper_ptr);
+            let extension = wrapper.extension;
+
+            // Note: We intentionally leak the library here because:
+            // 1. The extension may hold references to code in the library
+            // 2. We can't unload the library while the extension is in use
+            // 3. The library will be unloaded when the process exits
+            std::mem::forget(library);
+
+            Ok(extension)
+        }
+    }
+
+    /// Load extension by name, searching in configured paths
+    pub fn load_from_name(&self, name: &str) -> std::result::Result<Box<dyn Extension>, Error> {
+        // Try built-in extensions first
+        if let Some(ext) = self.create_builtin_extension(name) {
+            return Ok(ext);
+        }
+
+        // Search for dynamic library
+        let library_names = Self::get_library_names(name);
+
+        for search_path in &self.search_paths {
+            for lib_name in &library_names {
+                let full_path = search_path.join(lib_name);
+                if full_path.exists() {
+                    return self.load_from_path(&full_path);
+                }
+            }
+        }
+
+        Err(Error::Other(format!(
+            "Extension '{}' not found in search paths: {:?}",
+            name, self.search_paths
+        )))
+    }
+
+    /// Create a built-in extension by name
+    pub fn create_builtin_extension(&self, name: &str) -> Option<Box<dyn Extension>> {
+        match name {
+            "tegdb_string" => Some(Box::new(StringFunctionsExtension)),
+            "tegdb_math" => Some(Box::new(MathFunctionsExtension)),
+            _ => None,
+        }
+    }
+
+    /// List all available extensions (built-in + found in search paths)
+    pub fn list_available(&self) -> Vec<String> {
+        let mut extensions = Vec::new();
+
+        // Add built-in extensions
+        extensions.push("tegdb_string".to_string());
+        extensions.push("tegdb_math".to_string());
+
+        // Scan search paths for dynamic libraries
+        for search_path in &self.search_paths {
+            if let Ok(entries) = std::fs::read_dir(search_path) {
+                for entry in entries.flatten() {
+                    if let Some(file_name) = entry.file_name().to_str() {
+                        // Check if it's a library file
+                        if Self::is_library_file(file_name) {
+                            // Extract extension name from library filename
+                            if let Some(ext_name) = Self::extract_extension_name(file_name) {
+                                if !extensions.contains(&ext_name) {
+                                    extensions.push(ext_name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        extensions
+    }
+
+    /// Get platform-specific library names for an extension
+    fn get_library_names(name: &str) -> Vec<String> {
+        #[cfg(target_os = "linux")]
+        {
+            vec![format!("lib{}.so", name)]
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            vec![format!("lib{}.dylib", name)]
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            vec![format!("{}.dll", name)]
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+        {
+            vec![
+                format!("lib{}.so", name),
+                format!("lib{}.dylib", name),
+                format!("{}.dll", name),
+            ]
+        }
+    }
+
+    /// Check if a filename is a library file
+    fn is_library_file(filename: &str) -> bool {
+        filename.ends_with(".so") || filename.ends_with(".dylib") || filename.ends_with(".dll")
+    }
+
+    /// Extract extension name from library filename
+    fn extract_extension_name(filename: &str) -> Option<String> {
+        if let Some(stripped) = filename.strip_prefix("lib") {
+            stripped
+                .strip_suffix(".so")
+                .or_else(|| stripped.strip_suffix(".dylib"))
+                .map(|name| name.to_string())
+        } else {
+            filename.strip_suffix(".dll").map(|name| name.to_string())
+        }
     }
 }
 

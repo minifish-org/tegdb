@@ -83,6 +83,13 @@ pub enum ExecutionPlan {
         index_name: String,
         if_exists: bool,
     },
+    CreateExtension {
+        extension_name: String,
+        library_path: Option<String>,
+    },
+    DropExtension {
+        extension_name: String,
+    },
     /// Transaction control
     Begin,
     Commit,
@@ -229,6 +236,8 @@ impl QueryPlanner {
             Statement::DropTable(drop) => self.plan_drop_table(drop),
             Statement::CreateIndex(create) => self.plan_create_index(create),
             Statement::DropIndex(drop) => self.plan_drop_index(drop),
+            Statement::CreateExtension(create) => self.plan_create_extension(create),
+            Statement::DropExtension(drop) => self.plan_drop_extension(drop),
             Statement::Begin => Ok(ExecutionPlan::Begin),
             Statement::Commit => Ok(ExecutionPlan::Commit),
             Statement::Rollback => Ok(ExecutionPlan::Rollback),
@@ -637,6 +646,27 @@ impl QueryPlanner {
         Ok(ExecutionPlan::DropIndex {
             index_name,
             if_exists,
+        })
+    }
+
+    /// Plan CREATE EXTENSION statement
+    fn plan_create_extension(
+        &self,
+        create: crate::parser::CreateExtensionStatement,
+    ) -> Result<ExecutionPlan> {
+        Ok(ExecutionPlan::CreateExtension {
+            extension_name: create.extension_name,
+            library_path: create.library_path,
+        })
+    }
+
+    /// Plan DROP EXTENSION statement
+    fn plan_drop_extension(
+        &self,
+        drop: crate::parser::DropExtensionStatement,
+    ) -> Result<ExecutionPlan> {
+        Ok(ExecutionPlan::DropExtension {
+            extension_name: drop.extension_name,
         })
     }
 
@@ -1170,6 +1200,7 @@ impl ExecutionPlan {
             ExecutionPlan::CreateTable { table, .. } => Some(table),
             ExecutionPlan::DropTable { table, .. } => Some(table),
             ExecutionPlan::CreateIndex { table_name, .. } => Some(table_name),
+            ExecutionPlan::CreateExtension { .. } | ExecutionPlan::DropExtension { .. } => None,
             ExecutionPlan::IndexScan { table, .. } => Some(table),
             ExecutionPlan::VectorSearch { table, .. } => Some(table),
             ExecutionPlan::Sort { input_plan, .. } => input_plan.primary_table(),
@@ -1274,6 +1305,12 @@ impl ExecutionPlan {
             ExecutionPlan::Begin => "Begin Transaction".to_string(),
             ExecutionPlan::Commit => "Commit Transaction".to_string(),
             ExecutionPlan::Rollback => "Rollback Transaction".to_string(),
+            ExecutionPlan::CreateExtension { extension_name, .. } => {
+                format!("Create Extension: {extension_name}")
+            }
+            ExecutionPlan::DropExtension { extension_name } => {
+                format!("Drop Extension: {extension_name}")
+            }
             ExecutionPlan::IndexScan {
                 table,
                 index,

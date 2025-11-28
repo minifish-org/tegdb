@@ -754,6 +754,10 @@ pub enum ResultSet<'a> {
     CreateIndex,
     /// DROP INDEX result
     DropIndex,
+    /// CREATE EXTENSION result
+    CreateExtension,
+    /// DROP EXTENSION result
+    DropExtension,
 }
 
 impl<'a> ResultSet<'a> {
@@ -1362,10 +1366,86 @@ impl<'a> QueryProcessor<'a> {
                 };
                 self.execute_drop_index(drop_stmt)
             }
+            ExecutionPlan::CreateExtension { .. } | ExecutionPlan::DropExtension { .. } => {
+                // Extension DDL must be handled by Database with access to ExtensionRegistry and Catalog
+                Err(Error::Other(
+                    "Extension DDL operations must be handled by Database layer".to_string(),
+                ))
+            }
             ExecutionPlan::Begin => self.begin_transaction(),
             ExecutionPlan::Commit => self.commit_transaction(),
             ExecutionPlan::Rollback => self.rollback_transaction(),
         }
+    }
+
+    /// Execute CREATE EXTENSION plan
+    /// This method is called from Database which has access to ExtensionRegistry and Catalog
+    pub fn execute_create_extension_plan(
+        &mut self,
+        name: &str,
+        library_path: Option<&str>,
+        extensions: &mut crate::extension::ExtensionRegistry,
+        catalog: &mut crate::catalog::Catalog,
+        extension_factory: &crate::extension::ExtensionFactory,
+    ) -> Result<ResultSet<'_>> {
+        // Check if extension already exists
+        if extensions.has_extension(name) {
+            return Err(Error::Other(format!("Extension '{}' already exists", name)));
+        }
+
+        // Load extension
+        let extension = if let Some(path) = library_path {
+            extension_factory.load_from_path(std::path::Path::new(path))?
+        } else {
+            extension_factory
+                .load_from_name(name)
+                .map_err(|e| Error::Other(e.to_string()))?
+        };
+
+        // Register extension
+        extensions
+            .register(extension)
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        // Store in catalog via transaction
+        let ext_key = crate::catalog::Catalog::get_extension_storage_key(name);
+        let value = library_path
+            .map(|p| p.as_bytes().to_vec())
+            .unwrap_or_else(|| b"builtin".to_vec());
+        self.transaction.set(ext_key.as_bytes(), value)?;
+
+        // Also update catalog in-memory tracking (for future use)
+        catalog.add_extension(name.to_string(), library_path.map(|s| s.to_string()));
+
+        Ok(ResultSet::CreateExtension)
+    }
+
+    /// Execute DROP EXTENSION plan
+    /// This method is called from Database which has access to ExtensionRegistry and Catalog
+    pub fn execute_drop_extension_plan(
+        &mut self,
+        name: &str,
+        extensions: &mut crate::extension::ExtensionRegistry,
+        catalog: &mut crate::catalog::Catalog,
+    ) -> Result<ResultSet<'_>> {
+        // Check if extension exists
+        if !extensions.has_extension(name) {
+            return Err(Error::Other(format!("Extension '{}' does not exist", name)));
+        }
+
+        // Unregister extension
+        extensions
+            .unregister(name)
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        // Remove from catalog via transaction
+        let ext_key = crate::catalog::Catalog::get_extension_storage_key(name);
+        self.transaction.delete(ext_key.as_bytes())?;
+
+        // Also update catalog in-memory tracking (for future use)
+        catalog.remove_extension(name);
+
+        Ok(ResultSet::DropExtension)
     }
 
     /// Check if the selected columns contain aggregate functions

@@ -37,6 +37,9 @@ anyhow = { version = "1.0" }
 chrono = { version = "0.4", features = ["serde"] }
 futures = { version = "0.3" }
 
+# Extension system dependencies
+libloading = "0.8"
+
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
 sled = "0.34.7"

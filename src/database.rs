@@ -223,10 +223,45 @@ impl Database {
 
         let catalog = Catalog::load_from_storage(&storage)?;
 
+        // Load persisted extensions
+        let mut extensions = crate::extension::ExtensionRegistry::new();
+        let search_paths = crate::extension::ExtensionFactory::default_search_paths();
+        let extension_factory = crate::extension::ExtensionFactory::new(search_paths);
+        let enabled_extensions = Catalog::load_extensions_from_storage(&storage)?;
+
+        for (ext_name, library_path) in enabled_extensions {
+            let extension = if let Some(path) = library_path {
+                extension_factory
+                    .load_from_path(std::path::Path::new(&path))
+                    .map_err(|e| {
+                        crate::Error::Other(format!(
+                            "Failed to load extension '{}' from '{}': {}",
+                            ext_name, path, e
+                        ))
+                    })?
+            } else {
+                extension_factory
+                    .create_builtin_extension(&ext_name)
+                    .ok_or_else(|| {
+                        crate::Error::Other(format!(
+                            "Extension '{}' not found (built-in or dynamic)",
+                            ext_name
+                        ))
+                    })?
+            };
+
+            extensions.register(extension).map_err(|e| {
+                crate::Error::Other(format!(
+                    "Failed to register extension '{}': {}",
+                    ext_name, e
+                ))
+            })?;
+        }
+
         Ok(Self {
             storage,
             catalog,
-            extensions: crate::extension::ExtensionRegistry::new(),
+            extensions,
         })
     }
 
@@ -271,6 +306,10 @@ impl Database {
             }
             crate::parser::Statement::DropIndex(drop_index) => {
                 let _ = catalog.remove_index(&drop_index.index_name);
+            }
+            crate::parser::Statement::CreateExtension(_)
+            | crate::parser::Statement::DropExtension(_) => {
+                // Extension DDL is handled in _execute_plan, no additional catalog update needed
             }
             _ => {} // No schema changes for other statements
         }
@@ -344,6 +383,8 @@ impl Database {
             | crate::query_processor::ResultSet::DropTable
             | crate::query_processor::ResultSet::CreateIndex
             | crate::query_processor::ResultSet::DropIndex
+            | crate::query_processor::ResultSet::CreateExtension
+            | crate::query_processor::ResultSet::DropExtension
             | crate::query_processor::ResultSet::Begin
             | crate::query_processor::ResultSet::Commit
             | crate::query_processor::ResultSet::Rollback => Ok(0),
@@ -360,25 +401,74 @@ impl Database {
         plan: crate::planner::ExecutionPlan,
         statement: &Statement,
     ) -> Result<usize> {
-        let transaction = self.storage.begin_transaction();
-        let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
-        let mut processor =
-            QueryProcessor::new_with_extensions(transaction, schemas, &self.extensions);
+        // Handle extension DDL operations specially (they need access to ExtensionRegistry and ExtensionFactory)
+        use crate::planner::ExecutionPlan;
+        match &plan {
+            ExecutionPlan::CreateExtension {
+                extension_name,
+                library_path,
+            } => {
+                let transaction = self.storage.begin_transaction();
+                let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
 
-        // 执行计划
-        let result = processor.execute_plan(plan)?;
-        let final_result = Self::extract_rows_affected(&result)?;
+                // Get extension factory with default search paths
+                let search_paths = crate::extension::ExtensionFactory::default_search_paths();
+                let extension_factory = crate::extension::ExtensionFactory::new(search_paths);
 
-        // 释放对 result 的借用
-        drop(result);
+                // Create processor without extensions reference to avoid borrow conflict
+                let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
 
-        // 如果是 DDL 操作，更新 catalog
-        Self::update_schema_catalog_for_ddl(&mut self.catalog, statement);
+                let result = processor.execute_create_extension_plan(
+                    extension_name,
+                    library_path.as_deref(),
+                    &mut self.extensions,
+                    &mut self.catalog,
+                    &extension_factory,
+                )?;
+                let final_result = Self::extract_rows_affected(&result)?;
+                drop(result);
+                processor.transaction_mut().commit()?;
+                Ok(final_result)
+            }
+            ExecutionPlan::DropExtension { extension_name } => {
+                let transaction = self.storage.begin_transaction();
+                let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
 
-        // 提交事务
-        processor.transaction_mut().commit()?;
+                // Create processor without extensions reference to avoid borrow conflict
+                let mut processor = QueryProcessor::new_with_rc_schemas(transaction, schemas);
 
-        Ok(final_result)
+                let result = processor.execute_drop_extension_plan(
+                    extension_name,
+                    &mut self.extensions,
+                    &mut self.catalog,
+                )?;
+                let final_result = Self::extract_rows_affected(&result)?;
+                drop(result);
+                processor.transaction_mut().commit()?;
+                Ok(final_result)
+            }
+            _ => {
+                let transaction = self.storage.begin_transaction();
+                let schemas = Self::get_schemas_rc(self.catalog.get_all_schemas());
+                let mut processor =
+                    QueryProcessor::new_with_extensions(transaction, schemas, &self.extensions);
+
+                // 执行计划
+                let result = processor.execute_plan(plan)?;
+                let final_result = Self::extract_rows_affected(&result)?;
+
+                // 释放对 result 的借用
+                drop(result);
+
+                // 如果是 DDL 操作，更新 catalog
+                Self::update_schema_catalog_for_ddl(&mut self.catalog, statement);
+
+                // 提交事务
+                processor.transaction_mut().commit()?;
+
+                Ok(final_result)
+            }
+        }
     }
 
     /// 核心查询函数：接收一个执行计划，处理事务、执行并返回最终结果。
@@ -864,6 +954,8 @@ impl Database {
             Statement::DropTable(s) => Ok(Statement::DropTable(s.clone())),
             Statement::CreateIndex(s) => Ok(Statement::CreateIndex(s.clone())),
             Statement::DropIndex(s) => Ok(Statement::DropIndex(s.clone())),
+            Statement::CreateExtension(s) => Ok(Statement::CreateExtension(s.clone())),
+            Statement::DropExtension(s) => Ok(Statement::DropExtension(s.clone())),
             Statement::Begin => Ok(Statement::Begin),
             Statement::Commit => Ok(Statement::Commit),
             Statement::Rollback => Ok(Statement::Rollback),
