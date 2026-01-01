@@ -1,11 +1,13 @@
 // filepath: /home/runner/work/tegdb/tegdb/src/storage.rs
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use crate::error::{Error, Result};
-use crate::log::{KeyMap, Log, LogConfig, TX_COMMIT_MARKER};
-
-use std::rc::Rc;
+use crate::log::{KeyMap, Log, LogConfig, ValuePointer, TX_COMMIT_MARKER};
 
 pub const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
 pub const DEFAULT_PREALLOCATE_SIZE_MB: u64 = 10;
@@ -21,6 +23,10 @@ pub const DEFAULT_COMPACTION_THRESHOLD_RATIO_STR: &str = "0.5";
 pub const DEFAULT_COMPACTION_RATIO: f64 = 2.0;
 /// Stringified default compaction ratio
 pub const DEFAULT_COMPACTION_RATIO_STR: &str = "2.0";
+/// Default inline threshold for keeping hot small values resident (bytes)
+pub const DEFAULT_INLINE_VALUE_THRESHOLD: usize = 64;
+/// Default cache size in bytes for value/page cache
+pub const DEFAULT_CACHE_SIZE_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -42,6 +48,12 @@ pub struct EngineConfig {
     pub compaction_threshold_ratio: f64,
     /// Ratio of log size to active data size to trigger compaction (default: 2.0)
     pub compaction_ratio: f64,
+    /// Durability configuration (fsync strategy)
+    pub durability: DurabilityConfig,
+    /// Values up to this size are kept inline in memory for faster reads
+    pub inline_value_threshold: usize,
+    /// Maximum bytes used by the value cache
+    pub cache_size_bytes: u64,
 }
 
 impl Default for EngineConfig {
@@ -54,17 +66,123 @@ impl Default for EngineConfig {
             preallocate_size: Some(DEFAULT_PREALLOCATE_SIZE_BYTES),
             compaction_threshold_ratio: DEFAULT_COMPACTION_THRESHOLD_RATIO,
             compaction_ratio: DEFAULT_COMPACTION_RATIO,
+            durability: DurabilityConfig::default(),
+            inline_value_threshold: DEFAULT_INLINE_VALUE_THRESHOLD,
+            cache_size_bytes: DEFAULT_CACHE_SIZE_BYTES,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DurabilityLevel {
+    Immediate,
+    GroupCommit,
+}
+
+#[derive(Debug, Clone)]
+pub struct DurabilityConfig {
+    pub level: DurabilityLevel,
+    pub group_commit_interval: Duration,
+}
+
+impl Default for DurabilityConfig {
+    fn default() -> Self {
+        Self {
+            level: DurabilityLevel::Immediate,
+            group_commit_interval: Duration::from_millis(0),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct StorageMetrics {
+    pub bytes_written: u64,
+    pub bytes_read: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub fsync_count: u64,
+}
+
+struct CacheEntry {
+    value: Rc<[u8]>,
+    len: usize,
+}
+
+/// Simple byte-bounded LRU-ish cache for values
+struct ValueCache {
+    cap_bytes: u64,
+    used_bytes: u64,
+    map: HashMap<u64, CacheEntry>,
+    order: VecDeque<u64>,
+}
+
+impl ValueCache {
+    fn new(cap_bytes: u64) -> Self {
+        Self {
+            cap_bytes,
+            used_bytes: 0,
+            map: HashMap::new(),
+            order: VecDeque::new(),
+        }
+    }
+
+    fn get(&mut self, offset: u64) -> Option<Rc<[u8]>> {
+        if let Some(value) = self.map.get(&offset).map(|entry| entry.value.clone()) {
+            self.touch(offset);
+            return Some(value);
+        }
+        None
+    }
+
+    fn insert(&mut self, offset: u64, len: usize, value: Rc<[u8]>) {
+        if len as u64 > self.cap_bytes {
+            return; // too large to cache
+        }
+
+        if let Some(existing) = self.map.remove(&offset) {
+            self.used_bytes = self.used_bytes.saturating_sub(existing.len as u64);
+        }
+
+        self.order.push_back(offset);
+        self.map.insert(
+            offset,
+            CacheEntry {
+                value: value.clone(),
+                len,
+            },
+        );
+        self.used_bytes = self.used_bytes.saturating_add(len as u64);
+        self.evict();
+    }
+
+    fn touch(&mut self, offset: u64) {
+        self.order.push_back(offset);
+    }
+
+    fn evict(&mut self) {
+        while self.used_bytes > self.cap_bytes {
+            if let Some(oldest) = self.order.pop_front() {
+                if let Some(entry) = self.map.remove(&oldest) {
+                    self.used_bytes = self.used_bytes.saturating_sub(entry.len as u64);
+                }
+            } else {
+                break;
+            }
         }
     }
 }
 
 /// The main database storage engine
 pub struct StorageEngine {
-    log: Log,
+    log: RefCell<Log>,
     key_map: KeyMap,
     config: EngineConfig,
     identifier: String, // Store the database identifier
     active_data_size: u64,
+    cache: RefCell<ValueCache>,
+    last_sync: Instant,
+    pending_sync: bool,
+    metrics: RefCell<StorageMetrics>,
 }
 
 // Type alias for scan result (returns keys and shared buffer Rcs for values)
@@ -91,6 +209,8 @@ impl StorageEngine {
             max_value_size: config.max_value_size,
             initial_capacity: config.initial_capacity,
             preallocate_size: config.preallocate_size,
+            inline_value_threshold: config.inline_value_threshold,
+            group_commit_interval: config.durability.group_commit_interval,
         };
         let mut log = Log::new(identifier.clone(), &log_config)?;
         let (key_map, active_data_size) = log.build_key_map(&log_config)?;
@@ -101,12 +221,17 @@ impl StorageEngine {
             }
         }
 
+        let cache_size_bytes = config.cache_size_bytes;
         let engine = Self {
-            log,
+            log: RefCell::new(log),
             key_map,
             config,
             identifier,
             active_data_size,
+            cache: RefCell::new(ValueCache::new(cache_size_bytes)),
+            last_sync: Instant::now(),
+            pending_sync: false,
+            metrics: RefCell::new(StorageMetrics::default()),
         };
 
         Ok(engine)
@@ -124,7 +249,8 @@ impl StorageEngine {
 
     /// Retrieves a value by key (zero-copy refcounted Rc)
     pub fn get(&self, key: &[u8]) -> Option<Rc<[u8]>> {
-        self.key_map.get(key).cloned()
+        let pointer = self.key_map.get(key)?;
+        self.load_value(pointer).ok()
     }
 
     /// Sets a key-value pair
@@ -152,23 +278,37 @@ impl StorageEngine {
 
         // Skip writing if the value hasn't changed
         if let Some(existing) = self.key_map.get(key) {
-            if existing.as_ref() == value.as_slice() {
-                return Ok(());
+            if let Ok(existing_val) = self.load_value(existing) {
+                if existing_val.as_ref() == value.as_slice() {
+                    return Ok(());
+                }
             }
         }
 
-        // write to log, then store shared buffer
-        // write to log, then store shared buffer
-        self.log.write_entry(key, &value)?;
+        let write_outcome = self.log.borrow_mut().write_entry(key, &value)?;
+        let inline_value = if value.len() <= self.config.inline_value_threshold {
+            Some(Rc::from(value.clone().into_boxed_slice()))
+        } else {
+            None
+        };
+        let pointer = ValuePointer {
+            value_offset: write_outcome.value_offset,
+            value_len: write_outcome.value_len,
+            inline_value,
+        };
 
-        let value_len = value.len() as u64;
-        // store as shared buffer for cheap cloning on get
-        let shared = Rc::from(value.into_boxed_slice());
+        // store cached inline value if available
+        if let Some(ref inline) = pointer.inline_value {
+            self.cache.borrow_mut().insert(
+                pointer.value_offset,
+                pointer.value_len as usize,
+                inline.clone(),
+            );
+        }
 
         // Update active data size
-        if let Some(old_val) = self.key_map.insert(key.to_vec(), shared) {
-            // Subtract old value size
-            self.active_data_size -= old_val.len() as u64;
+        if let Some(old_val) = self.key_map.insert(key.to_vec(), pointer) {
+            self.active_data_size = self.active_data_size.saturating_sub(old_val.len() as u64);
             // Key size doesn't change
         } else {
             // New key: add key size + overhead
@@ -176,7 +316,14 @@ impl StorageEngine {
             self.active_data_size += (crate::log::LENGTH_FIELD_BYTES * 2) as u64;
         }
         // Add new value size
-        self.active_data_size += value_len;
+        self.active_data_size += write_outcome.value_len as u64;
+
+        // Metrics
+        let mut metrics = self.metrics.borrow_mut();
+        metrics.bytes_written = metrics
+            .bytes_written
+            .saturating_add(write_outcome.entry_len as u64);
+        drop(metrics);
 
         // Check for compaction
         self.check_compaction_trigger()?;
@@ -190,17 +337,25 @@ impl StorageEngine {
             return Ok(());
         }
 
-        self.log.write_entry(key, &[])?;
+        let write_outcome = self.log.borrow_mut().write_entry(key, &[])?;
 
         // Update active data size
         if let Some(old_val) = self.key_map.remove(key) {
             // Subtract old value size
-            self.active_data_size -= old_val.len() as u64;
+            self.active_data_size = self.active_data_size.saturating_sub(old_val.len() as u64);
             // Subtract key size
-            self.active_data_size -= key.len() as u64;
+            self.active_data_size = self.active_data_size.saturating_sub(key.len() as u64);
             // Subtract overhead
-            self.active_data_size -= (crate::log::LENGTH_FIELD_BYTES * 2) as u64;
+            self.active_data_size = self
+                .active_data_size
+                .saturating_sub((crate::log::LENGTH_FIELD_BYTES * 2) as u64);
         }
+
+        let mut metrics = self.metrics.borrow_mut();
+        metrics.bytes_written = metrics
+            .bytes_written
+            .saturating_add(write_outcome.entry_len as u64);
+        drop(metrics);
 
         // Check for compaction
         self.check_compaction_trigger()?;
@@ -210,17 +365,23 @@ impl StorageEngine {
 
     /// Scans a range of key-value pairs
     pub fn scan(&self, range: Range<Vec<u8>>) -> Result<ScanResult<'_>> {
-        let iter = self
-            .key_map
-            .range(range)
-            // Minimize cloning - only clone key Vec (small) and increment Rc refcount (cheap)
-            .map(|(key, value)| (key.clone(), Rc::clone(value)));
-        Ok(Box::new(iter))
+        let mut items = Vec::new();
+        for (key, pointer) in self.key_map.range(range) {
+            let value = self.load_value(pointer)?;
+            items.push((key.clone(), value));
+        }
+        Ok(Box::new(items.into_iter()))
     }
 
     /// Explicitly flushes data to disk
     pub fn flush(&mut self) -> Result<()> {
-        self.log.sync_all()
+        let res = self.log.borrow_mut().sync_all();
+        if res.is_ok() {
+            self.pending_sync = false;
+            self.last_sync = Instant::now();
+            self.metrics.borrow_mut().fsync_count += 1;
+        }
+        res
     }
 
     /// Manually triggers compaction to reclaim space
@@ -238,9 +399,10 @@ impl StorageEngine {
         // But let's be precise and use the new log's size
         let new_size = new_log.current_size()?;
 
-        self.log = new_log;
+        self.log = RefCell::new(new_log);
         self.key_map = new_key_map;
         self.active_data_size = new_size;
+        self.cache = RefCell::new(ValueCache::new(self.config.cache_size_bytes));
 
         Ok(())
     }
@@ -251,7 +413,7 @@ impl StorageEngine {
             return Ok(());
         }
 
-        let log_size = self.log.current_size()?;
+        let log_size = self.log.borrow().current_size()?;
         let threshold_bytes = self.effective_compaction_threshold_bytes();
 
         // Check thresholds
@@ -291,6 +453,67 @@ impl StorageEngine {
         DEFAULT_COMPACTION_THRESHOLD_BYTES
     }
 
+    fn load_value(&self, pointer: &ValuePointer) -> Result<Rc<[u8]>> {
+        if let Some(inline) = &pointer.inline_value {
+            return Ok(inline.clone());
+        }
+
+        if pointer.value_len == 0 {
+            return Ok(Rc::from(Vec::<u8>::new().into_boxed_slice()));
+        }
+
+        {
+            let mut cache = self.cache.borrow_mut();
+            if let Some(value) = cache.get(pointer.value_offset) {
+                self.metrics.borrow_mut().cache_hits += 1;
+                return Ok(value);
+            }
+            self.metrics.borrow_mut().cache_misses += 1;
+        }
+
+        let data = self
+            .log
+            .borrow_mut()
+            .read_value(pointer.value_offset, pointer.value_len)?;
+        let rc: Rc<[u8]> = Rc::from(data.into_boxed_slice());
+        {
+            let mut cache = self.cache.borrow_mut();
+            cache.insert(pointer.value_offset, pointer.value_len as usize, rc.clone());
+        }
+        let mut metrics = self.metrics.borrow_mut();
+        metrics.bytes_read = metrics.bytes_read.saturating_add(pointer.value_len as u64);
+
+        Ok(rc)
+    }
+
+    fn sync_on_commit(&mut self) -> Result<()> {
+        match self.config.durability.level {
+            DurabilityLevel::Immediate => {
+                self.log.borrow_mut().sync_all()?;
+                self.metrics.borrow_mut().fsync_count += 1;
+                self.pending_sync = false;
+                self.last_sync = Instant::now();
+            }
+            DurabilityLevel::GroupCommit => {
+                let interval = self.config.durability.group_commit_interval;
+                self.pending_sync = true;
+                if interval.is_zero() || self.last_sync.elapsed() >= interval {
+                    self.log.borrow_mut().sync_all()?;
+                    self.metrics.borrow_mut().fsync_count += 1;
+                    self.pending_sync = false;
+                    self.last_sync = Instant::now();
+                } else {
+                    self.pending_sync = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn metrics(&self) -> StorageMetrics {
+        self.metrics.borrow().clone()
+    }
+
     /// Get the current log identifier
     fn current_identifier(&self) -> String {
         self.identifier.clone()
@@ -314,14 +537,29 @@ impl StorageEngine {
             max_value_size: self.config.max_value_size,
             initial_capacity: self.config.initial_capacity,
             preallocate_size: self.config.preallocate_size,
+            inline_value_threshold: self.config.inline_value_threshold,
+            group_commit_interval: self.config.durability.group_commit_interval,
         };
         let mut new_log = Log::new(identifier, &log_config)?;
         // New logs now include a header; ensure we don't truncate it away
         // We'll rely on backend initialization to have written the header,
         // so do not reset to 0 here.
-        for (key, value) in &self.key_map {
-            new_log.write_entry(key, value.as_ref())?;
-            new_key_map.insert(key.clone(), value.clone());
+        for (key, pointer) in &self.key_map {
+            let value = self.load_value(pointer)?;
+            let outcome = new_log.write_entry(key, value.as_ref())?;
+            let inline_value = if value.len() <= self.config.inline_value_threshold {
+                Some(value)
+            } else {
+                None
+            };
+            new_key_map.insert(
+                key.clone(),
+                ValuePointer {
+                    value_offset: outcome.value_offset,
+                    value_len: outcome.value_len,
+                    inline_value,
+                },
+            );
         }
 
         Ok((new_log, new_key_map))
@@ -382,7 +620,7 @@ pub struct Transaction<'a> {
 impl Transaction<'_> {
     /// Records the current state for potential rollback and returns the old value
     fn record_undo(&mut self, key: &[u8]) -> Option<Rc<[u8]>> {
-        let old_value = self.engine.key_map.get(key).cloned();
+        let old_value = self.engine.get(key);
 
         // Lazy initialization of undo_log
         if self.undo_log.is_none() {
@@ -413,8 +651,10 @@ impl Transaction<'_> {
 
         // Check if value hasn't changed - if so, no undo recording needed
         if let Some(existing) = self.engine.key_map.get(key) {
-            if existing.as_ref() == value.as_slice() {
-                return Ok(());
+            if let Ok(existing_val) = self.engine.load_value(existing) {
+                if existing_val.as_ref() == value.as_slice() {
+                    return Ok(());
+                }
             }
         }
 
@@ -487,7 +727,18 @@ impl Transaction<'_> {
 
         if has_writes {
             // Write transaction commit marker directly to log (not to keymap) and always sync on commit
-            self.engine.log.write_entry(TX_COMMIT_MARKER, &[])?;
+            let outcome = self
+                .engine
+                .log
+                .borrow_mut()
+                .write_entry(TX_COMMIT_MARKER, &[])?;
+            self.engine.sync_on_commit()?;
+            {
+                let mut metrics = self.engine.metrics.borrow_mut();
+                metrics.bytes_written = metrics
+                    .bytes_written
+                    .saturating_add(outcome.entry_len as u64);
+            }
 
             // Clear the undo log
             if let Some(ref mut log) = self.undo_log {

@@ -4,13 +4,13 @@ use fs2::FileExt;
 
 use crate::error::{Error, Result};
 use crate::log::{
-    KeyMap, LogBackend, LogConfig, LENGTH_FIELD_BYTES, STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE,
-    STORAGE_MAGIC, TX_COMMIT_MARKER,
+    KeyMap, LogBackend, LogConfig, ValuePointer, WriteOutcome, LENGTH_FIELD_BYTES,
+    STORAGE_FORMAT_VERSION, STORAGE_HEADER_SIZE, STORAGE_MAGIC, TX_COMMIT_MARKER,
 };
 use crate::protocol_utils::parse_storage_identifier;
 use std::rc::Rc;
 
-type ChangeRecord = (Vec<u8>, Option<Rc<[u8]>>);
+type ChangeRecord = (Vec<u8>, Option<ValuePointer>);
 
 struct KeyBufferPool {
     buffers: Vec<Vec<u8>>,
@@ -146,6 +146,7 @@ impl LogBackend for FileLogBackend {
         let mut key_map = KeyMap::new();
         let mut key_pool = KeyBufferPool::new(initial_capacity, config.max_key_size);
         let mut uncommitted_changes: Vec<ChangeRecord> = Vec::with_capacity(initial_capacity);
+        let inline_threshold = config.inline_value_threshold;
         // Fall back to the physical file length so crash-written data is still discovered.
         let header_valid_data_end = self.valid_data_end;
         let scan_end = self.file.metadata()?.len();
@@ -167,6 +168,7 @@ impl LogBackend for FileLogBackend {
         let mut commit_marker_seen = false;
 
         while pos < scan_end {
+            let entry_start = pos;
             if reader.read_exact(&mut len_buf).is_err() {
                 break; // Corrupted entry
             }
@@ -209,7 +211,7 @@ impl LogBackend for FileLogBackend {
 
             let key_for_map = key_vec;
             let key_for_undo = key_pool.clone_from(&key_for_map);
-            let mut old_value: Option<Rc<[u8]>> = None;
+            let mut old_value: Option<ValuePointer> = None;
 
             if value_len == 0 {
                 if let Some((old_key, old_val)) = key_map.remove_entry(key_for_map.as_slice()) {
@@ -218,20 +220,39 @@ impl LogBackend for FileLogBackend {
                 }
                 key_pool.recycle(key_for_map);
             } else {
-                let mut value_buf = vec![0; value_len as usize];
-                if reader.read_exact(&mut value_buf).is_err() {
-                    key_pool.recycle(key_for_map);
-                    key_pool.recycle(key_for_undo);
-                    break; // Corrupted
-                }
+                let value_offset = entry_start + (LENGTH_FIELD_BYTES * 2) as u64 + key_len as u64;
+                if value_len as usize <= inline_threshold {
+                    let mut value_buf = vec![0; value_len as usize];
+                    if reader.read_exact(&mut value_buf).is_err() {
+                        key_pool.recycle(key_for_map);
+                        key_pool.recycle(key_for_undo);
+                        break; // Corrupted
+                    }
+                    if let Some((old_key, old_val)) = key_map.remove_entry(key_for_map.as_slice()) {
+                        key_pool.recycle(old_key);
+                        old_value = Some(old_val);
+                    }
 
-                if let Some((old_key, old_val)) = key_map.remove_entry(key_for_map.as_slice()) {
-                    key_pool.recycle(old_key);
-                    old_value = Some(old_val);
-                }
+                    let value_rc = Rc::from(value_buf.into_boxed_slice());
+                    key_map.insert(
+                        key_for_map,
+                        ValuePointer::with_inline(value_offset, value_len, value_rc),
+                    );
+                } else {
+                    // Skip over the value bytes efficiently
+                    let mut take = reader.by_ref().take(value_len as u64);
+                    std::io::copy(&mut take, &mut std::io::sink())?;
 
-                let value_rc = Rc::from(value_buf.into_boxed_slice());
-                key_map.insert(key_for_map, value_rc);
+                    if let Some((old_key, old_val)) = key_map.remove_entry(key_for_map.as_slice()) {
+                        key_pool.recycle(old_key);
+                        old_value = Some(old_val);
+                    }
+
+                    key_map.insert(
+                        key_for_map,
+                        ValuePointer::new_on_disk(value_offset, value_len),
+                    );
+                }
             }
 
             uncommitted_changes.push((key_for_undo, old_value));
@@ -275,7 +296,7 @@ impl LogBackend for FileLogBackend {
         Ok((key_map, active_data_size))
     }
 
-    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
+    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<WriteOutcome> {
         if key.len() > crate::log::DEFAULT_MAX_KEY_SIZE
             || value.len() > crate::log::DEFAULT_MAX_VALUE_SIZE
         {
@@ -290,6 +311,7 @@ impl LogBackend for FileLogBackend {
         let key_len = key.len() as u32;
         let value_len = value.len() as u32;
         let len = (LENGTH_FIELD_BYTES * 2) as u32 + key_len + value_len;
+        let value_offset = self.valid_data_end + (LENGTH_FIELD_BYTES * 2) as u64 + key_len as u64;
 
         // Prepare buffer with same binary format as original TegDB
         let mut buffer = Vec::with_capacity(len as usize);
@@ -321,7 +343,18 @@ impl LogBackend for FileLogBackend {
         // Update header with new valid_data_end
         self.update_valid_data_end_in_header()?;
 
-        Ok(())
+        Ok(WriteOutcome {
+            entry_len: len,
+            value_offset,
+            value_len,
+        })
+    }
+
+    fn read_value(&mut self, offset: u64, len: u32) -> Result<Vec<u8>> {
+        let mut buf = vec![0u8; len as usize];
+        self.file.seek(SeekFrom::Start(offset))?;
+        self.file.read_exact(&mut buf)?;
+        Ok(buf)
     }
 
     fn sync_all(&mut self) -> Result<()> {

@@ -1,11 +1,46 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::time::Duration;
 
 use crate::backends::DefaultLogBackend;
 use crate::error::Result;
 
-/// KeyMap maps keys to shared buffers instead of owned Vecs
-pub type KeyMap = BTreeMap<Vec<u8>, Rc<[u8]>>;
+/// Pointer into on-disk value storage with optional inline cache.
+#[derive(Clone, Debug)]
+pub struct ValuePointer {
+    pub value_offset: u64,
+    pub value_len: u32,
+    pub inline_value: Option<Rc<[u8]>>,
+}
+
+impl ValuePointer {
+    pub fn new_on_disk(value_offset: u64, value_len: u32) -> Self {
+        Self {
+            value_offset,
+            value_len,
+            inline_value: None,
+        }
+    }
+
+    pub fn with_inline(value_offset: u64, value_len: u32, inline_value: Rc<[u8]>) -> Self {
+        Self {
+            value_offset,
+            value_len,
+            inline_value: Some(inline_value),
+        }
+    }
+
+    pub fn len(&self) -> u32 {
+        self.value_len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value_len == 0
+    }
+}
+
+/// KeyMap now maps keys to value pointers (not resident values).
+pub type KeyMap = BTreeMap<Vec<u8>, ValuePointer>;
 
 /// Transaction commit marker - special marker that won't be part of keymap
 pub const TX_COMMIT_MARKER: &[u8] = b"__TX_COMMIT__";
@@ -42,6 +77,18 @@ pub struct LogConfig {
     pub initial_capacity: Option<usize>,
     /// Preallocate disk space in bytes
     pub preallocate_size: Option<u64>,
+    /// Threshold under which values are kept inline in memory when scanning
+    pub inline_value_threshold: usize,
+    /// Optional group commit interval (used by higher layers to coalesce fsync)
+    pub group_commit_interval: Duration,
+}
+
+/// Result metadata for a write entry operation.
+#[derive(Clone, Debug)]
+pub struct WriteOutcome {
+    pub entry_len: u32,
+    pub value_offset: u64,
+    pub value_len: u32,
 }
 
 /// Trait for different log storage backends (file-based).
@@ -56,7 +103,10 @@ pub trait LogBackend {
     fn build_key_map(&mut self, config: &LogConfig) -> Result<(KeyMap, u64)>;
 
     /// Write an entry to storage
-    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()>;
+    fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<WriteOutcome>;
+
+    /// Read a value slice from storage
+    fn read_value(&mut self, offset: u64, len: u32) -> Result<Vec<u8>>;
 
     /// Sync/flush data to persistent storage
     fn sync_all(&mut self) -> Result<()>;
@@ -86,8 +136,12 @@ impl Log {
         self.backend.build_key_map(config)
     }
 
-    pub fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
+    pub fn write_entry(&mut self, key: &[u8], value: &[u8]) -> Result<WriteOutcome> {
         self.backend.write_entry(key, value)
+    }
+
+    pub fn read_value(&mut self, offset: u64, len: u32) -> Result<Vec<u8>> {
+        self.backend.read_value(offset, len)
     }
 
     pub fn sync_all(&mut self) -> Result<()> {

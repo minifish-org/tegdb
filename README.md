@@ -676,15 +676,44 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed information about:
 ### Engine Configuration
 
 ```rust
-use tegdb::storage_engine::EngineConfig;
+use std::time::Duration;
+use tegdb::storage_engine::{DurabilityConfig, DurabilityLevel, EngineConfig};
 
 let config = EngineConfig {
     max_key_size: 1024,        // 1KB max key size
-    max_value_size: 256 * 1024, // 256KB max value size  
+    max_value_size: 256 * 1024, // 256KB max value size
     auto_compact: true,         // Auto-compact on open
+    // Durability: default is Immediate (fsync every commit)
+    durability: DurabilityConfig {
+        level: DurabilityLevel::Immediate,
+        group_commit_interval: Duration::from_millis(0), // Set >0 to enable group commit
+    },
+    // Inline hot/small values to avoid disk reads; the rest spill to data pages.
+    inline_value_threshold: 64,          // bytes
+    cache_size_bytes: 8 * 1024 * 1024,   // value/page cache cap
+    ..Default::default()
 };
 
 // Note: Custom config requires low-level API
+```
+
+Key defaults:
+- Values are stored on disk; the B+tree indexes key -> value offset. Small values (<= `inline_value_threshold`) stay inline.
+- A byte-capped value cache (`cache_size_bytes`) keeps hot values in memory.
+- Durability defaults to per-commit `fsync`; set `DurabilityLevel::GroupCommit` with a non-zero `group_commit_interval` to coalesce flushes.
+
+Metrics (observability):
+
+```rust
+let metrics = engine.metrics();
+println!(
+    "bytes_read={}, bytes_written={}, cache_hits={}, cache_misses={}, fsyncs={}",
+    metrics.bytes_read,
+    metrics.bytes_written,
+    metrics.cache_hits,
+    metrics.cache_misses,
+    metrics.fsync_count
+);
 ```
 
 ### Low-Level Engine API
