@@ -687,6 +687,8 @@ let config = EngineConfig {
     max_key_size: 1024,        // 1KB max key size
     max_value_size: 256 * 1024, // 256KB max value size
     auto_compact: true,         // Auto-compact on open
+    initial_capacity: None,     // No default key cap; set Some(...) to enforce a hard key cap
+    preallocate_size: None,     // No default disk preallocation; set Some(bytes) to cap/preallocate
     // Durability: default is Immediate (fsync every commit)
     durability: DurabilityConfig {
         level: DurabilityLevel::Immediate,
@@ -695,6 +697,10 @@ let config = EngineConfig {
     // Inline hot/small values to avoid disk reads; the rest spill to data pages.
     inline_value_threshold: 64,          // bytes
     cache_size_bytes: 8 * 1024 * 1024,   // value/page cache cap
+    // Compaction: absolute threshold + ratio + min delta bytes since last compact
+    compaction_absolute_threshold_bytes: 10 * 1024 * 1024,
+    compaction_ratio: 2.0,
+    compaction_min_delta_bytes: 2 * 1024 * 1024,
     ..Default::default()
 };
 
@@ -705,6 +711,8 @@ Key defaults:
 - Values are stored on disk; the B+tree indexes key -> value offset. Small values (<= `inline_value_threshold`) stay inline.
 - A byte-capped value cache (`cache_size_bytes`) keeps hot values in memory.
 - Durability defaults to per-commit `fsync`; set `DurabilityLevel::GroupCommit` with a non-zero `group_commit_interval` to coalesce flushes.
+- Default compaction uses an absolute threshold (10 MiB), fragmentation ratio (2.0), and a minimum written delta (2 MiB) since the last compaction.
+- No default hard cap on key count or disk size; set `initial_capacity` and `preallocate_size` to enforce limits in production.
 
 Metrics (observability):
 

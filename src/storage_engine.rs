@@ -13,8 +13,6 @@ pub const DEFAULT_PREALLOCATE_SIZE_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
 pub const DEFAULT_PREALLOCATE_SIZE_MB: u64 = 10;
 pub const DEFAULT_INITIAL_CAPACITY_KEYS: usize = 10_000;
 
-/// Default minimum compaction threshold in bytes when no preallocation is set (10 MB)
-pub const DEFAULT_COMPACTION_THRESHOLD_BYTES: u64 = 10 * 1024 * 1024;
 /// Default compaction threshold ratio relative to the preallocated size (50%)
 pub const DEFAULT_COMPACTION_THRESHOLD_RATIO: f64 = 0.5;
 /// Stringified default compaction threshold ratio (for CLI help text)
@@ -27,6 +25,10 @@ pub const DEFAULT_COMPACTION_RATIO_STR: &str = "2.0";
 pub const DEFAULT_INLINE_VALUE_THRESHOLD: usize = 64;
 /// Default cache size in bytes for value/page cache
 pub const DEFAULT_CACHE_SIZE_BYTES: u64 = 8 * 1024 * 1024;
+/// Default absolute compaction threshold when no preallocation is set (bytes)
+pub const DEFAULT_COMPACTION_ABSOLUTE_THRESHOLD_BYTES: u64 = 10 * 1024 * 1024;
+/// Default minimum bytes written since last compaction before triggering
+pub const DEFAULT_COMPACTION_MIN_DELTA_BYTES: u64 = 2 * 1024 * 1024;
 
 /// Config options for the database engine
 #[derive(Debug, Clone)]
@@ -48,6 +50,10 @@ pub struct EngineConfig {
     pub compaction_threshold_ratio: f64,
     /// Ratio of log size to active data size to trigger compaction (default: 2.0)
     pub compaction_ratio: f64,
+    /// Absolute compaction threshold when preallocation is not set
+    pub compaction_absolute_threshold_bytes: u64,
+    /// Minimum bytes written since last compaction before triggering
+    pub compaction_min_delta_bytes: u64,
     /// Durability configuration (fsync strategy)
     pub durability: DurabilityConfig,
     /// Values up to this size are kept inline in memory for faster reads
@@ -62,10 +68,12 @@ impl Default for EngineConfig {
             max_key_size: crate::log::DEFAULT_MAX_KEY_SIZE,
             max_value_size: crate::log::DEFAULT_MAX_VALUE_SIZE,
             auto_compact: true,
-            initial_capacity: Some(DEFAULT_INITIAL_CAPACITY_KEYS),
-            preallocate_size: Some(DEFAULT_PREALLOCATE_SIZE_BYTES),
+            initial_capacity: None,
+            preallocate_size: None,
             compaction_threshold_ratio: DEFAULT_COMPACTION_THRESHOLD_RATIO,
             compaction_ratio: DEFAULT_COMPACTION_RATIO,
+            compaction_absolute_threshold_bytes: DEFAULT_COMPACTION_ABSOLUTE_THRESHOLD_BYTES,
+            compaction_min_delta_bytes: DEFAULT_COMPACTION_MIN_DELTA_BYTES,
             durability: DurabilityConfig::default(),
             inline_value_threshold: DEFAULT_INLINE_VALUE_THRESHOLD,
             cache_size_bytes: DEFAULT_CACHE_SIZE_BYTES,
@@ -183,6 +191,7 @@ pub struct StorageEngine {
     last_sync: Instant,
     pending_sync: bool,
     metrics: RefCell<StorageMetrics>,
+    bytes_since_last_compact: u64,
 }
 
 // Type alias for scan result (returns keys and shared buffer Rcs for values)
@@ -232,6 +241,7 @@ impl StorageEngine {
             last_sync: Instant::now(),
             pending_sync: false,
             metrics: RefCell::new(StorageMetrics::default()),
+            bytes_since_last_compact: 0,
         };
 
         Ok(engine)
@@ -319,11 +329,15 @@ impl StorageEngine {
         self.active_data_size += write_outcome.value_len as u64;
 
         // Metrics
-        let mut metrics = self.metrics.borrow_mut();
-        metrics.bytes_written = metrics
-            .bytes_written
+        {
+            let mut metrics = self.metrics.borrow_mut();
+            metrics.bytes_written = metrics
+                .bytes_written
+                .saturating_add(write_outcome.entry_len as u64);
+        }
+        self.bytes_since_last_compact = self
+            .bytes_since_last_compact
             .saturating_add(write_outcome.entry_len as u64);
-        drop(metrics);
 
         // Check for compaction
         self.check_compaction_trigger()?;
@@ -351,11 +365,15 @@ impl StorageEngine {
                 .saturating_sub((crate::log::LENGTH_FIELD_BYTES * 2) as u64);
         }
 
-        let mut metrics = self.metrics.borrow_mut();
-        metrics.bytes_written = metrics
-            .bytes_written
+        {
+            let mut metrics = self.metrics.borrow_mut();
+            metrics.bytes_written = metrics
+                .bytes_written
+                .saturating_add(write_outcome.entry_len as u64);
+        }
+        self.bytes_since_last_compact = self
+            .bytes_since_last_compact
             .saturating_add(write_outcome.entry_len as u64);
-        drop(metrics);
 
         // Check for compaction
         self.check_compaction_trigger()?;
@@ -403,6 +421,7 @@ impl StorageEngine {
         self.key_map = new_key_map;
         self.active_data_size = new_size;
         self.cache = RefCell::new(ValueCache::new(self.config.cache_size_bytes));
+        self.bytes_since_last_compact = 0;
 
         Ok(())
     }
@@ -414,26 +433,23 @@ impl StorageEngine {
         }
 
         let log_size = self.log.borrow().current_size()?;
-        let threshold_bytes = self.effective_compaction_threshold_bytes();
+        let absolute_threshold = self.effective_compaction_threshold_bytes();
 
-        // Check thresholds
-        // 1. Log size must be greater than configured threshold
-        if log_size <= threshold_bytes {
-            return Ok(());
-        }
-
-        // 2. Log size must be significantly larger than active data size (fragmentation)
-        // Avoid division by zero
+        // If no data, compact only when log exceeds absolute threshold and we wrote enough since last compaction
         if self.active_data_size == 0 {
-            // If empty but log is large, compact
-            if log_size > threshold_bytes {
+            if log_size > absolute_threshold
+                && self.bytes_since_last_compact >= self.config.compaction_min_delta_bytes
+            {
                 return self.compact();
             }
             return Ok(());
         }
 
         let ratio = log_size as f64 / self.active_data_size as f64;
-        if ratio > self.config.compaction_ratio {
+        if log_size > absolute_threshold
+            && ratio > self.config.compaction_ratio
+            && self.bytes_since_last_compact >= self.config.compaction_min_delta_bytes
+        {
             self.compact()?;
         }
 
@@ -441,16 +457,7 @@ impl StorageEngine {
     }
 
     fn effective_compaction_threshold_bytes(&self) -> u64 {
-        if let Some(prealloc) = self.config.preallocate_size {
-            let ratio = if self.config.compaction_threshold_ratio <= 0.0 {
-                DEFAULT_COMPACTION_THRESHOLD_RATIO
-            } else {
-                self.config.compaction_threshold_ratio
-            };
-            let computed = (prealloc as f64 * ratio).round() as u64;
-            return computed.max(1);
-        }
-        DEFAULT_COMPACTION_THRESHOLD_BYTES
+        self.config.compaction_absolute_threshold_bytes.max(1)
     }
 
     fn load_value(&self, pointer: &ValuePointer) -> Result<Rc<[u8]>> {
@@ -739,6 +746,10 @@ impl Transaction<'_> {
                     .bytes_written
                     .saturating_add(outcome.entry_len as u64);
             }
+            self.engine.bytes_since_last_compact = self
+                .engine
+                .bytes_since_last_compact
+                .saturating_add(outcome.entry_len as u64);
 
             // Clear the undo log
             if let Some(ref mut log) = self.undo_log {
