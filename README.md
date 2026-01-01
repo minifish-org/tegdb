@@ -6,9 +6,10 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 
 ## Key Features
 
-### 🚀 **Performance**
+### 🚀 **Performance & Footprint**
 
-- Zero-copy value sharing with Arc<[u8]>
+- Key->offset B+tree index; values are stored on disk, small values can be inlined to reduce IO
+- Bounded cache (configurable cap) to boost hot-read hit rates
 - Primary key optimized queries (O(log n) lookups)
 - Streaming query processing with early LIMIT termination
 - Efficient binary serialization
@@ -26,6 +27,8 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 - File locking prevents concurrent access corruption
 - Graceful handling of partial writes and corruption
 - Automatic rollback on transaction drop
+- Strong durability by default: per-transaction fsync, configurable group commit
+- Observability: metrics for bytes read/written, cache hits/misses, fsync counts
 
 ### 📦 **Simple Design**
 
@@ -520,8 +523,8 @@ For complete examples, see `examples/extension_demo.rs` and `examples/extension_
 
 ### Memory Usage
 
-- **In-memory index**: BTreeMap with Arc-shared values
-- **Zero-copy reads**: Multiple references share same memory
+- **In-memory index**: BTreeMap holds key -> value offset (values on disk), small values can inline
+- **Bounded cache**: Byte-capped value/page cache for hot data
 - **Lazy allocation**: Undo logs only allocated when needed
 - **Streaming queries**: LIMIT processed without loading full result
 
@@ -530,6 +533,7 @@ For complete examples, see `examples/extension_demo.rs` and `examples/extension_
 - **Fixed header**: 64-byte header with magic `TEGDB\0`, version (1), limits, flags
 - **Append-only log**: Fast writes after the header, no seek overhead
 - **Binary serialization**: Compact data representation
+- **Key->offset layout**: B+tree holds offsets; values stored in the data region, small values inline
 - **Automatic compaction**: Reclaims space from old entries while preserving header
 - **Crash recovery**: Replay from last commit marker
 

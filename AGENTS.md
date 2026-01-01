@@ -10,6 +10,14 @@ This document defines the autonomous or semi-autonomous agents we rely on when w
 - Skip benchmarks unless the task explicitly requires them; they take too long for normal CI.
 - CI workflows must target the `main` branch only.
 - Prefer absolute paths in scripts and documentation to reduce ambiguity on macOS/Linux runners.
+- Product positioning: TegDB is a deterministic, auditable, resource-bounded, durability-first embedded database. Defaults to strong durability (fsync); values live on disk with the B+tree storing key->offset pointers, small values may inline; caches are bounded and observable. Safety and correctness come before performance.
+
+### Language Requirements
+
+- **ALL code must be written in English**
+- **ALL commit messages must be in English**
+- **ALL comments, variable names, function names, and documentation must be in English**
+- No exceptions to this rule
 
 ## Code Quality & Behavior Constraints
 
