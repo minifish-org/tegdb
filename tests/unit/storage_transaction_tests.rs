@@ -516,3 +516,97 @@ fn test_pure_transaction_crash_recovery() -> Result<()> {
     fs::remove_file(path)?;
     Ok(())
 }
+
+#[test]
+fn test_inline_vs_disk_metrics_and_cache_hits() -> Result<()> {
+    let path = temp_db_path("tx_inline_vs_disk_metrics");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    let config = EngineConfig {
+        inline_value_threshold: 4,
+        cache_size_bytes: 64,
+        ..Default::default()
+    };
+    let mut engine = StorageEngine::with_config(path.clone(), config)?;
+    let small = b"sm".to_vec(); // inline
+    let large = b"12345678".to_vec(); // stored on disk, exceeds threshold
+    engine.set(b"ks", small.clone())?;
+    engine.set(b"kl", large.clone())?;
+
+    // Inline read should not hit disk or cache accounting
+    assert_eq!(
+        engine.get(b"ks").map(|v| v.as_ref().to_vec()),
+        Some(small.clone())
+    );
+    let m0 = engine.metrics();
+    assert_eq!(m0.bytes_read, 0);
+    assert_eq!(m0.cache_hits, 0);
+    assert_eq!(m0.cache_misses, 0);
+
+    // First large read should miss cache and read from disk
+    assert_eq!(
+        engine.get(b"kl").map(|v| v.as_ref().to_vec()),
+        Some(large.clone())
+    );
+    let m1 = engine.metrics();
+    assert_eq!(m1.bytes_read, large.len() as u64);
+    assert_eq!(m1.cache_hits, 0);
+    assert_eq!(m1.cache_misses, 1);
+
+    // Second large read should hit cache, no extra bytes_read
+    assert_eq!(
+        engine.get(b"kl").map(|v| v.as_ref().to_vec()),
+        Some(large.clone())
+    );
+    let m2 = engine.metrics();
+    assert_eq!(m2.bytes_read, large.len() as u64);
+    assert_eq!(m2.cache_hits, 1);
+    assert_eq!(m2.cache_misses, 1);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
+
+#[test]
+fn test_cache_eviction_on_cap() -> Result<()> {
+    let path = temp_db_path("tx_cache_eviction");
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    // Force non-inline values and a tiny cache so eviction is required
+    let config = EngineConfig {
+        inline_value_threshold: 0,
+        cache_size_bytes: 12,
+        ..Default::default()
+    };
+    let mut engine = StorageEngine::with_config(path.clone(), config)?;
+    let v1 = b"abcdefgh".to_vec(); // 8 bytes
+    let v2 = b"ijklmnop".to_vec(); // 8 bytes
+    engine.set(b"k1", v1.clone())?;
+    engine.set(b"k2", v2.clone())?;
+
+    // First read of k1: miss
+    assert_eq!(
+        engine.get(b"k1").map(|v| v.as_ref().to_vec()),
+        Some(v1.clone())
+    );
+    // First read of k2: miss, should evict k1 due to cap
+    assert_eq!(
+        engine.get(b"k2").map(|v| v.as_ref().to_vec()),
+        Some(v2.clone())
+    );
+    // Second read of k1: should miss again because k1 was evicted
+    assert_eq!(
+        engine.get(b"k1").map(|v| v.as_ref().to_vec()),
+        Some(v1.clone())
+    );
+
+    let m = engine.metrics();
+    assert_eq!(m.cache_hits, 0);
+    assert_eq!(m.cache_misses, 3);
+    assert_eq!(m.bytes_read, (v1.len() as u64) * 2 + v2.len() as u64);
+
+    fs::remove_file(path)?;
+    Ok(())
+}
