@@ -165,7 +165,19 @@ codegen-units = 1  # Single codegen unit for better optimization
 [features]
 # Default behavior matches the current repository behavior: ship CLI tools,
 # cloud streaming sync support, dynamic extensions, and file locking.
-default = ["repl", "tgstream", "extensions-dylib", "file-locking"]
+default = ["host"]
+
+# Full host-oriented build (matches the historical default behavior).
+host = ["repl", "tgstream", "extensions-dylib", "file-locking"]
+
+# Embedded / unikernel-oriented preset.
+#
+# Note: Cargo features can only enable capabilities, not disable them. To get a
+# truly minimal build, use `--no-default-features --features embedded` (or `hermit`).
+embedded = []
+
+# Alias preset for Hermit/unikernel experiments.
+hermit = ["embedded"]
 
 # Minimal clap-based CLI support (used by tg and tgstream binaries).
 cli = ["dep:clap"]

@@ -80,6 +80,7 @@ echo -e "\n${YELLOW}🔍 Verifying CI-critical checks (will fail fast)...${NC}"
 run_step "Verifying formatting is clean" ${CARGO_CMD} fmt --all -- --check
 run_step_show_warnings "Verifying clippy is clean" ${CARGO_CMD} clippy --all-targets --all-features -- -D warnings
 run_step "Building with all features" ${CARGO_CMD} build --all-features
+run_step "Building embedded preset (no default features)" ${CARGO_CMD} build --no-default-features --features embedded
 run_step "Building documentation" ${CARGO_CMD} doc --no-deps --document-private-items
 run_step "Running doc tests" ${CARGO_CMD} test --doc
 
