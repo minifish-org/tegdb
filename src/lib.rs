@@ -56,6 +56,7 @@ pub mod query_processor;
 pub mod planner;
 
 // Cloud sync module (tgstream)
+#[cfg(feature = "tgstream")]
 pub mod tgstream;
 
 // Extension system

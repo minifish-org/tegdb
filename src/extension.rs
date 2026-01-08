@@ -49,10 +49,12 @@
 
 use crate::parser::{DataType, SqlValue};
 use crate::Error;
-use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+
+#[cfg(feature = "extensions-dylib")]
+use libloading::{Library, Symbol};
 
 /// Error type for extension operations
 #[derive(Debug, Clone)]
@@ -589,6 +591,7 @@ pub struct ExtensionWrapper {
 
 /// Type alias for the extension creation function exported from dynamic libraries
 /// Returns a pointer to an ExtensionWrapper
+#[cfg(feature = "extensions-dylib")]
 type CreateExtensionFn = unsafe extern "C" fn() -> *mut ExtensionWrapper;
 
 impl ExtensionFactory {
@@ -640,6 +643,7 @@ impl ExtensionFactory {
 
     /// Load extension from a dynamic library file
     pub fn load_from_path(&self, path: &Path) -> std::result::Result<Box<dyn Extension>, Error> {
+        #[cfg(feature = "extensions-dylib")]
         unsafe {
             let library = Library::new(path).map_err(|e| {
                 Error::Other(format!(
@@ -682,6 +686,14 @@ impl ExtensionFactory {
 
             Ok(extension)
         }
+
+        #[cfg(not(feature = "extensions-dylib"))]
+        {
+            Err(Error::Other(format!(
+                "Dynamic extension loading is disabled at compile time (attempted to load '{}')",
+                path.display()
+            )))
+        }
     }
 
     /// Load extension by name, searching in configured paths
@@ -691,22 +703,33 @@ impl ExtensionFactory {
             return Ok(ext);
         }
 
-        // Search for dynamic library
-        let library_names = Self::get_library_names(name);
+        #[cfg(feature = "extensions-dylib")]
+        {
+            // Search for dynamic library
+            let library_names = Self::get_library_names(name);
 
-        for search_path in &self.search_paths {
-            for lib_name in &library_names {
-                let full_path = search_path.join(lib_name);
-                if full_path.exists() {
-                    return self.load_from_path(&full_path);
+            for search_path in &self.search_paths {
+                for lib_name in &library_names {
+                    let full_path = search_path.join(lib_name);
+                    if full_path.exists() {
+                        return self.load_from_path(&full_path);
+                    }
                 }
             }
+
+            Err(Error::Other(format!(
+                "Extension '{}' not found in search paths: {:?}",
+                name, self.search_paths
+            )))
         }
 
-        Err(Error::Other(format!(
-            "Extension '{}' not found in search paths: {:?}",
-            name, self.search_paths
-        )))
+        #[cfg(not(feature = "extensions-dylib"))]
+        {
+            Err(Error::Other(format!(
+                "Extension '{}' not found (dynamic extension loading disabled at compile time; search_paths={:?})",
+                name, self.search_paths
+            )))
+        }
     }
 
     /// Create a built-in extension by name
@@ -726,17 +749,20 @@ impl ExtensionFactory {
         extensions.push("tegdb_string".to_string());
         extensions.push("tegdb_math".to_string());
 
-        // Scan search paths for dynamic libraries
-        for search_path in &self.search_paths {
-            if let Ok(entries) = std::fs::read_dir(search_path) {
-                for entry in entries.flatten() {
-                    if let Some(file_name) = entry.file_name().to_str() {
-                        // Check if it's a library file
-                        if Self::is_library_file(file_name) {
-                            // Extract extension name from library filename
-                            if let Some(ext_name) = Self::extract_extension_name(file_name) {
-                                if !extensions.contains(&ext_name) {
-                                    extensions.push(ext_name);
+        #[cfg(feature = "extensions-dylib")]
+        {
+            // Scan search paths for dynamic libraries
+            for search_path in &self.search_paths {
+                if let Ok(entries) = std::fs::read_dir(search_path) {
+                    for entry in entries.flatten() {
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            // Check if it's a library file
+                            if Self::is_library_file(file_name) {
+                                // Extract extension name from library filename
+                                if let Some(ext_name) = Self::extract_extension_name(file_name) {
+                                    if !extensions.contains(&ext_name) {
+                                        extensions.push(ext_name);
+                                    }
                                 }
                             }
                         }
@@ -749,6 +775,7 @@ impl ExtensionFactory {
     }
 
     /// Get platform-specific library names for an extension
+    #[cfg(feature = "extensions-dylib")]
     fn get_library_names(name: &str) -> Vec<String> {
         #[cfg(target_os = "linux")]
         {
@@ -776,11 +803,13 @@ impl ExtensionFactory {
     }
 
     /// Check if a filename is a library file
+    #[cfg(feature = "extensions-dylib")]
     fn is_library_file(filename: &str) -> bool {
         filename.ends_with(".so") || filename.ends_with(".dylib") || filename.ends_with(".dll")
     }
 
     /// Extract extension name from library filename
+    #[cfg(feature = "extensions-dylib")]
     fn extract_extension_name(filename: &str) -> Option<String> {
         if let Some(stripped) = filename.strip_prefix("lib") {
             stripped

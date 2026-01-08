@@ -15,30 +15,28 @@ license = "AGPL-3.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fs2 = "0.4.3"  # File locking for native backend
+fs2 = { version = "0.4.3", optional = true }  # File locking for native backend
 nom = "8.0.0"   # SQL parser
 fastrand = "2.0.1"  # Fast random number generation for vector indexing
 serde_json = "1.0"  # For Ollama JSON parsing (also used by tgstream)
 
 # CLI dependencies
-clap = { version = "4.0", features = ["derive"] }
-rustyline = "14.0"
-crossterm = "0.27"
-const_format = "0.2"
+clap = { version = "4.0", features = ["derive"], optional = true }
+rustyline = { version = "14.0", optional = true }
+crossterm = { version = "0.27", optional = true }
+const_format = { version = "0.2", optional = true }
 
 # Cloud sync dependencies (for tgstream)
-aws-sdk-s3 = { version = "1" }
-aws-config = { version = "1" }
-serde = { version = "1.0", features = ["derive"] }
-toml = { version = "0.8" }
-flate2 = { version = "1.0" }
-tokio = { version = "1.0", features = ["full"] }
-anyhow = { version = "1.0" }
-chrono = { version = "0.4", features = ["serde"] }
-futures = { version = "0.3" }
+aws-sdk-s3 = { version = "1", optional = true }
+aws-config = { version = "1", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+toml = { version = "0.8", optional = true }
+flate2 = { version = "1.0", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
 
 # Extension system dependencies
-libloading = "0.8"
+libloading = { version = "0.8", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.6.0", features = ["html_reports"] }
@@ -149,10 +147,12 @@ harness = false
 [[bin]]
 name = "tg"
 path = "src/bin/tg.rs"
+required-features = ["repl"]
 
 [[bin]]
 name = "tgstream"
 path = "src/bin/tgstream.rs"
+required-features = ["cli", "tgstream"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -161,3 +161,31 @@ crate-type = ["cdylib", "rlib"]
 debug = true  # Enable debug symbols for flamegraph
 lto = true    # Link-time optimization for better performance
 codegen-units = 1  # Single codegen unit for better optimization
+
+[features]
+# Default behavior matches the current repository behavior: ship CLI tools,
+# cloud streaming sync support, dynamic extensions, and file locking.
+default = ["repl", "tgstream", "extensions-dylib", "file-locking"]
+
+# Minimal clap-based CLI support (used by tg and tgstream binaries).
+cli = ["dep:clap"]
+
+# Interactive REPL CLI (tg).
+repl = ["cli", "dep:rustyline", "dep:crossterm", "dep:const_format"]
+
+# Cloud sync / streaming backup (tgstream module + tgstream binary).
+tgstream = [
+  "dep:tokio",
+  "dep:aws-sdk-s3",
+  "dep:aws-config",
+  "dep:serde",
+  "dep:toml",
+  "dep:flate2",
+  "dep:chrono",
+]
+
+# Dynamic extension loading via dlopen/LoadLibrary.
+extensions-dylib = ["dep:libloading"]
+
+# File-based backend locking using fs2.
+file-locking = ["dep:fs2"]

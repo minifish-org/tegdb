@@ -1,5 +1,6 @@
 use std::io::{Read, Seek, SeekFrom, Write};
 
+#[cfg(feature = "file-locking")]
 use fs2::FileExt;
 
 use crate::error::{Error, Result};
@@ -88,9 +89,12 @@ impl LogBackend for FileLogBackend {
             .open(&path)
             .map_err(Error::from)?;
 
-        // Try to obtain an exclusive lock
-        file.try_lock_exclusive()
-            .map_err(|e| Error::FileLocked(e.to_string()))?;
+        // Try to obtain an exclusive lock (optional at compile time)
+        #[cfg(feature = "file-locking")]
+        {
+            file.try_lock_exclusive()
+                .map_err(|e| Error::FileLocked(e.to_string()))?;
+        }
 
         let max_file_len = if let Some(size) = config.preallocate_size {
             if size < STORAGE_HEADER_SIZE as u64 {
@@ -465,8 +469,11 @@ impl FileLogBackend {
 
 impl Drop for FileLogBackend {
     fn drop(&mut self) {
-        // Ignore errors during drop, but try to unlock
-        let _ = FileExt::unlock(&self.file);
+        // Ignore errors during drop, but try to unlock if locking is enabled.
+        #[cfg(feature = "file-locking")]
+        {
+            let _ = FileExt::unlock(&self.file);
+        }
     }
 }
 
