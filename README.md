@@ -66,6 +66,12 @@ cargo test
 ./ci_precheck.sh
 ```
 
+Install the git pre-commit hook (runs CI checks and markdownlint):
+
+```bash
+./scripts/install-hooks.sh
+```
+
 ## License
 
 Licensed under AGPL-3.0. See [LICENSE](LICENSE).
