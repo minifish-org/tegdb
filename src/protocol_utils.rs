@@ -9,6 +9,12 @@ pub const PROTOCOL_FILE: &str = "file://";
 /// Canonical protocol name
 pub const PROTOCOL_NAME_FILE: &str = "file";
 
+/// RPC-based storage protocol prefix
+pub const PROTOCOL_RPC: &str = "rpc://";
+
+/// Canonical protocol name
+pub const PROTOCOL_NAME_RPC: &str = "rpc";
+
 /// Parse a storage identifier to extract the protocol and path
 ///
 /// Supports the following forms:
@@ -34,6 +40,11 @@ pub fn parse_storage_identifier(identifier: &str) -> (&str, &str) {
             PROTOCOL_NAME_FILE,
             identifier.trim_start_matches(PROTOCOL_FILE),
         )
+    } else if identifier.starts_with(PROTOCOL_RPC) {
+        (
+            PROTOCOL_NAME_RPC,
+            identifier.trim_start_matches(PROTOCOL_RPC),
+        )
     } else {
         // Default to file protocol for backward compatibility
         (PROTOCOL_NAME_FILE, identifier)
@@ -42,7 +53,11 @@ pub fn parse_storage_identifier(identifier: &str) -> (&str, &str) {
 
 /// Check if an identifier uses the `file://` protocol explicitly
 pub fn has_protocol(identifier: &str, protocol: &str) -> bool {
-    protocol == PROTOCOL_NAME_FILE && identifier.starts_with(PROTOCOL_FILE)
+    match protocol {
+        PROTOCOL_NAME_FILE => identifier.starts_with(PROTOCOL_FILE),
+        PROTOCOL_NAME_RPC => identifier.starts_with(PROTOCOL_RPC),
+        _ => false,
+    }
 }
 
 /// Extract the path part from a storage identifier
@@ -69,8 +84,16 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_rpc_protocol() {
+        let (protocol, path) = parse_storage_identifier("rpc://127.0.0.1:9000");
+        assert_eq!(protocol, "rpc");
+        assert_eq!(path, "127.0.0.1:9000");
+    }
+
+    #[test]
     fn test_has_protocol() {
         assert!(has_protocol("file:///path/to/db", "file"));
+        assert!(has_protocol("rpc://127.0.0.1:9000", "rpc"));
         assert!(!has_protocol("my_database.db", "file"));
     }
 

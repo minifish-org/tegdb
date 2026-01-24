@@ -476,5 +476,3 @@ impl Drop for FileLogBackend {
         }
     }
 }
-
-pub type DefaultLogBackend = FileLogBackend;

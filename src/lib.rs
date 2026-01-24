@@ -46,6 +46,9 @@ pub mod storage_engine;
 pub mod storage_format;
 pub mod vector_index;
 
+#[cfg(feature = "rpc")]
+pub mod log_capnp;
+
 // Make parser module public since it contains types needed for public API (DataType, ColumnConstraint)
 pub mod parser;
 

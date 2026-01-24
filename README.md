@@ -777,6 +777,22 @@ TegDB includes comprehensive tests covering:
 ./run_all_tests.sh --ci
 ```
 
+### RPC Log Server (tglogd)
+
+Run a log server that exposes the WAL over Cap'n Proto RPC and connect with the
+`rpc://` protocol using the low-level engine API.
+
+```bash
+# Build with RPC support
+cargo build --features rpc --bin tglogd
+
+# Start the log server (absolute path recommended)
+./target/debug/tglogd --listen 127.0.0.1:9000 --db /absolute/path/to/db.teg
+
+# Run the RPC smoke example (in another terminal)
+cargo run --features rpc --example rpc_log_smoke
+```
+
 ### Code Quality
 
 Use the following commands to keep the tree clean:

@@ -786,39 +786,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         engine_config.compaction_ratio = ratio;
     }
 
-    // Normalize DB identifier to always use file:// protocol expected by Database::open
-    let db_path = if tegdb::protocol_utils::has_protocol(&cli.db_path, "file") {
-        // Already a file:// identifier; require .teg strictly
-        let raw = tegdb::protocol_utils::extract_path(&cli.db_path);
-        let pb = std::path::PathBuf::from(raw);
-        if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
-            eprintln!(
-                "Error: Unsupported database file extension. Expected '.teg': {}",
-                pb.display()
-            );
-            process::exit(1);
-        }
-        format!("file://{}", pb.to_string_lossy())
-    } else {
-        // Require provided path to already end with .teg; do not auto-append
-        let pb = if Path::new(&cli.db_path).is_absolute() {
-            std::path::PathBuf::from(&cli.db_path)
+    // Normalize DB identifier for file:// or rpc://
+    let (protocol, _path) = tegdb::protocol_utils::parse_storage_identifier(&cli.db_path);
+    let db_path = if protocol == "file" {
+        if tegdb::protocol_utils::has_protocol(&cli.db_path, "file") {
+            // Already a file:// identifier; require .teg strictly
+            let raw = tegdb::protocol_utils::extract_path(&cli.db_path);
+            let pb = std::path::PathBuf::from(raw);
+            if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
+                eprintln!(
+                    "Error: Unsupported database file extension. Expected '.teg': {}",
+                    pb.display()
+                );
+                process::exit(1);
+            }
+            format!("file://{}", pb.to_string_lossy())
         } else {
-            std::env::current_dir()?.join(&cli.db_path)
-        };
-        if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
-            eprintln!(
-                "Error: Unsupported database file extension. Expected '.teg': {}",
-                pb.display()
-            );
-            process::exit(1);
+            // Require provided path to already end with .teg; do not auto-append
+            let pb = if Path::new(&cli.db_path).is_absolute() {
+                std::path::PathBuf::from(&cli.db_path)
+            } else {
+                std::env::current_dir()?.join(&cli.db_path)
+            };
+            if pb.extension().and_then(|s| s.to_str()) != Some("teg") {
+                eprintln!(
+                    "Error: Unsupported database file extension. Expected '.teg': {}",
+                    pb.display()
+                );
+                process::exit(1);
+            }
+            format!("file://{}", pb.to_string_lossy())
         }
-        format!("file://{}", pb.to_string_lossy())
+    } else if protocol == "rpc" {
+        cli.db_path.clone()
+    } else {
+        eprintln!(
+            "Error: Unsupported protocol '{protocol}'. Only 'file://' or 'rpc://' are supported."
+        );
+        process::exit(1);
     };
 
     // Create database if it doesn't exist
     // Print create message if backing file does not exist
-    if !cli.quiet {
+    if !cli.quiet && protocol == "file" {
         let fs_path = tegdb::protocol_utils::extract_path(&db_path);
         if !Path::new(fs_path).exists() {
             eprintln!("Creating new database: {db_path}");

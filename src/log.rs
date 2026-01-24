@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::backends::DefaultLogBackend;
+use crate::backends::create_log_backend;
 use crate::error::Result;
 
 /// Pointer into on-disk value storage with optional inline cache.
@@ -123,12 +123,12 @@ pub trait LogBackend {
 
 /// Universal log structure that works with different storage backends
 pub struct Log {
-    backend: DefaultLogBackend,
+    backend: Box<dyn LogBackend>,
 }
 
 impl Log {
     pub fn new(identifier: String, config: &LogConfig) -> Result<Self> {
-        let backend = DefaultLogBackend::new(identifier, config)?;
+        let backend = create_log_backend(identifier, config)?;
         Ok(Self { backend })
     }
 

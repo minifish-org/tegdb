@@ -195,31 +195,43 @@ impl Database {
     pub fn open_with_config<P: AsRef<str>>(path: P, config: EngineConfig) -> Result<Self> {
         let path_str = path.as_ref();
         let (protocol, path_part) = crate::protocol_utils::parse_storage_identifier(path_str);
+        let storage = if protocol == crate::protocol_utils::PROTOCOL_NAME_FILE {
+            let mut path_buf = std::path::PathBuf::from(path_part);
+            if !path_buf.is_absolute() {
+                return Err(crate::Error::Other(format!(
+                    "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
+                )));
+            }
 
-        if protocol != crate::protocol_utils::PROTOCOL_NAME_FILE {
+            // Enforce .teg only: append if missing; error if other extension present
+            if path_buf.extension().is_none() {
+                path_buf.set_extension("teg");
+            } else if path_buf.extension().and_then(|s| s.to_str()) != Some("teg") {
+                return Err(crate::Error::Other(format!(
+                    "Unsupported database file extension. Expected '.teg': {}",
+                    path_buf.display()
+                )));
+            }
+
+            StorageEngine::with_config(path_buf.to_path_buf(), config)?
+        } else if protocol == crate::protocol_utils::PROTOCOL_NAME_RPC {
+            #[cfg(feature = "rpc")]
+            {
+                let mut config = config;
+                config.auto_compact = false;
+                StorageEngine::with_config_and_identifier(path_str.to_string(), config)?
+            }
+            #[cfg(not(feature = "rpc"))]
+            {
+                return Err(crate::Error::Other(
+                    "RPC support requires the 'rpc' feature".to_string(),
+                ));
+            }
+        } else {
             return Err(crate::Error::Other(format!(
-                "Unsupported protocol: {protocol}. Only 'file://' is supported."
+                "Unsupported protocol: {protocol}. Only 'file://' and 'rpc://' are supported."
             )));
-        }
-
-        let mut path_buf = std::path::PathBuf::from(path_part);
-        if !path_buf.is_absolute() {
-            return Err(crate::Error::Other(format!(
-                "Path must be absolute. Got: '{path_str}'. Use absolute path like 'file:///absolute/path/to/db'"
-            )));
-        }
-
-        // Enforce .teg only: append if missing; error if other extension present
-        if path_buf.extension().is_none() {
-            path_buf.set_extension("teg");
-        } else if path_buf.extension().and_then(|s| s.to_str()) != Some("teg") {
-            return Err(crate::Error::Other(format!(
-                "Unsupported database file extension. Expected '.teg': {}",
-                path_buf.display()
-            )));
-        }
-
-        let storage = StorageEngine::with_config(path_buf.to_path_buf(), config)?;
+        };
 
         let catalog = Catalog::load_from_storage(&storage)?;
 
