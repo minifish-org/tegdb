@@ -11,7 +11,6 @@
 //!
 //! 2. Wrap your test logic in a closure and call `run_with_both_backends`:
 //!    ```rust
-//!    #[test]
 //!    fn my_test() -> Result<()> {
 //!         run_with_both_backends("my_test_name", |db_path| {
 //!             let mut db = Database::open(db_path)?;

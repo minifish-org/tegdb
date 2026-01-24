@@ -4,7 +4,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-"${REPO_ROOT}/ci_precheck.sh"
+"${REPO_ROOT}/ci_precheck_fast.sh"
 
 if ! command -v markdownlint >/dev/null 2>&1; then
     echo "markdownlint is required but not installed."
