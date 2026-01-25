@@ -152,6 +152,10 @@ harness = false
 name = "streaming_performance_benchmark"
 harness = false
 
+[[bench]]
+name = "rpc_vs_file_sql_benchmark"
+harness = false
+
 [[bin]]
 name = "tg"
 path = "src/bin/tg.rs"
