@@ -45,6 +45,27 @@ TegDB is a lightweight, embedded database engine with a SQL-like interface desig
 - Create custom scalar and aggregate functions
 - Type-safe function signatures with validation
 
+## System Requirements
+
+### Minimum Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| **OS** | Linux (x86_64/arm64), macOS 11+, or Windows (WSL2 recommended) |
+| **Rust** | Stable toolchain (edition 2021; install via [rustup](https://rustup.rs/)) |
+| **Disk** | Any durable storage; avoid tmpfs for production data |
+| **Memory** | ~10 MB resident for a minimal embedded deployment |
+
+### Additional Requirements for `tgstream` (Cloud Backup)
+
+| Component | Requirement |
+|-----------|-------------|
+| **S3-compatible storage** | AWS S3, MinIO, or any S3-compatible endpoint |
+| **Docker** | Required only if running MinIO locally (for the Quick Start walkthrough) |
+| **Network** | Outbound HTTPS/HTTP access to the S3 endpoint |
+
+> **Tip**: For a local-only embedded database (no backup), only Rust stable is required. Docker + MinIO are only needed for local testing of cloud backup; production setups connect directly to existing S3-compatible storage.
+
 ## Getting Started
 
 ### Quick Start (CLI + MinIO in 2–3 minutes)
@@ -82,7 +103,9 @@ cargo install tegdb --version 0.3.0 --bin tgstream
 2) Start MinIO locally and create a bucket
 
 ```bash
-# Run MinIO
+# Run MinIO (requires Docker)
+docker run -d --name minio \
+  -p 9000:9000 -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
   quay.io/minio/minio server /data --console-address :9001
 
@@ -107,9 +130,11 @@ export TGSTREAM_BUCKET=tegdb-backups
 DB=file:///$(pwd)/quickstart.teg
 
 # Create table and insert a row
+tg "$DB" --command "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT(32));"
 tg "$DB" --command "INSERT INTO users (id, name) VALUES (1, 'Alice');"
 
 # Query
+tg "$DB" --command "SELECT * FROM users;"
 ```
 
 5) Enable continuous cloud backup to MinIO with `tgstream`
@@ -154,10 +179,13 @@ tgstream list --config tgstream.toml
 
 ```bash
 # List available backups
+tgstream list --config tgstream.toml
 
 # Restore to latest state
+tgstream restore --config tgstream.toml --to $(pwd)/quickstart-restored.teg
 
 # Verify restored data
+tg "file:///$(pwd)/quickstart-restored.teg" --command "SELECT * FROM users;"
 # Should show: Alice
 ```
 
@@ -168,8 +196,10 @@ tgstream list --config tgstream.toml
 rm quickstart.teg
 
 # Restore from backup
+tgstream restore --config tgstream.toml --to $(pwd)/quickstart.teg
 
 # Continue using the restored database
+tg "file:///$(pwd)/quickstart.teg" --command "SELECT * FROM users;"
 ```
 
 ## Using TegDB as a Library
