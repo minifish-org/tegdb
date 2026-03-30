@@ -83,7 +83,9 @@ cargo install tegdb --version 0.3.0 --bin tgstream
 
 ```bash
 # Run MinIO
-  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+docker run -d -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
   quay.io/minio/minio server /data --console-address :9001
 
 # Create a bucket using the MinIO Console at http://localhost:9001 (Login: minioadmin/minioadmin)
@@ -110,6 +112,7 @@ DB=file:///$(pwd)/quickstart.teg
 tg "$DB" --command "INSERT INTO users (id, name) VALUES (1, 'Alice');"
 
 # Query
+tg "$DB" --command "SELECT name FROM users WHERE id = 1;"
 ```
 
 5) Enable continuous cloud backup to MinIO with `tgstream`
@@ -154,10 +157,13 @@ tgstream list --config tgstream.toml
 
 ```bash
 # List available backups
+tgstream list --config tgstream.toml
 
 # Restore to latest state
+tgstream restore --config tgstream.toml --to "$(pwd)/quickstart.teg"
 
 # Verify restored data
+tg "file:///$(pwd)/quickstart.teg" --command "SELECT name FROM users;"
 # Should show: Alice
 ```
 
@@ -168,8 +174,10 @@ tgstream list --config tgstream.toml
 rm quickstart.teg
 
 # Restore from backup
+tgstream restore --config tgstream.toml --to "$(pwd)/quickstart.teg"
 
 # Continue using the restored database
+tg "file:///$(pwd)/quickstart.teg" --command "SELECT name FROM users;"
 ```
 
 ## Using TegDB as a Library
@@ -601,14 +609,19 @@ export AWS_REGION=us-east-1
 
 ```bash
 # Run continuous replication
+tgstream run --config tgstream.toml
 
 # Create a one-off snapshot
+tgstream snapshot --config tgstream.toml
 
 # Restore database from backup
+tgstream restore --config tgstream.toml --to /absolute/path/to/restored.teg
 
 # List available snapshots
+tgstream list --config tgstream.toml
 
 # Prune old snapshots
+tgstream prune --config tgstream.toml
 ```
 
 ### How It Works
